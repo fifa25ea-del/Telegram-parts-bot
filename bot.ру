@@ -1,7 +1,7 @@
 import os
 from telegram.ext import Updater, CommandHandler
 
-TOKEN = os.getenv("8696046662:AAHNp5GYEdWwK_DIDQBO4aoorDtP2wIiHQA")
+TOKEN = os.getenv("8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74")
 
 def start(update, context):
     update.message.reply_text("Бот запущен 🚗")

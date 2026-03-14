@@ -1,20 +1,41 @@
 import os
-from telegram.ext import Updater, CommandHandler
+from telegram import ReplyKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
 TOKEN = os.getenv("TOKEN")
 
 def start(update, context):
-    update.message.reply_text("Бот запущен 🚗")
+    keyboard = [
+        ["🚗 Найти запчасть"],
+        ["📦 Сделать заказ"],
+        ["📞 Связаться"]
+    ]
+
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+    update.message.reply_text(
+        "Добро пожаловать в магазин автозапчастей 🚗\nВыберите действие:",
+        reply_markup=reply_markup
+    )
+
+def handle_message(update, context):
+    text = update.message.text
+
+    if text == "🚗 Найти запчасть":
+        update.message.reply_text("Напишите название детали или номер")
+
+    elif text == "📦 Сделать заказ":
+        update.message.reply_text("Напишите:\nМарка авто\nГод\nКакая деталь нужна")
+
+    elif text == "📞 Связаться":
+        update.message.reply_text("Менеджер: @your_username")
 
 def main():
     updater = Updater(TOKEN, use_context=True)
-
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.text, handle_message))
 
     updater.start_polling()
     updater.idle()
-
-if __name__ == "__main__":
-    main()

@@ -1,13 +1,14 @@
 import os
 from telegram.ext import Updater, CommandHandler
 
-TOKEN = os.getenv("8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74")
+TOKEN = os.getenv("TOKEN")
 
 def start(update, context):
     update.message.reply_text("Бот запущен 🚗")
 
 def main():
     updater = Updater(TOKEN, use_context=True)
+
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
@@ -15,5 +16,5 @@ def main():
     updater.start_polling()
     updater.idle()
 
-if __name__ == "__main__":
+if name == "__main__":
     main()

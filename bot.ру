@@ -1,17 +1,22 @@
 import os
-from telegram import ReplyKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import requests
 import xml.etree.ElementTree as ET
 
+from telegram import ReplyKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+
+TOKEN = os.getenv("TOKEN")
+
 XML_URL = "https://baz-on.ru/export/c592/ca617/drom-140001-parts.xml"
 
+parts_db = []
 
-def search_part(number):
+
+def load_parts():
+
+    print("Загружаю базу запчастей...")
+
     r = requests.get(XML_URL)
-
-    if r.status_code != 200:
-        return None
 
     root = ET.fromstring(r.content)
 
@@ -21,21 +26,36 @@ def search_part(number):
         name = item.find("name")
         price = item.find("price")
 
-        if part_number is not None and number.lower() in part_number.text.lower():
+        if part_number is not None:
+
+            parts_db.append({
+                "number": part_number.text,
+                "name": name.text if name is not None else "",
+                "price": price.text if price is not None else ""
+            })
+
+    print("База загружена:", len(parts_db), "деталей")
+
+
+def search_part(number):
+
+    for part in parts_db:
+
+        if number.lower() in part["number"].lower():
 
             return f"""
 🚗 Деталь найдена
 
-Название: {name.text}
-Номер: {part_number.text}
-Цена: {price.text} ₽
+Название: {part['name']}
+Номер: {part['number']}
+Цена: {part['price']} ₽
 """
 
     return None
 
-TOKEN = os.getenv("TOKEN")
 
 def start(update, context):
+
     keyboard = [
         ["🚗 Найти запчасть"],
         ["📦 Сделать заказ"],
@@ -49,20 +69,45 @@ def start(update, context):
         reply_markup=reply_markup
     )
 
+
 def handle_message(update, context):
+
     text = update.message.text
 
     if text == "🚗 Найти запчасть":
-        update.message.reply_text("Напишите номер или название детали")
+
+        update.message.reply_text("Напишите номер детали")
 
     elif text == "📦 Сделать заказ":
-        update.message.reply_text("Напишите:\nМарка авто\nГод\nКакая деталь нужна")
+
+        update.message.reply_text(
+            "Напишите:\nМарка авто\nГод\nКакая деталь нужна"
+        )
 
     elif text == "📞 Связаться":
-        update.message.reply_text("Менеджер: @your_username")
+
+        update.message.reply_text(
+            "Менеджер: @your_username"
+        )
+
+    else:
+
+        update.message.reply_text("🔎 Ищу деталь...")
+
+        result = search_part(text)
+
+        if result:
+            update.message.reply_text(result)
+        else:
+            update.message.reply_text("❌ Деталь не найдена")
+
 
 def main():
+
+    load_parts()
+
     updater = Updater(TOKEN, use_context=True)
+
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
@@ -73,5 +118,6 @@ def main():
     updater.start_polling()
     updater.idle()
 
-if __name__ == "__main__":
+
+if name == "__main__":
     main()

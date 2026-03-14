@@ -20,11 +20,11 @@ def load_parts():
 
     root = ET.fromstring(r.content)
 
-    for item in root.findall(".//item"):
+    for offer in root.findall(".//offer"):
 
-        part_number = item.find("oem")
-        name = item.find("name")
-        price = item.find("price")
+        part_number = offer.find("vendorCode")
+        name = offer.find("name")
+        price = offer.find("price")
 
         if part_number is not None:
 

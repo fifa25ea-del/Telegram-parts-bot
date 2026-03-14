@@ -1,6 +1,37 @@
 import os
 from telegram import ReplyKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+import requests
+import xml.etree.ElementTree as ET
+
+XML_URL = "https://baz-on.ru/export/c592/ca617/drom-140001-parts.xml"
+
+
+def search_part(number):
+    r = requests.get(XML_URL)
+
+    if r.status_code != 200:
+        return None
+
+    root = ET.fromstring(r.content)
+
+    for item in root.findall(".//item"):
+
+        part_number = item.find("oem")
+        name = item.find("name")
+        price = item.find("price")
+
+        if part_number is not None and number.lower() in part_number.text.lower():
+
+            return f"""
+🚗 Деталь найдена
+
+Название: {name.text}
+Номер: {part_number.text}
+Цена: {price.text} ₽
+"""
+
+    return None
 
 TOKEN = os.getenv("TOKEN")
 

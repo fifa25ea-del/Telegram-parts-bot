@@ -33,13 +33,16 @@ def load_database():
 
         for key, value in row.items():
 
+            if key is None:
+                continue
+
             clean_key = key.strip().replace("\ufeff", "")
+
             clean_row[clean_key] = value
 
         parts_db.append(clean_row)
 
     print(f"База загружена: {len(parts_db)} деталей")
-
 # Поиск детали
 def search_part(number):
 

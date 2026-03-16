@@ -173,8 +173,8 @@ kb.add(prev_btn, next_btn)
 kb.add(order_btn)
 kb.add(manager_btn)
 
-    photo_list = [x.strip() for x in photos.split(",") if x.strip()]
-    photo_list = photo_list[:8]
+photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+photo_list = photo_list[:8]
 
     try:
 

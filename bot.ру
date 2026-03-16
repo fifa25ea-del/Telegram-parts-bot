@@ -133,45 +133,53 @@ def search(msg):
             f"{status}"
         )
 
-        if photos:
+        photos = p.get(photo_key, "")
 
-            photo_list = photos.replace("|", ",").split(",")
-            photo_list = [p.strip() for p in photo_list if p.strip()]
+if photos:
 
-            photo_list = [BASE_PHOTO_URL + p for p in photo_list]
+    photo_list = photos.replace("|", ",").split(",")
+    photo_list = [p.strip() for p in photo_list if p.strip()]
 
-            try:
+    final_photos = []
 
-                media = []
+    for photo in photo_list:
 
-                for i, photo in enumerate(photo_list):
-
-                    if i == 0:
-
-                        media.append(
-                            telebot.types.InputMediaPhoto(
-                                photo,
-                                caption=text
-                            )
-                        )
-
-                    else:
-
-                        media.append(
-                            telebot.types.InputMediaPhoto(photo)
-                        )
-
-                bot.send_media_group(msg.chat.id, media)
-
-            except:
-
-                bot.send_message(msg.chat.id, text)
-
+        if photo.startswith("http"):
+            final_photos.append(photo)
         else:
+            final_photos.append(
+                "http://export-content.baz-on.ru/pub/c592/productphoto/" + photo
+            )
 
-            bot.send_message(msg.chat.id, text)
+    try:
 
+        media = []
 
+        for i, photo in enumerate(final_photos):
+
+            if i == 0:
+                media.append(
+                    telebot.types.InputMediaPhoto(
+                        photo,
+                        caption=text
+                    )
+                )
+            else:
+                media.append(
+                    telebot.types.InputMediaPhoto(photo)
+                )
+
+        bot.send_media_group(msg.chat.id, media)
+
+    except Exception as e:
+
+        print("Ошибка загрузки фото:", e)
+
+        bot.send_message(msg.chat.id, text)
+
+else:
+
+    bot.send_message(msg.chat.id, text)
 if __name__ == "__main__":
 
     load_database()

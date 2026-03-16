@@ -8,233 +8,204 @@ CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 
 bot = telebot.TeleBot(TOKEN)
 
-parts_db = []
-
-number_key = None
-name_key = None
-photo_key = None
-
-# хранение результатов поиска
-user_results = {}
+CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 
 
-def load_database():
-
-    global parts_db, number_key, name_key, photo_key
+def load_data():
 
     print("Загрузка базы...")
 
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(CSV_URL, headers=headers, timeout=30)
+    r = requests.get(CSV_URL)
     r.encoding = "cp1251"
 
     csv_file = io.StringIO(r.text)
 
     reader = csv.DictReader(csv_file, delimiter=";")
 
-    headers = reader.fieldnames
+    data = list(reader)
 
-    print("Колонки CSV:", headers)
+    print("Загружено товаров:", len(data))
 
-    for h in headers:
-
-        h_low = h.lower()
-
-        if "номер" in h_low or "артикул" in h_low:
-            number_key = h
-
-        if "наимен" in h_low:
-            name_key = h
-
-        if "фото" in h_low or "image" in h_low or "photo" in h_low:
-            photo_key = h
-
-    print("Колонка номера:", number_key)
-    print("Колонка названия:", name_key)
-    print("Колонка фото:", photo_key)
-
-    parts_db.clear()
-
-    for row in reader:
-        parts_db.append(row)
-
-    print("База загружена:", len(parts_db))
+    return data
 
 
-def find_part(query):
+data = load_data()
+# главное меню
+def main_menu():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
 
-    query = query.lower().strip()
+    b1 = types.KeyboardButton("🔎 Поиск по номеру")
+    b2 = types.KeyboardButton("📝 Поиск по наименованию")
+    b3 = types.KeyboardButton("👨‍🔧 Связаться с менеджером")
 
-    results = []
-
-    for part in parts_db:
-
-        number = str(part.get(number_key, "")).lower()
-        name = str(part.get(name_key, "")).lower()
-
-        if query in number or query in name:
-            results.append(part)
-
-        if len(results) >= 20:
-            break
-
-    return results
-
-
-def keyboard():
-
-    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("🚗 Найти запчасть")
+    kb.add(b1)
+    kb.add(b2)
+    kb.add(b3)
 
     return kb
 
 
 @bot.message_handler(commands=["start"])
 def start(msg):
-
     bot.send_message(
         msg.chat.id,
-        "🚗 Бот поиска автозапчастей",
-        reply_markup=keyboard()
+        "Добро пожаловать в каталог запчастей 🚗",
+        reply_markup=main_menu()
     )
 
 
-@bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
-def ask(msg):
+# поиск по номеру
+@bot.message_handler(func=lambda m: m.text == "🔎 Поиск по номеру")
+def search_number(msg):
+    m = bot.send_message(msg.chat.id, "Введите оригинальный номер:")
+    bot.register_next_step_handler(m, find_number)
 
-    bot.send_message(msg.chat.id, "Введите номер детали:")
 
+def find_number(msg):
 
-@bot.message_handler(func=lambda m: True)
-def search(msg):
+    number = msg.text.lower()
 
-    results = find_part(msg.text)
+    results = [x for x in data if number in str(x["Номер"]).lower()]
 
     if not results:
-        bot.send_message(msg.chat.id, "❌ Деталь не найдена")
+        bot.send_message(msg.chat.id, "❌ Ничего не найдено")
         return
 
-    user_results[msg.chat.id] = results
+    for item in results[:5]:
+        send_item(msg.chat.id, item)
 
-    send_card(msg.chat.id, 0)
+
+# поиск по названию
+@bot.message_handler(func=lambda m: m.text == "📝 Поиск по наименованию")
+def search_name(msg):
+    m = bot.send_message(msg.chat.id, "Введите название детали:")
+    bot.register_next_step_handler(m, find_name)
 
 
-def send_card(chat_id, index):
+def find_name(msg):
 
-    results = user_results.get(chat_id)
+    name = msg.text.lower()
+
+    results = [x for x in data if name in str(x["Наименование"]).lower()]
 
     if not results:
+        bot.send_message(msg.chat.id, "❌ Ничего не найдено")
         return
 
-    part = results[index]
+    for item in results[:5]:
+        send_item(msg.chat.id, item)
 
-    number = part.get(number_key, "")
-    name = part.get(name_key, "")
-    brand = part.get("Марка", "")
-    article = part.get("Артикул", "")
-    model = part.get("Модель", "")
-    price = part.get("Цена", "")
-    status = part.get("Статус", "")
-    photos = str(part.get(photo_key, "")).strip()
 
-    text = (
-        f"🔧 {name}\n"
-        f"Артикул: {article}\n"
-        f"Номер: {number}\n"
-        f"Авто: {brand} {model}\n"
-        f"Цена: {price} ₽\n"
-        f"{status}\n\n"
-        f"({index+1} из {len(results)})"
+# карточка товара
+def send_item(chat_id, item):
+
+    text = f"""
+<b>{item['Наименование']}</b>
+
+Артикул: <b>{item['Артикул']}</b>
+Марка: {item['Марка']}
+Модель: {item['Модель']}
+Год: {item['Год']}
+
+Оригинальный номер: {item['Номер']}
+
+Цена: <b>{item['Цена']} ₽</b>
+Состояние: {item['Новый/БУ']}
+"""
+
+    kb = types.InlineKeyboardMarkup()
+
+    buy = types.InlineKeyboardButton(
+        "🛒 Купить",
+        url="https://t.me/ВАШ_МЕНЕДЖЕР"
     )
 
-    kb = telebot.types.InlineKeyboardMarkup()
-
-    kb.add(
-        telebot.types.InlineKeyboardButton("⬅️", callback_data=f"prev_{index}"),
-        telebot.types.InlineKeyboardButton("➡️", callback_data=f"next_{index}")
+    manager = types.InlineKeyboardButton(
+        "💬 Менеджер",
+        url="https://t.me/ВАШ_МЕНЕДЖЕР"
     )
 
-    photo_list = [x.strip() for x in photos.split(",") if x.strip()]
-    photo_list = photo_list[:8]
+    kb.add(buy, manager)
 
-    try:
+    photos = item["Фото"]
 
-        if photo_list:
+    if photos:
 
-            if len(photo_list) == 1:
+        photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+        photo_list = photo_list[:8]
+
+        try:
+
+            media = []
+
+            for i, url in enumerate(photo_list):
+
+                r = requests.get(url)
+
+                if r.status_code != 200:
+                    continue
+
+                image = io.BytesIO(r.content)
+                image.name = "photo.jpg"
+
+                if i == 0:
+                    media.append(
+                        types.InputMediaPhoto(
+                            image,
+                            caption=text,
+                            parse_mode="HTML"
+                        )
+                    )
+                else:
+                    media.append(types.InputMediaPhoto(image))
+
+            if len(media) == 1:
 
                 bot.send_photo(
                     chat_id,
-                    photo_list[0],
+                    media[0].media,
                     caption=text,
+                    parse_mode="HTML",
                     reply_markup=kb
                 )
 
             else:
 
-                media = []
-
-                for i, photo_url in enumerate(photo_list):
-
-                    if i == 0:
-                        media.append(
-                            telebot.types.InputMediaPhoto(
-                                media=photo_url,
-                                caption=text
-                            )
-                        )
-                    else:
-                        media.append(
-                            telebot.types.InputMediaPhoto(photo_url)
-                        )
-
                 bot.send_media_group(chat_id, media)
 
-                bot.send_message(chat_id, "⬅️➡️ Листайте детали", reply_markup=kb)
+                bot.send_message(
+                    chat_id,
+                    "⬇️ Управление",
+                    reply_markup=kb
+                )
 
-        else:
+        except:
 
-            bot.send_message(chat_id, text, reply_markup=kb)
+            bot.send_message(
+                chat_id,
+                text,
+                parse_mode="HTML",
+                reply_markup=kb
+            )
 
-    except Exception as e:
-
-        print("Ошибка фото:", e)
-        bot.send_message(chat_id, text, reply_markup=kb)
-
-
-@bot.callback_query_handler(func=lambda call: True)
-def callback(call):
-
-    data = call.data
-    chat_id = call.message.chat.id
-
-    results = user_results.get(chat_id)
-
-    if not results:
-        return
-
-    index = int(data.split("_")[1])
-
-    if "next" in data:
-        index += 1
     else:
-        index -= 1
 
-    if index < 0:
-        index = len(results) - 1
-
-    if index >= len(results):
-        index = 0
-
-    bot.delete_message(chat_id, call.message.message_id)
-
-    send_card(chat_id, index)
+        bot.send_message(
+            chat_id,
+            text,
+            parse_mode="HTML",
+            reply_markup=kb
+)
 
 
-if __name__ == "__main__":
+# менеджер
+@bot.message_handler(func=lambda m: m.text == "👨‍🔧 Связаться с менеджером")
+def manager(msg):
+    bot.send_message(
+        msg.chat.id,
+        "Напишите менеджеру:\nhttps://t.me/Stuttgart_mercedes"
+    )
 
-    load_database()
 
-    print("BOT STARTED")
-
-    bot.infinity_polling()
+print("Бот запущен")
+bot.infinity_polling()

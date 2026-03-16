@@ -190,11 +190,10 @@ def send_card(chat_id, index):
                             parse_mode="HTML"
                         )
                     )
-                else:
-                    media.
-[16.03.2026 15:43] Константин Измайлов: append(
-                        telebot.types.InputMediaPhoto(image)
-                    )
+               else:
+    media.append(
+        telebot.types.InputMediaPhoto(image)
+    )
 
             if len(media) == 1:
 

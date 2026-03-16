@@ -132,41 +132,42 @@ def search(msg):
             f"{status}"
         )
 
-        if photos:
+       if photos:
 
-            photo_list = photos.replace("|", ",").split(",")
-            photo_list = [x.strip() for x in photo_list if x.strip()]
+    photo_list = photos.replace("|", ",").split(",")
+    photo_list = [x.strip() for x in photo_list if x.strip()]
 
-            final_photos = []
+    try:
 
-            for photo in photo_list:
+        media = []
 
-                if photo.startswith("http"):
-                    final_photos.append(photo)
-                else:
-                    final_photos.append(
-                        "http://export-content.baz-on.ru/pub/c592/productphoto/" + photo
+        for i, photo in enumerate(photo_list):
+
+            if i == 0:
+                media.append(
+                    telebot.types.InputMediaPhoto(
+                        media=photo,
+                        caption=text
                     )
+                )
+            else:
+                media.append(
+                    telebot.types.InputMediaPhoto(
+                        media=photo
+                    )
+                )
 
-            try:
+        bot.send_media_group(msg.chat.id, media)
 
-                media = []
+    except Exception as e:
 
-                for i, photo in enumerate(final_photos):
+        print("Ошибка загрузки фото:", e)
 
-                    if i == 0:
-                        media.append(
-                            telebot.types.InputMediaPhoto(
-                                photo,
-                                caption=text
-                            )
-                        )
-                    else:
-                        media.append(
-                            telebot.types.InputMediaPhoto(photo)
-                        )
+        bot.send_message(msg.chat.id, text)
 
-                bot.send_media_group(msg.chat.id, media)
+else:
+
+    bot.send_message(msg.chat.id, text)
 
             except Exception as e:
 

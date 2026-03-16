@@ -1,4 +1,3 @@
-[16.03.2026 12:42] Константин Измайлов: import telebot
 import csv
 import requests
 import io

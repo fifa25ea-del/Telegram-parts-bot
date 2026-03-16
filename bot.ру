@@ -122,7 +122,7 @@ def search(msg):
         model = p.get("Модель", "")
         price = p.get("Цена", "")
         status = p.get("Статус", "")
-        photo = p.get(photo_key, "")
+        photos = p.get(photo_key, "")
 
         text = (
             f"🔧 {name}\n"
@@ -132,14 +132,43 @@ def search(msg):
             f"{status}"
         )
 
-        if photo and photo.startswith("http"):
+        # если есть фото
+        if photos:
+
+            photo_list = [x.strip() for x in photos.split(",") if x.strip()]
 
             try:
-                bot.send_photo(
-                    msg.chat.id,
-                    photo,
-                    caption=text
-                )
+
+                # если одно фото
+                if len(photo_list) == 1:
+
+                    bot.send_photo(
+                        msg.chat.id,
+                        photo_list[0],
+                        caption=text
+                    )
+
+                # если несколько фото
+                else:
+
+                    media = []
+
+                    for i, photo in enumerate(photo_list):
+
+                        if i == 0:
+                            media.append(
+                                telebot.types.InputMediaPhoto(
+                                    media=photo,
+                                    caption=text
+                                )
+                            )
+                        else:
+                            media.append(
+                                telebot.types.InputMediaPhoto(photo)
+                            )
+
+                    bot.send_media_group(msg.chat.id, media)
+
             except Exception as e:
 
                 print("Ошибка фото:", e)

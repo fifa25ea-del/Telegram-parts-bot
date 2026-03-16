@@ -20,7 +20,7 @@ def load_parts():
 
     root = ET.fromstring(r.content)
 
-    for part in root.findall("part"):
+    for part in root.findall(".//part"):
 
         number = part.find("manufactureNumber")
         name = part.find("title")

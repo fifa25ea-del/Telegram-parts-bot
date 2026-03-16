@@ -183,7 +183,7 @@ def callbacks(call):
 
     if chat_id not in user_results:
         return
-data = user_results[chat_id]
+    data = user_results[chat_id]
 
     results = data["results"]
     index = data["index"]

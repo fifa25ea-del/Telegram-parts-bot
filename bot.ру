@@ -89,61 +89,29 @@ def keyboard():
     return kb
 
 
-@bot.message_handler(commands=['start'])
+@bot.message_handler(commands=["start"])
 def start(msg):
-
-    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-
-    btn1 = telebot.types.KeyboardButton("🚗 Найти запчасть")
-    btn2 = telebot.types.KeyboardButton("💬 Связаться с менеджером")
-
-    kb.add(btn1)
-    kb.add(btn2)
 
     bot.send_message(
         msg.chat.id,
-        "Добро пожаловать.\nВыберите действие:",
-        reply_markup=kb
+        "🚗 Бот поиска автозапчастей",
+        reply_markup=keyboard()
     )
 
 
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
-def ask_search(msg):
+def ask(msg):
 
-    bot.send_message(
-        msg.chat.id,
-        "Введите номер, название, модель или марку авто:"
-    )
-
-    bot.register_next_step_handler(msg, search)
+    bot.send_message(msg.chat.id, "Введите номер детали:")
 
 
 @bot.message_handler(func=lambda m: True)
 def search(msg):
 
-    query = msg.text.lower()
-
-    results = []
-
-    for part in database:
-
-        text = " ".join([
-            str(part.get(name_key, "")),
-            str(part.get(number_key, "")),
-            str(part.get("Артикул", "")),
-            str(part.get("Марка", "")),
-            str(part.get("Модель", ""))
-        ]).lower()
-
-        if query in text:
-            results.append(part)
+    results = find_part(msg.text)
 
     if not results:
-
-        bot.send_message(
-            msg.chat.id,
-            "❌ Ничего не найдено"
-        )
+        bot.send_message(msg.chat.id, "❌ Деталь не найдена")
         return
 
     user_results[msg.chat.id] = results

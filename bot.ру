@@ -1,7 +1,12 @@
+import telebot
 import csv
 import requests
 import io
-from telebot.types import InputMediaPhoto, InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import (
+    InputMediaPhoto,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
+)
 
 TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
 CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
@@ -12,7 +17,7 @@ parts_db = []
 number_key = None
 name_key = None
 
-# хранение результатов поиска пользователя
+# хранение результатов поиска
 user_results = {}
 
 
@@ -33,7 +38,10 @@ def load_database():
 
     headers = reader.fieldnames
 
+    print("Колонки CSV:", headers)
+
     for h in headers:
+
         h_low = h.lower()
 
         if "артикул" in h_low or "номер" in h_low:
@@ -87,7 +95,7 @@ def nav_keyboard(index, total):
 
 
 # -----------------------------
-# отправка карточки детали
+# отправка карточки
 # -----------------------------
 def send_part(chat_id, part, index, total):
 
@@ -110,6 +118,7 @@ def send_part(chat_id, part, index, total):
 
     kb = nav_keyboard(index, total)
 
+    # если есть фото
     if photo_field:
 
         photos = [p.strip() for p in photo_field.split(",") if p.strip()]
@@ -124,14 +133,30 @@ def send_part(chat_id, part, index, total):
                 media.append(InputMediaPhoto(ph))
 
         try:
+
             bot.send_media_group(chat_id, media)
-            bot.send_message(chat_id, "Навигация:", reply_markup=kb)
+
+            bot.send_message(
+                chat_id,
+                "Листайте найденные детали:",
+                reply_markup=kb
+            )
+
         except:
-            bot.send_message(chat_id, text, reply_markup=kb)
+
+            bot.send_message(
+                chat_id,
+                text,
+                reply_markup=kb
+            )
 
     else:
 
-        bot.send_message(chat_id, text, reply_markup=kb)
+        bot.send_message(
+            chat_id,
+            text,
+            reply_markup=kb
+        )
 
 
 # -----------------------------
@@ -170,11 +195,15 @@ def search(msg):
         "index": 0
     }
 
-    send_part(msg.chat.id, results[0], 0, len(results))
+    send_part(
+        msg.chat.id,
+        results[0],
+        0,len(results)
+    )
 
 
 # -----------------------------
-# обработка кнопок
+# кнопки
 # -----------------------------
 @bot.callback_query_handler(func=lambda call: True)
 def callbacks(call):
@@ -183,10 +212,11 @@ def callbacks(call):
 
     if chat_id not in user_results:
         return
+
     data = user_results[chat_id]
 
     results = data["results"]
-        index = data["index"]
+    index = data["index"]
 
     if call.data == "next":
         index = (index + 1) % len(results)
@@ -196,7 +226,12 @@ def callbacks(call):
 
     data["index"] = index
 
-    send_part(chat_id, results[index], index, len(results))
+    send_part(
+        chat_id,
+        results[index],
+        index,
+        len(results)
+    )
 
 
 # -----------------------------

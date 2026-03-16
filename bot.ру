@@ -186,7 +186,7 @@ def callbacks(call):
     data = user_results[chat_id]
 
     results = data["results"]
-    index = data["index"]
+        index = data["index"]
 
     if call.data == "next":
         index = (index + 1) % len(results)

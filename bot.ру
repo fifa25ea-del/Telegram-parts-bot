@@ -13,9 +13,9 @@ number_key = None
 name_key = None
 
 
-# -------------------------
+# -----------------------------
 # загрузка базы
-# -------------------------
+# -----------------------------
 def load_database():
 
     global parts_db, number_key, name_key
@@ -25,9 +25,9 @@ def load_database():
     r = requests.get(CSV_URL)
     r.encoding = "cp1251"
 
-    text = r.text
+    csv_text = r.text
 
-    csv_file = io.StringIO(text)
+    csv_file = io.StringIO(csv_text)
 
     reader = csv.DictReader(csv_file, delimiter=";")
 
@@ -39,7 +39,7 @@ def load_database():
 
         h_low = h.lower()
 
-        if "номер" in h_low or "артикул" in h_low:
+        if "артикул" in h_low or "номер" in h_low:
             number_key = h
 
         if "наимен" in h_low:
@@ -53,15 +53,15 @@ def load_database():
     for row in reader:
         parts_db.append(row)
 
-    print(f"База загружена: {len(parts_db)} деталей")
+    print("База загружена:", len(parts_db))
 
 
-# -------------------------
-# поиск
-# -------------------------
+# -----------------------------
+# поиск детали
+# -----------------------------
 def find_part(query):
 
-    query = query.lower().replace(" ", "").strip()
+    query = query.lower().replace(" ", "")
 
     results = []
 
@@ -80,9 +80,9 @@ def find_part(query):
     return results
 
 
-# -------------------------
+# -----------------------------
 # клавиатура
-# -------------------------
+# -----------------------------
 def keyboard():
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -92,9 +92,9 @@ def keyboard():
     return kb
 
 
-# -------------------------
+# -----------------------------
 # старт
-# -------------------------
+# -----------------------------
 @bot.message_handler(commands=["start"])
 def start(msg):
 
@@ -105,18 +105,18 @@ def start(msg):
     )
 
 
-# -------------------------
+# -----------------------------
 # кнопка поиска
-# -------------------------
+# -----------------------------
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
 def ask(msg):
 
     bot.send_message(msg.chat.id, "Введите номер детали:")
 
 
-# -------------------------
-# поиск
-# -------------------------
+# -----------------------------
+# обработка поиска
+# -----------------------------
 @bot.message_handler(func=lambda m: True)
 def search(msg):
 
@@ -137,7 +137,7 @@ def search(msg):
         model = p.get("Модель", "")
         price = p.get("Цена", "")
         status = p.get("Статус", "")
-        photo = p.get("Фото", "")
+        photo_field = p.get("Фото", "").strip()
 
         text = (
             f"🚗 Найдено:\n\n"
@@ -148,11 +148,21 @@ def search(msg):
             f"{status}"
         )
 
-        if photo:
+        if photo_field:
+
+            photos = [p.strip() for p in photo_field.split(",") if p.strip()]
 
             try:
-                bot.send_photo(msg.chat.id, photo, caption=text)
+
+                # первое фото с описанием
+                bot.send_photo(msg.chat.id, photos[0], caption=text)
+
+                # остальные фото (максимум 2)
+                for ph in photos[1:3]:
+                    bot.send_photo(msg.chat.id, ph)
+
             except:
+
                 bot.send_message(msg.chat.id, text)
 
         else:
@@ -160,9 +170,9 @@ def search(msg):
             bot.send_message(msg.chat.id, text)
 
 
-# -------------------------
+# -----------------------------
 # запуск
-# -------------------------
+# -----------------------------
 if __name__ == "__main__":
 
     load_database()

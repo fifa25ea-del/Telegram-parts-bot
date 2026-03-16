@@ -239,7 +239,7 @@ def callback(call):
         f"Клиент: @{user}"
     )
 
-    manager_id = 123456789  # сюда ID менеджера
+    manager_id = 5053130650  # сюда ID менеджера
 
     bot.send_message(manager_id, text)
 

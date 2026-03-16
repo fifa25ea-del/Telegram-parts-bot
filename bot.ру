@@ -1,3 +1,6 @@
+users = set()
+search_count = 0
+orders_count = 0
 import telebot
 import csv
 import requests
@@ -104,11 +107,26 @@ def ask(msg):
 
     bot.send_message(msg.chat.id, "Введите номер детали:")
 
+@bot.message_handler(commands=['stats'])
+def stats(message):
+
+    text = (
+        "📊 Статистика бота\n\n"
+        f"👥 Пользователей: {len(users)}\n"
+        f"🔎 Поисков: {search_count}\n"
+        f"🛒 Заказов: {orders_count}"
+    )
+
+    bot.send_message(message.chat.id, text)
 
 @bot.message_handler(func=lambda m: True)
 def search(msg):
 
     results = find_part(msg.text)
+    global search_count
+
+    users.add(message.from_user.id)
+    search_count += 1
 
     if not results:
         bot.send_message(msg.chat.id, "❌ Деталь не найдена")
@@ -223,6 +241,12 @@ def callback(call):
 
     # ===== КНОПКА ЗАКАЗА =====
     if "order" in data:
+
+    global orders_count
+    orders_count += 1
+
+    index = int(data.split("_")[1])
+
 
         index = int(data.split("_")[1])
         part = results[index]

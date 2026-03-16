@@ -132,50 +132,48 @@ def search(msg):
             f"{status}"
         )
 
-        if photos:
+if photos:
 
-            photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+    photo_list = [x.strip() for x in photos.split(",") if x.strip()]
 
-            try:
+    try:
 
-                # если одно фото
-                if len(photo_list) == 1:
+        media = []
 
-                    bot.send_photo(
-                        msg.chat.id,
-                        photo_list[0],
+        for i, photo_url in enumerate(photo_list):
+
+            response = requests.get(photo_url)
+
+            if response.status_code != 200:
+                continue
+
+            image = io.BytesIO(response.content)
+
+            if i == 0:
+                media.append(
+                    telebot.types.InputMediaPhoto(
+                        media=image,
                         caption=text
                     )
+                )
+            else:
+                media.append(
+                    telebot.types.InputMediaPhoto(image)
+                )
 
-                # если несколько фото
-                else:
-
-                    media = []
-
-                    for i, photo in enumerate(photo_list):
-
-                        if i == 0:
-                            media.append(
-                                telebot.types.InputMediaPhoto(
-                                    media=photo,
-                                    caption=text
-                                )
-                            )
-                        else:
-                            media.append(
-                                telebot.types.InputMediaPhoto(photo)
-                            )
-
-                    bot.send_media_group(msg.chat.id, media)
-
-            except Exception as e:
-
-                print("Ошибка фото:", e)
-                bot.send_message(msg.chat.id, text)
-
+        if media:
+            bot.send_media_group(msg.chat.id, media)
         else:
-
             bot.send_message(msg.chat.id, text)
+
+    except Exception as e:
+
+        print("Ошибка фото:", e)
+        bot.send_message(msg.chat.id, text)
+
+else:
+
+    bot.send_message(msg.chat.id, text)
 if __name__ == "__main__":
 
     load_database()

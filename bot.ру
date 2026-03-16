@@ -18,26 +18,39 @@ name_key = None
 # Загрузка CSV
 # -------------------------
 def load_database():
-    global parts_db, number_key, name_key
+
+    global parts_db
 
     print("Загрузка базы...")
 
     r = requests.get(CSV_URL)
-    r.encoding = "utf-8"
+
+    # правильная кодировка
+    r.encoding = "cp1251"
 
     text = r.text
 
-    delimiter = ";"
-    if text.count(",") > text.count(";"):
-        delimiter = ","
-
     csv_file = io.StringIO(text)
 
-    reader = csv.DictReader(csv_file, delimiter=delimiter)
+    reader = csv.DictReader(csv_file, delimiter=";")
 
-    headers = [h.strip().replace("\ufeff", "") for h in reader.fieldnames]
+    print("Колонки CSV:", reader.fieldnames)
 
-    print("Колонки CSV:", headers)
+    parts_db.clear()
+
+    for row in reader:
+
+        clean = {}
+
+        for k, v in row.items():
+
+            key = k.strip()
+
+            clean[key] = v.strip() if v else ""
+
+        parts_db.append(clean)
+
+    print(f"База загружена: {len(parts_db)} деталей")
 
     # ищем колонку номера
     for h in headers:

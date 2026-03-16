@@ -20,15 +20,21 @@ def load_parts():
 
     root = ET.fromstring(r.content)
 
-    print("ROOT:", root.tag)
+    for part in root.findall("part"):
 
-    for child in root:
-        print("LEVEL1:", child.tag)
+        number = part.find("oem")
+        name = part.find("name")
+        price = part.find("price")
 
-    offers = root.findall(".//offer")
+        if number is not None:
 
-    print("OFFERS FOUND:", len(offers))
+            parts_db.append({
+                "number": number.text if number is not None else "",
+                "name": name.text if name is not None else "",
+                "price": price.text if price is not None else ""
+            })
 
+    print("База загружена:", len(parts_db), "деталей")
 
 def search_part(number):
 

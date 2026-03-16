@@ -17,28 +17,28 @@ def load_parts():
     print("Загружаю базу запчастей...")
 
     r = requests.get(XML_URL)
-
     root = ET.fromstring(r.content)
+
+    count = 0
 
     for part in root.findall(".//part"):
 
-        name = part.find("title")
+        title = part.find("title")
         price = part.find("price")
         number = part.find("manufactureNumber")
 
-        # если номера нет — берем из title
-        if number is None and name is not None:
-            number_text = name.text
-        else:
-            number_text = number.text if number is not None else ""
+        name = title.text if title is not None else ""
+        part_number = number.text if number is not None else ""
 
         parts_db.append({
-            "number": number_text,
-            "name": name.text if name is not None else "",
+            "number": part_number,
+            "name": name,
             "price": price.text if price is not None else ""
         })
 
-    print("База загружена:", len(parts_db), "деталей")
+        count += 1
+
+    print("База загружена:", count, "деталей")
 def search_part(number):
 
     for part in parts_db:

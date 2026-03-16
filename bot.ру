@@ -231,20 +231,20 @@ def callback(call):
         article = part.get("Артикул", "")
         price = part.get("Цена", "")
 
-        username = call.from_user.username
+        username = call.from_user.username or "нет username"
         first_name = call.from_user.first_name
         user_id = call.from_user.id
 
 
         text = (
-            "🛒 Новый заказ\n\n"
-            f"Деталь: {name}\n"
-            f"Артикул: {article}\n"
-            f"Цена: {price} ₽\n\n"
-            f"Клиент: @{user}"
-            f"Username: @{username}\n"
-            f"ID: {user_id}"
-        )
+    "🛒 Новый заказ\n\n"
+    f"Деталь: {name}\n"
+    f"Артикул: {article}\n"
+    f"Цена: {price} ₽\n\n"
+    f"Клиент: {first_name}\n"
+    f"Username: @{username}\n"
+    f"ID: {user_id}"
+)
 
         manager_id = 5053130650
 

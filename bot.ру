@@ -1,94 +1,86 @@
 import requests
-import xml.etree.ElementTree as ET
-from telegram import Update
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+import csv
+from io import StringIO
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
-TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
-XML_URL = "https://baz-on.ru/export/c592/ca617/drom-140001-parts.xml"
+TOKEN = "ВАШ_ТОКЕН_БОТА"
+
+CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 
 parts_db = []
 
+
 def load_parts():
+    global parts_db
 
     print("Загружаю базу запчастей...")
 
-    r = requests.get(XML_URL)
-    root = ET.fromstring(r.content)
+    r = requests.get(CSV_URL)
 
-    for part in root.findall(".//part"):
+    data = StringIO(r.text)
 
-        title = part.find("title")
-        price = part.find("price")
-        number = part.find("manufactureNumber")
+    reader = csv.DictReader(data)
 
-        photos = []
-        photo_urls = part.find("photoUrls")
+    parts_db = []
 
-        if photo_urls is not None:
-            for p in photo_urls.findall("photoUrl"):
-                photos.append(p.text)
+    for row in reader:
+        parts_db.append(row)
 
-        parts_db.append({
-            "number": number.text if number is not None else "",
-            "name": title.text if title is not None else "",
-            "price": price.text if price is not None else "",
-            "photo": photos[0] if photos else None
-        })
-
-    print("База загружена:", len(parts_db), "деталей")
+    print(f"База загружена: {len(parts_db)} деталей")
 
 
-def start(update: Update, context: CallbackContext):
-
+def start(update, context):
     update.message.reply_text(
-        "🚗 Бот поиска запчастей\n\n"
-        "Введите номер детали или название."
+        "🚗 Отправьте номер детали\n\nНапример:\nA2710106600"
     )
 
 
-def search(update: Update, context: CallbackContext):
+def search_part(number):
 
-    query = update.message.text.lower()
-
-    results = []
+    number = number.lower()
 
     for part in parts_db:
 
-        if query in part["number"].lower() or query in part["name"].lower():
-            results.append(part)
+        oem = part.get("oem", "").lower()
 
-        if len(results) >= 5:
-            break
+        if number in oem:
 
-    if not results:
-        update.message.reply_text("❌ Ничего не найдено")
-        return
+            name = part.get("name", "Без названия")
+            price = part.get("price", "0")
 
-    for part in results:
+            return f"""
+🚗 Деталь найдена
 
-        text = f"""
-🚗 {part['name']}
-
-🔧 Номер: {part['number']}
-💰 Цена: {part['price']} ₽
+Название: {name}
+Номер: {oem}
+Цена: {price} ₽
 """
 
-        if part["photo"]:
-            update.message.reply_photo(part["photo"], caption=text)
-        else:
-            update.message.reply_text(text)
+    return None
+
+
+def message_handler(update, context):
+
+    text = update.message.text
+
+    result = search_part(text)
+
+    if result:
+        update.message.reply_text(result)
+    else:
+        update.message.reply_text("❌ Деталь не найдена")
 
 
 def main():
 
     load_parts()
 
-    updater = Updater(TOKEN)
+    updater = Updater(TOKEN, use_context=True)
 
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, search))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, message_handler))
 
     print("BOT STARTED")
 

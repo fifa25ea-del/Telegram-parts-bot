@@ -1,38 +1,45 @@
+import telebot
 import requests
 import csv
 from io import StringIO
-from telegram import Update, ReplyKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from telebot import types
 
-TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
+TOKEN = "ВАШ_TELEGRAM_TOKEN"
 CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 
-parts_db = []
-waiting_number = {}
+bot = telebot.TeleBot(TOKEN)
 
-# загрузка базы
+parts_db = []
+
+
+# Загрузка базы
 def load_database():
 
     global parts_db
 
+    print("Загрузка базы...")
+
     r = requests.get(CSV_URL)
 
     if r.status_code != 200:
-        print("Ошибка загрузки базы")
+        print("Ошибка загрузки CSV")
         return
 
     csv_data = StringIO(r.text)
+
     reader = csv.DictReader(csv_data)
-    print(reader.fieldnames)
+
     parts_db = list(reader)
 
     print(f"База загружена: {len(parts_db)} деталей")
 
 
-# поиск детали
+# Поиск детали
 def search_part(number):
 
     number = number.strip().lower()
+
+    results = []
 
     for part in parts_db:
 
@@ -40,79 +47,76 @@ def search_part(number):
 
         if number in row_text:
 
-            name = part.get("Наименование", "Без названия")
-            price = part.get("Цена", "0")
-            article = part.get("Артикул", "")
-            brand = part.get("Марка", "")
-            model = part.get("Модель", "")
+            results.append(part)
 
-            return f"""
-🚗 Деталь найдена
+        if len(results) >= 5:
+            break
 
+    return results
+
+
+# Старт
+@bot.message_handler(commands=["start"])
+def start(message):
+
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    btn = types.KeyboardButton("🚗 Найти запчасть")
+
+    markup.add(btn)
+
+    bot.send_message(
+        message.chat.id,
+        "Добро пожаловать!\n\nНажмите кнопку для поиска детали.",
+        reply_markup=markup
+    )
+
+
+# Кнопка поиска
+@bot.message_handler(func=lambda message: message.text == "🚗 Найти запчасть")
+def ask_number(message):
+
+    msg = bot.send_message(message.chat.id, "Введите номер детали:")
+
+    bot.register_next_step_handler(msg, find_part)
+
+
+# Поиск
+def find_part(message):
+
+    number = message.text
+
+    results = search_part(number)
+
+    if not results:
+
+        bot.send_message(message.chat.id, "❌ Деталь не найдена")
+        return
+
+    text = "🚗 Найдено:\n\n"
+
+    for part in results:
+
+        name = part.get("Наименование", "Без названия")
+        article = part.get("Артикул", "")
+        brand = part.get("Марка", "")
+        model = part.get("Модель", "")
+        price = part.get("Цена", "0")
+
+        text += f"""
 Название: {name}
 Артикул: {article}
 Авто: {brand} {model}
 Цена: {price} ₽
+
 """
 
-    return None
+    bot.send_message(message.chat.id, text)
 
 
-# старт
-def start(update: Update, context: CallbackContext):
+# Запуск
+load_database()
 
-    keyboard = [["🚗 Найти запчасть"]]
+print("BOT STARTED")
 
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
-
-    update.message.reply_text(
-        "Добро пожаловать.\nНажмите кнопку чтобы найти деталь.",
-        reply_markup=reply_markup
-    )
-
-
-# обработка сообщений
-def message_handler(update: Update, context: CallbackContext):
-
-    chat_id = update.message.chat_id
-    text = update.message.text
-
-    if text == "🚗 Найти запчасть":
-
-        waiting_number[chat_id] = True
-        update.message.reply_text("Введите номер детали:")
-        return
-
-    if waiting_number.get(chat_id):
-
-        result = search_part(text)
-
-        if result:
-            update.message.reply_text(result)
-        else:
-            update.message.reply_text("❌ Деталь не найдена")
-
-        waiting_number[chat_id] = False
-        return
-
-
-def main():
-
-    load_database()
-
-    updater = Updater(TOKEN, use_context=True)
-
-    dp = updater.dispatcher
-
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text, message_handler))
-
-    updater.start_polling()
-
-    print("BOT STARTED")
-
-    updater.idle()
-
-
-if __name__ == "__main__":
-    main()
+bot.infinity_polling()

@@ -32,25 +32,26 @@ def load_database():
 # поиск детали
 def search_part(number):
 
-    number = number.lower()
+    number = number.strip().lower()
 
     for part in parts_db:
 
-        oem = str(part.get("Номер", "")).lower()
+        article = str(part.get("Артикул", "")).strip().lower()
+        number_field = str(part.get("Номер", "")).strip().lower()
 
-        if number in oem:
+        if number == article or number == number_field:
 
             name = part.get("Наименование", "Без названия")
             price = part.get("Цена", "0")
-            article = part.get("Артикул", "")
             brand = part.get("Марка", "")
             model = part.get("Модель", "")
+            article_real = part.get("Артикул", "")
 
             return f"""
 🚗 Деталь найдена
 
 Название: {name}
-Артикул: {article}
+Артикул: {article_real}
 Авто: {brand} {model}
 Цена: {price} ₽
 """

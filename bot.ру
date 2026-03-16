@@ -36,22 +36,21 @@ def search_part(number):
 
     for part in parts_db:
 
-        article = str(part.get("Артикул", "")).strip().lower()
-        number_field = str(part.get("Номер", "")).strip().lower()
+        row_text = str(part).lower()
 
-        if number in article or number in number_field:
+        if number in row_text:
 
-            name = str(part.get("Наименование", "Без названия"))
-            price = str(part.get("Цена", "0"))
-            brand = str(part.get("Марка", ""))
-            model = str(part.get("Модель", ""))
-            article_real = str(part.get("Артикул", ""))
+            name = part.get("Наименование", "Без названия")
+            price = part.get("Цена", "0")
+            article = part.get("Артикул", "")
+            brand = part.get("Марка", "")
+            model = part.get("Модель", "")
 
             return f"""
 🚗 Деталь найдена
 
 Название: {name}
-Артикул: {article_real}
+Артикул: {article}
 Авто: {brand} {model}
 Цена: {price} ₽
 """

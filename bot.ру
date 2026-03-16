@@ -147,12 +147,31 @@ def send_card(chat_id, index):
         f"({index+1} из {len(results)})"
     )
 
-    kb = telebot.types.InlineKeyboardMarkup()
+    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
 
-    kb.add(
-        telebot.types.InlineKeyboardButton("⬅️", callback_data=f"prev_{index}"),
-        telebot.types.InlineKeyboardButton("➡️", callback_data=f"next_{index}")
-    )
+prev_btn = telebot.types.InlineKeyboardButton(
+    "⬅️",
+    callback_data=f"prev_{index}"
+)
+
+next_btn = telebot.types.InlineKeyboardButton(
+    "➡️",
+    callback_data=f"next_{index}"
+)
+
+order_btn = telebot.types.InlineKeyboardButton(
+    "🛒 Заказать",
+    url="https://t.me/ВАШ_МЕНЕДЖЕР"
+)
+
+manager_btn = telebot.types.InlineKeyboardButton(
+    "💬 Связаться с менеджером",
+    url="https://t.me/Stuttgart_mercedes"
+)
+
+kb.add(prev_btn, next_btn)
+kb.add(order_btn)
+kb.add(manager_btn)
 
     photo_list = [x.strip() for x in photos.split(",") if x.strip()]
     photo_list = photo_list[:8]

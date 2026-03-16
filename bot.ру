@@ -108,17 +108,17 @@ def find_part(number):
 
             car = f"{brand} {model}".strip()
 
-            return f"""
-🚗 Найдено
+            text = (
+                "🚗 Найдено\n\n"
+                f"Название: {name}\n"
+                f"Артикул: {article}\n"
+                f"Авто: {car}\n"
+                f"Цена: {price} ₽"
+            )
 
-Название: {name}
-Артикул: {article}
-Авто: {car}
-Цена: {price} ₽
-"""
+            return text
 
     return "❌ Деталь не найдена"
-"""
 
     bot.send_message(message.chat.id, text)
 

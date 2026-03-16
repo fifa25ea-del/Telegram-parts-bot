@@ -131,6 +131,7 @@ def send_card(chat_id, index):
     number = part.get(number_key, "")
     name = part.get(name_key, "")
     brand = part.get("Марка", "")
+    article = part.get("Артикул", "")
     model = part.get("Модель", "")
     price = part.get("Цена", "")
     status = part.get("Статус", "")

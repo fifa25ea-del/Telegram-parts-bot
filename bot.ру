@@ -91,33 +91,33 @@ def ask_number(message):
 
 
 # Поиск
-def find_part(message):
+def find_part(number):
 
-    number = message.text
+    number = number.lower().strip()
 
-    results = search_part(number)
+    for part in parts_db:
 
-    if not results:
+        article = str(part.get("Номер", "")).lower()
 
-        bot.send_message(message.chat.id, "❌ Деталь не найдена")
-        return
+        if number in article:
 
-    text = "🚗 Найдено:\n\n"
+            name = part.get("Наименование", "Без названия")
+            brand = part.get("Марка", "")
+            model = part.get("Модель", "")
+            price = part.get("Цена", "0")
 
-    for part in results:
+            car = f"{brand} {model}".strip()
 
-        name = part.get("Наименование", "Без названия")
-        article = part.get("Артикул", "")
-        brand = part.get("Марка", "")
-        model = part.get("Модель", "")
-        price = part.get("Цена", "0")
+            return f"""
+🚗 Найдено
 
-        text += f"""
 Название: {name}
 Артикул: {article}
-Авто: {brand} {model}
+Авто: {car}
 Цена: {price} ₽
+"""
 
+    return "❌ Деталь не найдена"
 """
 
     bot.send_message(message.chat.id, text)

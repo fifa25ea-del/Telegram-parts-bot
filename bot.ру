@@ -21,18 +21,24 @@ def load_database():
 
     r = requests.get(CSV_URL)
 
-    if r.status_code != 200:
-        print("Ошибка загрузки CSV")
-        return
-
     csv_data = StringIO(r.text)
 
     reader = csv.DictReader(csv_data)
 
-    parts_db = list(reader)
+    parts_db = []
+
+    for row in reader:
+
+        clean_row = {}
+
+        for key, value in row.items():
+
+            clean_key = key.strip().replace("\ufeff", "")
+            clean_row[clean_key] = value
+
+        parts_db.append(clean_row)
 
     print(f"База загружена: {len(parts_db)} деталей")
-
 
 # Поиск детали
 def search_part(number):

@@ -220,33 +220,40 @@ def callback(call):
 
     if not results:
         return
+
+    # ===== КНОПКА ЗАКАЗА =====
     if "order" in data:
 
-    index = int(data.split("_")[1])
-    part = results[index]
+        index = int(data.split("_")[1])
+        part = results[index]
 
-    name = part.get(name_key, "")
-    article = part.get("Артикул", "")
-    price = part.get("Цена", "")
+        name = part.get(name_key, "")
+        article = part.get("Артикул", "")
+        price = part.get("Цена", "")
 
-    user = call.from_user.username
+        user = call.from_user.username
 
-    text = (
-        "🛒 Новый заказ\n\n"
-        f"Деталь: {name}\n"
-        f"Артикул: {article}\n"
-        f"Цена: {price} ₽\n\n"
-        f"Клиент: @{user}"
-    )
+        text = (
+            "🛒 Новый заказ\n\n"
+            f"Деталь: {name}\n"
+            f"Артикул: {article}\n"
+            f"Цена: {price} ₽\n\n"
+            f"Клиент: @{user}"
+        )
 
-    manager_id = 5053130650  # сюда ID менеджера
+        manager_id = 5053130650
 
-    bot.send_message(manager_id, text)
+        bot.send_message(manager_id, text)
 
-    bot.answer_callback_query(
-        call.id,
-        "✅ Заказ отправлен менеджеру"
-    )
+        bot.answer_callback_query(
+            call.id,
+            "✅ Заказ отправлен менеджеру"
+        )
+
+        return
+
+
+    # ===== НАВИГАЦИЯ ПО ТОВАРАМ =====
     index = int(data.split("_")[1])
 
     if "next" in data:

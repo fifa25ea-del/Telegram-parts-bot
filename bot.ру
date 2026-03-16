@@ -15,41 +15,45 @@ parts_db = []
 # Загрузка базы CSV
 # -------------------------
 def load_database():
-
     global parts_db
 
     print("Загрузка базы...")
 
-    response = requests.get(CSV_URL)
-    response.encoding = "utf-8"
+    r = requests.get(CSV_URL)
+    r.encoding = "utf-8"
 
-    csv_file = io.StringIO(response.text)
+    text = r.text
 
-    reader = csv.DictReader(csv_file, delimiter=";")
+    # автоопределение разделителя
+    delimiter = ";"
+    if text.count(",") > text.count(";"):
+        delimiter = ","
+
+    csv_file = io.StringIO(text)
+
+    reader = csv.DictReader(csv_file, delimiter=delimiter)
 
     parts_db = []
 
     for row in reader:
+        clean = {}
 
-        clean_row = {}
+        for k, v in row.items():
+            if k:
+                key = k.strip().replace("\ufeff", "")
+                clean[key] = v.strip() if v else ""
 
-        for key, value in row.items():
-
-            if key:
-                clean_key = key.strip().replace("\ufeff", "")
-                clean_row[clean_key] = value
-
-        parts_db.append(clean_row)
+        parts_db.append(clean)
 
     print(f"База загружена: {len(parts_db)} деталей")
 
 
 # -------------------------
-# Поиск детали
+# Поиск
 # -------------------------
 def find_part(query):
 
-    query = str(query).lower().strip()
+    query = query.lower().strip()
 
     results = []
 
@@ -70,14 +74,14 @@ def find_part(query):
 
     text = "🚗 Найдено:\n\n"
 
-    for part in results:
+    for p in results:
 
-        name = part.get("Наименование", "Без названия")
-        number = part.get("Номер", "")
-        brand = part.get("Марка", "")
-        model = part.get("Модель", "")
-        price = part.get("Цена", "")
-        status = part.get("Статус", "")
+        name = p.get("Наименование", "Без названия")
+        number = p.get("Номер", "")
+        brand = p.get("Марка", "")
+        model = p.get("Модель", "")
+        price = p.get("Цена", "")
+        status = p.get("Статус", "")
 
         car = f"{brand} {model}".strip()
 
@@ -86,7 +90,7 @@ def find_part(query):
             f"Номер: {number}\n"
             f"Авто: {car}\n"
             f"Цена: {price} ₽\n"
-            f"Статус: {status}\n\n"
+            f"{status}\n\n"
         )
 
     return text
@@ -95,56 +99,54 @@ def find_part(query):
 # -------------------------
 # Кнопки
 # -------------------------
-def main_keyboard():
+def keyboard():
 
-    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
 
-    btn = telebot.types.KeyboardButton("🚗 Найти запчасть")
+    kb.add("🚗 Найти запчасть")
 
-    markup.add(btn)
-
-    return markup
+    return kb
 
 
 # -------------------------
 # Старт
 # -------------------------
 @bot.message_handler(commands=["start"])
-def start(message):
+def start(msg):
 
     bot.send_message(
-        message.chat.id,
-        "🚗 Бот поиска автозапчастей\n\nНажмите кнопку ниже",
-        reply_markup=main_keyboard()
+        msg.chat.id,
+        "🚗 Бот поиска запчастей\n\nНажмите кнопку ниже",
+        reply_markup=keyboard()
     )
 
 
 # -------------------------
 # Кнопка поиска
 # -------------------------
-@bot.message_handler(func=lambda message: message.text == "🚗 Найти запчасть")
-def ask_number(message):
+@bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
+def ask_number(msg):
 
-    bot.send_message(message.chat.id, "Введите номер детали:")
+    bot.send_message(msg.chat.id, "Введите номер детали:")
 
 
 # -------------------------
 # Поиск
 # -------------------------
-@bot.message_handler(func=lambda message: True)
-def search(message):
+@bot.message_handler(func=lambda m: True)
+def search(msg):
 
-    query = message.text
+    query = msg.text
 
     result = find_part(query)
 
-    bot.send_message(message.chat.id, result)
+    bot.send_message(msg.chat.id, result)
 
 
 # -------------------------
 # Запуск
 # -------------------------
-if __name__ == "__main__":
+if name == "__main__":
 
     load_database()
 

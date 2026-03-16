@@ -190,7 +190,7 @@ def send_card(chat_id, index):
                             parse_mode="HTML"
                         )
                     )
-               else:
+                else:
     media.append(
         telebot.types.InputMediaPhoto(image)
     )

@@ -160,9 +160,9 @@ def send_card(chat_id, index):
     )
 
     order_btn = telebot.types.InlineKeyboardButton(
-        "🛒 Заказать",
-        url="https://t.me/ВАШ_МЕНЕДЖЕР"
-    )
+    "🛒 Заказать",
+    callback_data=f"order_{index}"
+)
 
     manager_btn = telebot.types.InlineKeyboardButton(
         "💬 Связаться с менеджером",
@@ -220,7 +220,33 @@ def callback(call):
 
     if not results:
         return
+if "order" in data:
 
+    index = int(data.split("_")[1])
+    part = results[index]
+
+    name = part.get(name_key, "")
+    article = part.get("Артикул", "")
+    price = part.get("Цена", "")
+
+    user = call.from_user.username
+
+    text = (
+        "🛒 Новый заказ\n\n"
+        f"Деталь: {name}\n"
+        f"Артикул: {article}\n"
+        f"Цена: {price} ₽\n\n"
+        f"Клиент: @{user}"
+    )
+
+    manager_id = 123456789  # сюда ID менеджера
+
+    bot.send_message(manager_id, text)
+
+    bot.answer_callback_query(
+        call.id,
+        "✅ Заказ отправлен менеджеру"
+    )
     index = int(data.split("_")[1])
 
     if "next" in data:

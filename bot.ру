@@ -7,6 +7,7 @@ TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
 CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 
 bot = telebot.TeleBot(TOKEN)
+MANAGER = "Stuttgart_mercedes"
 
 parts_db = []
 
@@ -83,8 +84,17 @@ def find_part(query):
 
 def keyboard():
 
-    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("🚗 Найти запчасть")
+    kb = telebot.types.InlineKeyboardMarkup()
+
+kb.row(
+    telebot.types.InlineKeyboardButton("⬅️", callback_data=f"prev_{index}"),
+    telebot.types.InlineKeyboardButton("➡️", callback_data=f"next_{index}")
+)
+
+kb.row(
+    telebot.types.InlineKeyboardButton("🛒 Купить", callback_data=f"buy_{index}"),
+    telebot.types.InlineKeyboardButton("💬 Написать менеджеру", url=f"https://t.me/{MANAGER}")
+)
 
     return kb
 
@@ -203,6 +213,34 @@ def send_card(chat_id, index):
 
 
 @bot.callback_query_handler(func=lambda call: True)
+data = call.data
+chat_id = call.message.chat.id
+
+# КНОПКА КУПИТЬ
+if data.startswith("buy_"):
+
+    index = int(data.split("_")[1])
+
+    results = user_results.get(chat_id)
+
+    part = results[index]
+
+    article = part.get("Артикул", "")
+    number = part.get(number_key, "")
+    name = part.get(name_key, "")
+
+    text = (
+        f"Здравствуйте! Хочу купить деталь:\n\n"
+        f"{name}\n"
+        f"Артикул: {article}\n"
+        f"Номер: {number}"
+    )
+
+    link = f"https://t.me/{MANAGER}?text={text}"
+
+    bot.send_message(chat_id, f"Напишите менеджеру:\n{link}")
+
+    return
 def callback(call):
 
     data = call.data

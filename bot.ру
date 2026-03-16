@@ -77,24 +77,47 @@ def find_part(query):
 
     text = "🚗 Найдено:\n\n"
 
-    for p in results:
+   for part in results:
 
-        number = p.get(number_key, "")
-        name = p.get(name_key, "")
-        brand = p.get("Марка", "")
-        model = p.get("Модель", "")
-        price = p.get("Цена", "")
-        status = p.get("Статус", "")
+    name = part.get("name", "")
+    number = part.get("number", "")
+    auto = part.get("auto", "")
+    price = part.get("price", "")
+    photo = part.get("photo", "")
 
-        text += (
-            f"🔧 {name}\n"
-            f"Номер: {number}\n"
-            f"Авто: {brand} {model}\n"
-            f"Цена: {price} ₽\n"
-            f"{status}\n\n"
+    text = (
+        f"🔧 {name}\n"
+        f"Номер: {number}\n"
+        f"Авто: {auto}\n"
+        f"Цена: {price} ₽\n"
+        f"В наличии"
+    )
+
+    if photo:
+
+        photos = photo.split(",")
+
+        try:
+
+            bot.send_photo(
+                msg.chat.id,
+                photos[0].strip(),
+                caption=text
+            )
+
+        except:
+
+            bot.send_message(
+                msg.chat.id,
+                text
+            )
+
+    else:
+
+        bot.send_message(
+            msg.chat.id,
+            text
         )
-
-    return text
 
 
 def keyboard():

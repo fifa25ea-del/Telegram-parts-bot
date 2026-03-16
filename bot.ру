@@ -166,64 +166,56 @@ def send_card(chat_id, index):
 
     if photos:
 
-        photo_list = [x.strip() for x in photos.split(",") if x.strip()]
-        photo_list = photo_list[:8]
+    photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+    photo_list = photo_list[:8]
 
-        try:
+    try:
 
-            media = []
+        media = []
 
-            for i, photo_url in enumerate(photo_list):
+        for i, photo_url in enumerate(photo_list):
 
-                response = requests.get(photo_url)
+            response = requests.get(photo_url)
 
-                if response.status_code != 200:
-                    continue
+            if response.status_code != 200:
+                continue
 
-                image = io.BytesIO(response.content)
+            image = io.BytesIO(response.content)
 
             if i == 0:
-    media.append(
-        telebot.types.InputMediaPhoto(
-            media=image,
-            caption=text,
-            parse_mode="HTML"
-        )
-    )
-else:
-    media.append(
-        telebot.types.InputMediaPhoto(image)
-    )
-            if len(media) == 1:
-
-                bot.send_photo(
-                    chat_id,
-                    media[0].media,
-                    caption=text,
-                    parse_mode="HTML",
-                    reply_markup=kb
+                media.append(
+                    telebot.types.InputMediaPhoto(
+                        media=image,
+                        caption=text,
+                        parse_mode="HTML"
+                    )
                 )
-
             else:
-
-                bot.send_media_group(chat_id, media)
-
-                bot.send_message(
-                    chat_id,
-                    "⬇️ Управление товаром",
-                    reply_markup=kb
+                media.append(
+                    telebot.types.InputMediaPhoto(image)
                 )
 
-        except:
+        if len(media) == 1:
 
-            bot.send_message(
+            bot.send_photo(
                 chat_id,
-                text,
+                media[0].media,
+                caption=text,
                 parse_mode="HTML",
                 reply_markup=kb
             )
 
-    else:
+        else:
+
+            bot.send_media_group(chat_id, media)
+
+            bot.send_message(
+                chat_id,
+                "⬇️ Управление товаром",
+                reply_markup=kb
+            )
+
+    except:
 
         bot.send_message(
             chat_id,
@@ -232,6 +224,14 @@ else:
             reply_markup=kb
         )
 
+else:
+
+    bot.send_message(
+        chat_id,
+        text,
+        parse_mode="HTML",
+        reply_markup=kb
+    )
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):

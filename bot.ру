@@ -39,13 +39,13 @@ def search_part(number):
         article = str(part.get("Артикул", "")).strip().lower()
         number_field = str(part.get("Номер", "")).strip().lower()
 
-        if number == article or number == number_field:
+        if number in article or number in number_field:
 
-            name = part.get("Наименование", "Без названия")
-            price = part.get("Цена", "0")
-            brand = part.get("Марка", "")
-            model = part.get("Модель", "")
-            article_real = part.get("Артикул", "")
+            name = str(part.get("Наименование", "Без названия"))
+            price = str(part.get("Цена", "0"))
+            brand = str(part.get("Марка", ""))
+            model = str(part.get("Модель", ""))
+            article_real = str(part.get("Артикул", ""))
 
             return f"""
 🚗 Деталь найдена

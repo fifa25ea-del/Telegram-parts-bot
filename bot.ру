@@ -223,20 +223,22 @@ def search(msg):
 
     text = msg.text.strip()
 
-    # кнопка поиска
+    # если нажата кнопка
     if text == "🚗 Найти запчасть":
-
         bot.send_message(
             msg.chat.id,
-            "Введите номер детали"
+            "🔎 Введите номер детали\n\nНапример:\nA2095453308"
         )
         return
 
-    # реальный поиск
+    # если команда старт
+    if text == "/start":
+        return
+
+    # поиск детали
     results = find_part(text)
 
     if not results:
-
         bot.send_message(
             msg.chat.id,
             "❌ Деталь не найдена"

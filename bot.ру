@@ -6,6 +6,8 @@ import io
 TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
 CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 
+BASE_PHOTO_URL = "http://export-content.baz-on.ru/pub/c592/productphoto/"
+
 bot = telebot.TeleBot(TOKEN)
 
 parts_db = []
@@ -24,9 +26,7 @@ def load_database():
     r = requests.get(CSV_URL)
     r.encoding = "cp1251"
 
-    text = r.text
-
-    csv_file = io.StringIO(text)
+    csv_file = io.StringIO(r.text)
 
     reader = csv.DictReader(csv_file, delimiter=";")
 
@@ -44,7 +44,7 @@ def load_database():
         if "наимен" in h_low:
             name_key = h
 
-        if "фото" in h_low or "photo" in h_low:
+        if "фото" in h_low or "image" in h_low:
             photo_key = h
 
     print("Колонка номера:", number_key)
@@ -56,7 +56,7 @@ def load_database():
     for row in reader:
         parts_db.append(row)
 
-    print(f"База загружена: {len(parts_db)} деталей")
+    print("База загружена:", len(parts_db))
 
 
 def find_part(query):
@@ -83,6 +83,7 @@ def find_part(query):
 def keyboard():
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+
     kb.add("🚗 Найти запчасть")
 
     return kb
@@ -103,8 +104,6 @@ def ask(msg):
 
     bot.send_message(msg.chat.id, "Введите номер детали:")
 
-
-BASE_PHOTO_URL = "http://export-content.baz-on.ru/pub/c592/productphoto/"
 
 @bot.message_handler(func=lambda m: True)
 def search(msg):
@@ -136,7 +135,8 @@ def search(msg):
 
         if photos:
 
-            photo_list = [p.strip() for p in photos.split(",") if p.strip()]
+            photo_list = photos.replace("|", ",").split(",")
+            photo_list = [p.strip() for p in photo_list if p.strip()]
 
             photo_list = [BASE_PHOTO_URL + p for p in photo_list]
 
@@ -147,64 +147,16 @@ def search(msg):
                 for i, photo in enumerate(photo_list):
 
                     if i == 0:
+
                         media.append(
                             telebot.types.InputMediaPhoto(
                                 photo,
                                 caption=text
                             )
                         )
+
                     else:
-                        media.append(
-                            telebot.types.InputMediaPhoto(photo)
-                        )
 
-                bot.send_media_group(msg.chat.id, media)
-
-            except:
-
-                bot.send_message(msg.chat.id, text)
-
-        else:
-
-            bot.send_message(msg.chat.id, text)
-        return
-
-    for p in results:
-
-        number = p.get(number_key, "")
-        name = p.get(name_key, "")
-        brand = p.get("Марка", "")
-        model = p.get("Модель", "")
-        price = p.get("Цена", "")
-        status = p.get("Статус", "")
-        photos = p.get(photo_key, "")
-
-        text = (
-            f"🔧 {name}\n"
-            f"Номер: {number}\n"
-            f"Авто: {brand} {model}\n"
-            f"Цена: {price} ₽\n"
-            f"{status}"
-        )
-
-        if photos:
-
-            photo_list = [p.strip() for p in photos.split(",") if p.strip()]
-
-            try:
-
-                media = []
-
-                for i, photo in enumerate(photo_list):
-
-                    if i == 0:
-                        media.append(
-                            telebot.types.InputMediaPhoto(
-                                photo,
-                                caption=text
-                            )
-                        )
-                    else:
                         media.append(
                             telebot.types.InputMediaPhoto(photo)
                         )

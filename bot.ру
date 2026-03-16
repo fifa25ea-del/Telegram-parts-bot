@@ -1,40 +1,35 @@
 import requests
 import csv
 from io import StringIO
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram import Update, ReplyKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
 TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
-
 CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 
 parts_db = []
+waiting_number = {}
 
+# загрузка базы
+def load_database():
 
-def load_parts():
     global parts_db
-
-    print("Загружаю базу запчастей...")
 
     r = requests.get(CSV_URL)
 
-    data = StringIO(r.text)
+    if r.status_code != 200:
+        print("Ошибка загрузки базы")
+        return
 
-    reader = csv.DictReader(data)
+    csv_data = StringIO(r.text)
+    reader = csv.DictReader(csv_data)
 
-    parts_db = []
-
-    for row in reader:
-        parts_db.append(row)
+    parts_db = list(reader)
 
     print(f"База загружена: {len(parts_db)} деталей")
 
 
-def start(update, context):
-    update.message.reply_text(
-        "🚗 Отправьте номер детали\n\nНапример:\nA2710106600"
-    )
-
-
+# поиск детали
 def search_part(number):
 
     number = number.lower()
@@ -60,32 +55,59 @@ def search_part(number):
     return None
 
 
-def message_handler(update, context):
+# старт
+def start(update: Update, context: CallbackContext):
 
+    keyboard = [["🚗 Найти запчасть"]]
+
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+
+    update.message.reply_text(
+        "Добро пожаловать.\nНажмите кнопку чтобы найти деталь.",
+        reply_markup=reply_markup
+    )
+
+
+# обработка сообщений
+def message_handler(update: Update, context: CallbackContext):
+
+    chat_id = update.message.chat_id
     text = update.message.text
 
-    result = search_part(text)
+    if text == "🚗 Найти запчасть":
 
-    if result:
-        update.message.reply_text(result)
-    else:
-        update.message.reply_text("❌ Деталь не найдена")
+        waiting_number[chat_id] = True
+        update.message.reply_text("Введите номер детали:")
+        return
+
+    if waiting_number.get(chat_id):
+
+        result = search_part(text)
+
+        if result:
+            update.message.reply_text(result)
+        else:
+            update.message.reply_text("❌ Деталь не найдена")
+
+        waiting_number[chat_id] = False
+        return
 
 
 def main():
 
-    load_parts()
+    load_database()
 
     updater = Updater(TOKEN, use_context=True)
 
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, message_handler))
+    dp.add_handler(MessageHandler(Filters.text, message_handler))
+
+    updater.start_polling()
 
     print("BOT STARTED")
 
-    updater.start_polling()
     updater.idle()
 
 

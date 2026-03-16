@@ -194,7 +194,6 @@ else:
     media.append(
         telebot.types.InputMediaPhoto(image)
     )
-
             if len(media) == 1:
 
                 bot.send_photo(

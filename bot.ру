@@ -139,6 +139,7 @@ def send_card(chat_id, index):
 
     text = (
         f"🔧 {name}\n"
+        f"Артикул: {article}\n"
         f"Номер: {number}\n"
         f"Авто: {brand} {model}\n"
         f"Цена: {price} ₽\n"

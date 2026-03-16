@@ -36,19 +36,22 @@ def search_part(number):
 
     for part in parts_db:
 
-        text = str(part).lower()
+        oem = str(part.get("Артикул", "")).lower()
 
-        if number in text:
+        if number in oem:
 
-            name = part.get("name", "Без названия")
-            price = part.get("price", "0")
-            oem = part.get("oem", number)
+            name = part.get("Наименование", "Без названия")
+            price = part.get("Цена", "0")
+            article = part.get("Артикул", "")
+            brand = part.get("Марка", "")
+            model = part.get("Модель", "")
 
             return f"""
 🚗 Деталь найдена
 
 Название: {name}
-Номер: {oem}
+Артикул: {article}
+Авто: {brand} {model}
 Цена: {price} ₽
 """
 

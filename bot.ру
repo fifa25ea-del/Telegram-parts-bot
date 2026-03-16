@@ -1,8 +1,7 @@
 import telebot
-import requests
 import csv
-from io import StringIO
-from telebot import types
+import requests
+import io
 
 TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
 CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
@@ -12,18 +11,21 @@ bot = telebot.TeleBot(TOKEN)
 parts_db = []
 
 
-# Загрузка базы
+# -------------------------
+# Загрузка базы CSV
+# -------------------------
 def load_database():
 
     global parts_db
 
     print("Загрузка базы...")
 
-    r = requests.get(CSV_URL)
+    response = requests.get(CSV_URL)
+    response.encoding = "utf-8"
 
-    csv_data = StringIO(r.text)
+    csv_file = io.StringIO(response.text)
 
-    reader = csv.DictReader(csv_data)
+    reader = csv.DictReader(csv_file, delimiter=";")
 
     parts_db = []
 
@@ -33,91 +35,119 @@ def load_database():
 
         for key, value in row.items():
 
-            if key is None:
-                continue
-
-            clean_key = key.strip().replace("\ufeff", "")
-
-            clean_row[clean_key] = value
+            if key:
+                clean_key = key.strip().replace("\ufeff", "")
+                clean_row[clean_key] = value
 
         parts_db.append(clean_row)
 
     print(f"База загружена: {len(parts_db)} деталей")
-# Поиск детали
-def search_part(number):
 
-    number = number.strip().lower()
+
+# -------------------------
+# Поиск детали
+# -------------------------
+def find_part(query):
+
+    query = str(query).lower().strip()
 
     results = []
 
     for part in parts_db:
 
-        row_text = str(part).lower()
+        number = str(part.get("Номер", "")).lower()
+        name = str(part.get("Наименование", "")).lower()
 
-        if number in row_text:
+        if query in number or query in name:
 
             results.append(part)
 
         if len(results) >= 5:
             break
 
-    return results
+    if not results:
+        return "❌ Деталь не найдена"
+
+    text = "🚗 Найдено:\n\n"
+
+    for part in results:
+
+        name = part.get("Наименование", "Без названия")
+        number = part.get("Номер", "")
+        brand = part.get("Марка", "")
+        model = part.get("Модель", "")
+        price = part.get("Цена", "")
+        status = part.get("Статус", "")
+
+        car = f"{brand} {model}".strip()
+
+        text += (
+            f"🔧 {name}\n"
+            f"Номер: {number}\n"
+            f"Авто: {car}\n"
+            f"Цена: {price} ₽\n"
+            f"Статус: {status}\n\n"
+        )
+
+    return text
 
 
+# -------------------------
+# Кнопки
+# -------------------------
+def main_keyboard():
+
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    btn = telebot.types.KeyboardButton("🚗 Найти запчасть")
+
+    markup.add(btn)
+
+    return markup
+
+
+# -------------------------
 # Старт
+# -------------------------
+@bot.message_handler(commands=["start"])
+def start(message):
+
+    bot.send_message(
+        message.chat.id,
+        "🚗 Бот поиска автозапчастей\n\nНажмите кнопку ниже",
+        reply_markup=main_keyboard()
+    )
+
+
+# -------------------------
+# Кнопка поиска
+# -------------------------
+@bot.message_handler(func=lambda message: message.text == "🚗 Найти запчасть")
+def ask_number(message):
+
+    bot.send_message(message.chat.id, "Введите номер детали:")
+
+
+# -------------------------
+# Поиск
+# -------------------------
 @bot.message_handler(func=lambda message: True)
 def search(message):
 
-    number = message.text.lower().strip()
+    query = message.text
 
-    result = find_part(number)
+    result = find_part(query)
 
     bot.send_message(message.chat.id, result)
 
 
-# Кнопка поиска
-@bot.message_handler(func=lambda message: message.text == "🚗 Найти запчасть")
-def ask_number(message):
-
-    msg = bot.send_message(message.chat.id, "Введите номер детали:")
-
-    bot.register_next_step_handler(msg, find_part)
-
-
-# Поиск
-def find_part(number):
-
-    number = str(number).lower().strip()
-
-    for part in parts_db:
-
-        article = str(part.get("Номер", "")).lower()
-        name = str(part.get("Наименование", "")).lower()
-
-        if number in article or number in name:
-
-            name_real = part.get("Наименование", "Без названия")
-            brand = part.get("Марка", "")
-            model = part.get("Модель", "")
-            price = part.get("Цена", "0")
-
-            car = f"{brand} {model}".strip()
-
-            return (
-                "🚗 Найдено\n\n"
-                f"Название: {name_real}\n"
-                f"Номер: {article}\n"
-                f"Авто: {car}\n"
-                f"Цена: {price} ₽"
-            )
-
-    return "❌ Деталь не найдена"
-    bot.send_message(message.chat.id, text)
-
-
+# -------------------------
 # Запуск
-load_database()
+# -------------------------
+if __name__ == "__main__":
 
-print("BOT STARTED")
+    load_database()
 
-bot.infinity_polling()
+    print("BOT STARTED")
+
+    bot.infinity_polling()

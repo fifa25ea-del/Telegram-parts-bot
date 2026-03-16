@@ -1,16 +1,12 @@
-import os
 import requests
 import xml.etree.ElementTree as ET
+from telegram import Update
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 
-from telegram import ReplyKeyboardMarkup
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
-
-TOKEN = os.getenv("TOKEN")
-
+TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
 XML_URL = "https://baz-on.ru/export/c592/ca617/drom-140001-parts.xml"
 
 parts_db = []
-
 
 def load_parts():
 
@@ -19,101 +15,80 @@ def load_parts():
     r = requests.get(XML_URL)
     root = ET.fromstring(r.content)
 
-    count = 0
-
     for part in root.findall(".//part"):
 
         title = part.find("title")
         price = part.find("price")
         number = part.find("manufactureNumber")
 
-        name = title.text if title is not None else ""
-        part_number = number.text if number is not None else ""
+        photos = []
+        photo_urls = part.find("photoUrls")
+
+        if photo_urls is not None:
+            for p in photo_urls.findall("photoUrl"):
+                photos.append(p.text)
 
         parts_db.append({
-            "number": part_number,
-            "name": name,
-            "price": price.text if price is not None else ""
+            "number": number.text if number is not None else "",
+            "name": title.text if title is not None else "",
+            "price": price.text if price is not None else "",
+            "photo": photos[0] if photos else None
         })
 
-        count += 1
-
-    print("База загружена:", count, "деталей")
-def search_part(number):
-
-    for part in parts_db:
-
-        if number.lower() in part["number"].lower():
-
-            return f"""
-🚗 Деталь найдена
-
-Название: {part["name"]}
-Номер: {part["number"]}
-Цена: {part["price"]} ₽
-"""
-
-    return None
+    print("База загружена:", len(parts_db), "деталей")
 
 
-def start(update, context):
-
-    keyboard = [
-        ["🚗 Найти запчасть"],
-        ["📦 Сделать заказ"],
-        ["📞 Связаться"]
-    ]
-
-    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+def start(update: Update, context: CallbackContext):
 
     update.message.reply_text(
-        "Добро пожаловать 🚗\nВыберите действие:",
-        reply_markup=reply_markup
+        "🚗 Бот поиска запчастей\n\n"
+        "Введите номер детали или название."
     )
 
 
-def handle_message(update, context):
+def search(update: Update, context: CallbackContext):
 
-    text = update.message.text
+    query = update.message.text.lower()
 
-    if text == "🚗 Найти запчасть":
+    results = []
 
-        update.message.reply_text("Напишите номер детали")
+    for part in parts_db:
 
-    elif text == "📦 Сделать заказ":
+        if query in part["number"].lower() or query in part["name"].lower():
+            results.append(part)
 
-        update.message.reply_text(
-            "Напишите:\nМарка авто\nГод\nКакая деталь нужна"
-        )
+        if len(results) >= 5:
+            break
 
-    elif text == "📞 Связаться":
+    if not results:
+        update.message.reply_text("❌ Ничего не найдено")
+        return
 
-        update.message.reply_text(
-            "Менеджер: @your_username"
-        )
+    for part in results:
 
-    else:
+        text = f"""
+🚗 {part['name']}
 
-        update.message.reply_text("🔎 Ищу деталь...")
+🔧 Номер: {part['number']}
+💰 Цена: {part['price']} ₽
+"""
 
-        result = search_part(text)
-
-        if result:
-            update.message.reply_text(result)
+        if part["photo"]:
+            update.message.reply_photo(part["photo"], caption=text)
         else:
-            update.message.reply_text("❌ Деталь не найдена")
+            update.message.reply_text(text)
 
 
 def main():
 
     load_parts()
 
-    updater = Updater(TOKEN, use_context=True)
+    updater = Updater(TOKEN)
 
     dp = updater.dispatcher
 
     dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(MessageHandler(Filters.text, handle_message))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, search))
 
     print("BOT STARTED")
 
@@ -121,5 +96,7 @@ def main():
     updater.idle()
 
 
+if name == "__main__":
+    main()
 if __name__ == "__main__":
     main()

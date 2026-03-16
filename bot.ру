@@ -4,7 +4,7 @@ import csv
 from io import StringIO
 from telebot import types
 
-TOKEN = "ВАШ_TELEGRAM_TOKEN"
+TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
 CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 
 bot = telebot.TeleBot(TOKEN)

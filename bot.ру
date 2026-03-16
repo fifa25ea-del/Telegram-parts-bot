@@ -3,7 +3,7 @@ import csv
 from io import StringIO
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
-TOKEN = "ВАШ_ТОКЕН_БОТА"
+TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
 
 CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 

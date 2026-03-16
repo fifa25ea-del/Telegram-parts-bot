@@ -149,60 +149,61 @@ def send_card(chat_id, index):
 
     kb = telebot.types.InlineKeyboardMarkup(row_width=2)
 
-prev_btn = telebot.types.InlineKeyboardButton(
-    "⬅️",
-    callback_data=f"prev_{index}"
-)
+    prev_btn = telebot.types.InlineKeyboardButton(
+        "⬅️",
+        callback_data=f"prev_{index}"
+    )
 
-next_btn = telebot.types.InlineKeyboardButton(
-    "➡️",
-    callback_data=f"next_{index}"
-)
+    next_btn = telebot.types.InlineKeyboardButton(
+        "➡️",
+        callback_data=f"next_{index}"
+    )
 
-order_btn = telebot.types.InlineKeyboardButton(
-    "🛒 Заказать",
-    url="https://t.me/ВАШ_МЕНЕДЖЕР"
-)
+    order_btn = telebot.types.InlineKeyboardButton(
+        "🛒 Заказать",
+        url="https://t.me/ВАШ_МЕНЕДЖЕР"
+    )
 
-manager_btn = telebot.types.InlineKeyboardButton(
-    "💬 Связаться с менеджером",
-    url="https://t.me/Stuttgart_mercedes"
-)
+    manager_btn = telebot.types.InlineKeyboardButton(
+        "💬 Связаться с менеджером",
+        url="https://t.me/Stuttgart_mercedes"
+    )
 
-kb.add(prev_btn, next_btn)
-kb.add(order_btn)
-kb.add(manager_btn)
+    kb.add(prev_btn, next_btn)
+    kb.add(order_btn)
+    kb.add(manager_btn)
 
-if photos:
+    try:
 
-    photo_list = [x.strip() for x in photos.split(",") if x.strip()]
-    photo_list = photo_list[:8]
+        if photos:
 
-    media = []
+            photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+            photo_list = photo_list[:8]
 
-    for i, photo_url in enumerate(photo_list):
+            media = []
 
-        if i == 0:
-            media.append(
-                telebot.types.InputMediaPhoto(
-                    media=photo_url,
-                    caption=text
-                )
-            )
+            for i, photo_url in enumerate(photo_list):
+
+                if i == 0:
+                    media.append(
+                        telebot.types.InputMediaPhoto(
+                            media=photo_url,
+                            caption=text
+                        )
+                    )
+                else:
+                    media.append(
+                        telebot.types.InputMediaPhoto(photo_url)
+                    )
+
+            bot.send_media_group(chat_id, media)
+
+            bot.send_message(chat_id, "⬅️➡️ Листайте детали", reply_markup=kb)
+
         else:
-            media.append(
-                telebot.types.InputMediaPhoto(photo_url)
-            )
 
-    bot.send_media_group(chat_id, media)
+            bot.send_message(chat_id, text, reply_markup=kb)
 
-    bot.send_message(chat_id, "⬅️➡️ Листайте детали", reply_markup=kb)
-
-else:
-
-    bot.send_message(chat_id, text, reply_markup=kb)
-
-       
     except Exception as e:
 
         print("Ошибка фото:", e)

@@ -22,8 +22,8 @@ def load_parts():
 
     for part in root.findall("part"):
 
-        number = part.find("oem")
-        name = part.find("name")
+        number = part.find("manufactureNumber")
+        name = part.find("title")
         price = part.find("price")
 
         if number is not None:
@@ -35,7 +35,6 @@ def load_parts():
             })
 
     print("База загружена:", len(parts_db), "деталей")
-
 def search_part(number):
 
     for part in parts_db:
@@ -45,9 +44,9 @@ def search_part(number):
             return f"""
 🚗 Деталь найдена
 
-Название: {part['name']}
-Номер: {part['number']}
-Цена: {part['price']} ₽
+Название: {part["name"]}
+Номер: {part["number"]}
+Цена: {part["price"]} ₽
 """
 
     return None

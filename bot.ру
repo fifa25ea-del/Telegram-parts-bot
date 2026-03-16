@@ -22,17 +22,21 @@ def load_parts():
 
     for part in root.findall(".//part"):
 
-        number = part.find("manufactureNumber")
         name = part.find("title")
         price = part.find("price")
+        number = part.find("manufactureNumber")
 
-        if number is not None:
+        # если номера нет — берем из title
+        if number is None and name is not None:
+            number_text = name.text
+        else:
+            number_text = number.text if number is not None else ""
 
-            parts_db.append({
-                "number": number.text if number is not None else "",
-                "name": name.text if name is not None else "",
-                "price": price.text if price is not None else ""
-            })
+        parts_db.append({
+            "number": number_text,
+            "name": name.text if name is not None else "",
+            "price": price.text if price is not None else ""
+        })
 
     print("База загружена:", len(parts_db), "деталей")
 def search_part(number):

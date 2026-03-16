@@ -14,18 +14,13 @@ number_key = None
 name_key = None
 
 
-# -------------------------
-# Загрузка CSV
-# -------------------------
 def load_database():
 
-    global parts_db
+    global parts_db, number_key, name_key
 
     print("Загрузка базы...")
 
     r = requests.get(CSV_URL)
-
-    # правильная кодировка
     r.encoding = "cp1251"
 
     text = r.text
@@ -34,58 +29,31 @@ def load_database():
 
     reader = csv.DictReader(csv_file, delimiter=";")
 
-    print("Колонки CSV:", reader.fieldnames)
+    headers = reader.fieldnames
 
-    parts_db.clear()
+    print("Колонки CSV:", headers)
 
-    for row in reader:
-
-        clean = {}
-
-        for k, v in row.items():
-
-            key = k.strip()
-
-            clean[key] = v.strip() if v else ""
-
-        parts_db.append(clean)
-
-    print(f"База загружена: {len(parts_db)} деталей")
-
-    # ищем колонку номера
     for h in headers:
+
         h_low = h.lower()
 
-        if "номер" in h_low or "part" in h_low or "артикул" in h_low:
+        if "номер" in h_low or "артикул" in h_low:
             number_key = h
 
-        if "наимен" in h_low or "name" in h_low:
+        if "наимен" in h_low:
             name_key = h
 
     print("Колонка номера:", number_key)
     print("Колонка названия:", name_key)
 
+    parts_db.clear()
+
     for row in reader:
-
-        clean = {}
-
-        for k, v in row.items():
-
-            if not k:
-                continue
-
-            key = k.strip().replace("\ufeff", "")
-
-            clean[key] = v.strip() if v else ""
-
-        parts_db.append(clean)
+        parts_db.append(row)
 
     print(f"База загружена: {len(parts_db)} деталей")
 
 
-# -------------------------
-# Поиск
-# -------------------------
 def find_part(query):
 
     query = query.lower().strip()
@@ -112,26 +80,23 @@ def find_part(query):
     for p in results:
 
         number = p.get(number_key, "")
-        name = p.get(name_key, "Без названия")
-        price = p.get("Цена", "")
+        name = p.get(name_key, "")
         brand = p.get("Марка", "")
         model = p.get("Модель", "")
-
-        car = f"{brand} {model}".strip()
+        price = p.get("Цена", "")
+        status = p.get("Статус", "")
 
         text += (
             f"🔧 {name}\n"
             f"Номер: {number}\n"
-            f"Авто: {car}\n"
-            f"Цена: {price} ₽\n\n"
+            f"Авто: {brand} {model}\n"
+            f"Цена: {price} ₽\n"
+            f"{status}\n\n"
         )
 
     return text
 
 
-# -------------------------
-# Кнопка
-# -------------------------
 def keyboard():
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -141,9 +106,6 @@ def keyboard():
     return kb
 
 
-# -------------------------
-# Старт
-# -------------------------
 @bot.message_handler(commands=["start"])
 def start(msg):
 
@@ -154,18 +116,12 @@ def start(msg):
     )
 
 
-# -------------------------
-# Кнопка поиска
-# -------------------------
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
 def ask(msg):
 
     bot.send_message(msg.chat.id, "Введите номер детали:")
 
 
-# -------------------------
-# Поиск
-# -------------------------
 @bot.message_handler(func=lambda m: True)
 def search(msg):
 
@@ -174,9 +130,6 @@ def search(msg):
     bot.send_message(msg.chat.id, result)
 
 
-# -------------------------
-# Запуск
-# -------------------------
 if __name__ == "__main__":
 
     load_database()

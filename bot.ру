@@ -242,6 +242,7 @@ def callback(call):
             f"Артикул: {article}\n"
             f"Цена: {price} ₽\n\n"
             f"Клиент: @{user}"
+            f"Username: @{username}\n"
             f"ID: {user_id}"
         )
 

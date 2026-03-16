@@ -87,13 +87,16 @@ def ask_number(message):
 # Поиск
 def find_part(number):
 
+    number = str(number).lower().strip()
+
     for part in parts_db:
 
         article = str(part.get("Номер", "")).lower()
+        name = str(part.get("Наименование", "")).lower()
 
-        if number in article:
+        if number in article or number in name:
 
-            name = part.get("Наименование", "Без названия")
+            name_real = part.get("Наименование", "Без названия")
             brand = part.get("Марка", "")
             model = part.get("Модель", "")
             price = part.get("Цена", "0")
@@ -102,14 +105,13 @@ def find_part(number):
 
             return (
                 "🚗 Найдено\n\n"
-                f"Название: {name}\n"
-                f"Артикул: {article}\n"
+                f"Название: {name_real}\n"
+                f"Номер: {article}\n"
                 f"Авто: {car}\n"
                 f"Цена: {price} ₽"
             )
 
     return "❌ Деталь не найдена"
-
     bot.send_message(message.chat.id, text)
 
 

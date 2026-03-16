@@ -202,10 +202,7 @@ else:
 
     bot.send_message(chat_id, text, reply_markup=kb)
 
-        else:
-
-            bot.send_message(chat_id, text, reply_markup=kb)
-
+       
     except Exception as e:
 
         print("Ошибка фото:", e)

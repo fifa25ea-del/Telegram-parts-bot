@@ -182,18 +182,18 @@ def send_card(chat_id, index):
 
                 image = io.BytesIO(response.content)
 
-                if i == 0:
-                    media.append(
-                        telebot.types.InputMediaPhoto(
-                            media=image,
-                            caption=text,
-                            parse_mode="HTML"
-                        )
+            if i == 0:
+                media.append(
+                    telebot.types.InputMediaPhoto(
+                        media=image,
+                        caption=text,
+                        parse_mode="HTML"
                     )
-                else:
-    media.append(
-        telebot.types.InputMediaPhoto(image)
-    )
+                )
+            else:
+media.append(
+    telebot.types.InputMediaPhoto(image)
+)
 
             if len(media) == 1:
 

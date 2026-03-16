@@ -125,16 +125,6 @@ def search(msg):
         status = p.get("Статус", "")
         photos = p.get(photo_key, "")
 
-        text = (
-            f"🔧 {name}\n"
-            f"Номер: {number}\n"
-            f"Авто: {brand} {model}\n"
-            f"Цена: {price} ₽\n"
-            f"{status}"
-        )
-
-        photos = p.get(photo_key, "")
-
 if photos:
 
     photo_list = photos.replace("|", ",").split(",")

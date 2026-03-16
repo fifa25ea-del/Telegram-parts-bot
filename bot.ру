@@ -231,7 +231,7 @@ def callback(call):
         article = part.get("Артикул", "")
         price = part.get("Цена", "")
 
-        user = call.from_user.username
+        user = call.from_user.username or call.from_user.first_name
 
         text = (
             "🛒 Новый заказ\n\n"

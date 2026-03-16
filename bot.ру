@@ -1,66 +1,34 @@
 import telebot
 import csv
-import requests
-import io
-from telebot.types import (
-    InputMediaPhoto,
-    InlineKeyboardMarkup,
-    InlineKeyboardButton
-)
 
 TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
-CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 
 bot = telebot.TeleBot(TOKEN)
 
-parts_db = []
-number_key = None
-name_key = None
+CSV_FILE = "parts.csv"
 
-# хранение результатов поиска
+parts_db = []
 user_results = {}
 
-
 # -----------------------------
-# загрузка базы
+# Загрузка базы
 # -----------------------------
-def load_database():
 
-    global parts_db, number_key, name_key
+print("Загрузка базы...")
 
-    print("Загрузка базы...")
-
-    r = requests.get(CSV_URL)
-    r.encoding = "cp1251"
-
-    csv_file = io.StringIO(r.text)
-    reader = csv.DictReader(csv_file, delimiter=";")
-
-    headers = reader.fieldnames
-
-    print("Колонки CSV:", headers)
-
-    for h in headers:
-
-        h_low = h.lower()
-
-        if "артикул" in h_low or "номер" in h_low:
-            number_key = h
-
-        if "наимен" in h_low:
-            name_key = h
-
-    parts_db.clear()
+with open(CSV_FILE, encoding="utf-8") as f:
+    reader = csv.DictReader(f)
 
     for row in reader:
         parts_db.append(row)
 
-    print("База загружена:", len(parts_db))
+print("База загружена:", len(parts_db))
 
 
 # -----------------------------
-# поиск
+# Нормализация текста
 # -----------------------------
+
 def normalize(text):
 
     if not text:
@@ -68,11 +36,15 @@ def normalize(text):
 
     text = str(text).lower()
     text = text.replace(" ", "")
-    text = text.replace(",", "")
     text = text.replace("-", "")
+    text = text.replace(",", "")
 
     return text
 
+
+# -----------------------------
+# Поиск детали
+# -----------------------------
 
 def find_part(query):
 
@@ -82,8 +54,8 @@ def find_part(query):
 
     for part in parts_db:
 
-        number = normalize(part.get(number_key, ""))
-        name = normalize(part.get(name_key, ""))
+        number = normalize(part.get("number", ""))
+        name = normalize(part.get("name", ""))
 
         if query in number or query in name:
             results.append(part)
@@ -92,153 +64,123 @@ def find_part(query):
 
 
 # -----------------------------
-# клавиатура навигации
+# Отправка детали
 # -----------------------------
-def nav_keyboard(index, total):
 
-    kb = InlineKeyboardMarkup()
-
-    kb.row(
-        InlineKeyboardButton("⬅️", callback_data="prev"),
-        InlineKeyboardButton(f"{index+1}/{total}", callback_data="info"),
-        InlineKeyboardButton("➡️", callback_data="next")
-    )
-
-    return kb
-
-
-# -----------------------------
-# отправка карточки
-# -----------------------------
 def send_part(chat_id, part, index, total):
 
-    number = part.get(number_key, "")
-    name = part.get(name_key, "")
-    brand = part.get("Марка", "")
-    model = part.get("Модель", "")
-    price = part.get("Цена", "")
-    status = part.get("Статус", "")
-    photo_field = part.get("Фото", "").strip()
+    name = part.get("name", "Не указано")
+    number = part.get("number", "")
+    auto = part.get("auto", "")
+    price = part.get("price", "")
+    photos = part.get("photo", "")
 
     text = (
-        f"🚗 Найдено:\n\n"
         f"🔧 {name}\n"
         f"Номер: {number}\n"
-        f"Авто: {brand} {model}\n"
-        f"Цена: {price} ₽\n"
-        f"{status}"
+        f"Авто: {auto}\n"
+        f"Цена: {price} ₽\n\n"
+        f"📦 {index+1} из {total}"
     )
 
-    kb = nav_keyboard(index, total)
+    photo_list = []
 
-    # если есть фото
-    if photo_field:
+    if photos:
+        photo_list = photos.split(",")
 
-        photos = [p.strip() for p in photo_field.split(",") if p.strip()]
-
-        media = []
-
-        for i, ph in enumerate(photos[:5]):
-
-            if i == 0:
-                media.append(InputMediaPhoto(ph, caption=text))
-            else:
-                media.append(InputMediaPhoto(ph))
+    if photo_list and photo_list[0]:
 
         try:
-
-            bot.send_media_group(chat_id, media)
-
-            bot.send_message(
+            bot.send_photo(
                 chat_id,
-                "Листайте найденные детали:",
-                reply_markup=kb
+                photo_list[0],
+                caption=text
             )
+
+            for p in photo_list[1:]:
+                p = p.strip()
+                if p:
+                    bot.send_photo(chat_id, p)
 
         except:
-
-            bot.send_message(
-                chat_id,
-                text,
-                reply_markup=kb
-            )
+            bot.send_message(chat_id, text)
 
     else:
-
-        bot.send_message(
-            chat_id,
-            text,
-            reply_markup=kb
-        )
+        bot.send_message(chat_id, text)
 
 
 # -----------------------------
-# старт
+# START
 # -----------------------------
+
 @bot.message_handler(commands=["start"])
 def start(msg):
 
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("🚗 Найти запчасть")
+
+    kb.row("📦 Как искать", "📞 Менеджер")
+    kb.row("🌐 Наш сайт")
 
     bot.send_message(
         msg.chat.id,
-        "🚗 Бот поиска автозапчастей\n\nВведите номер детали",
+        "🚗 Бот поиска автозапчастей\n\n"
+        "Введите номер детали\n"
+        "Например:\n"
+        "A2095453308",
         reply_markup=kb
     )
 
 
 # -----------------------------
-# поиск
+# Кнопки меню
 # -----------------------------
-@bot.message_handler(func=lambda m: True)
-def search(msg):
 
-    query = msg.text
+@bot.message_handler(func=lambda m: m.text == "📦 Как искать")
+def help_text(msg):
 
-    results = find_part(query)
-
-    if not results:
-
-        bot.send_message(msg.chat.id, "❌ Деталь не найдена")
-        return
-
-    user_results[msg.chat.id] = {
-        "results": results,
-        "index": 0
-    }
-
-    send_part(
+    bot.send_message(
         msg.chat.id,
-        results[0],
-        0,len(results)
+        "Введите номер детали.\n\n"
+        "Например:\n"
+        "A2095453308"
+    )
+
+
+@bot.message_handler(func=lambda m: m.text == "📞 Менеджер")
+def manager(msg):
+
+    bot.send_message(
+        msg.chat.id,
+        "Связаться с менеджером:\n@your_manager"
+    )
+
+
+@bot.message_handler(func=lambda m: m.text == "🌐 Наш сайт")
+def site(msg):
+
+    bot.send_message(
+        msg.chat.id,
+        "Наш сайт:\nhttps://example.com"
     )
 
 
 # -----------------------------
-# кнопки
+# Поиск
 # -----------------------------
+
 @bot.message_handler(func=lambda m: True)
 def search(msg):
 
     text = msg.text.strip()
 
-    # если нажата кнопка
-    if text == "🚗 Найти запчасть":
-        bot.send_message(
-            msg.chat.id,
-            "🔎 Введите номер детали\n\nНапример:\nA2095453308"
-        )
+    # игнор кнопок
+    if text in ["📦 Как искать", "📞 Менеджер", "🌐 Наш сайт"]:
         return
 
-    # если команда старт
-    if text == "/start":
-        return
-
-    # поиск детали
     results = find_part(text)
 
     if not results:
+
         bot.send_message(
             msg.chat.id,
             "❌ Деталь не найдена"
@@ -259,12 +201,12 @@ def search(msg):
 
 
 # -----------------------------
-# запуск
+# Запуск бота
 # -----------------------------
-if __name__ == "__main__":
 
-    load_database()
+print("BOT STARTED")
 
-    print("BOT STARTED")
-
-    bot.infinity_polling()
+bot.infinity_polling(
+    timeout=60,
+    long_polling_timeout=60
+)

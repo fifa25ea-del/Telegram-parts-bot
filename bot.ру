@@ -65,20 +65,14 @@ def search_part(number):
 
 
 # Старт
-@bot.message_handler(commands=["start"])
-def start(message):
+@bot.message_handler(func=lambda message: True)
+def search(message):
 
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    number = message.text.lower().strip()
 
-    btn = types.KeyboardButton("🚗 Найти запчасть")
+    result = find_part(number)
 
-    markup.add(btn)
-
-    bot.send_message(
-        message.chat.id,
-        "Добро пожаловать!\n\nНажмите кнопку для поиска детали.",
-        reply_markup=markup
-    )
+    bot.send_message(message.chat.id, result)
 
 
 # Кнопка поиска
@@ -93,8 +87,6 @@ def ask_number(message):
 # Поиск
 def find_part(number):
 
-    number = number.lower().strip()
-
     for part in parts_db:
 
         article = str(part.get("Номер", "")).lower()
@@ -108,15 +100,13 @@ def find_part(number):
 
             car = f"{brand} {model}".strip()
 
-            text = (
+            return (
                 "🚗 Найдено\n\n"
                 f"Название: {name}\n"
                 f"Артикул: {article}\n"
                 f"Авто: {car}\n"
                 f"Цена: {price} ₽"
             )
-
-            return text
 
     return "❌ Деталь не найдена"
 

@@ -41,12 +41,13 @@ def search_part(number):
 
     for part in parts_db:
 
-        oem = part.get("oem", "").lower()
+        text = str(part).lower()
 
-        if number in oem:
+        if number in text:
 
             name = part.get("name", "Без названия")
             price = part.get("price", "0")
+            oem = part.get("oem", number)
 
             return f"""
 🚗 Деталь найдена

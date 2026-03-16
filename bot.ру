@@ -132,42 +132,32 @@ def search(msg):
             f"{status}"
         )
 
-       if photos:
+        if photos:
 
-    photo_list = photos.replace("|", ",").split(",")
-    photo_list = [x.strip() for x in photo_list if x.strip()]
+            photo_list = photos.replace("|", ",").split(",")
+            photo_list = [x.strip() for x in photo_list if x.strip()]
 
-    try:
+            try:
 
-        media = []
+                media = []
 
-        for i, photo in enumerate(photo_list):
+                for i, photo in enumerate(photo_list):
 
-            if i == 0:
-                media.append(
-                    telebot.types.InputMediaPhoto(
-                        media=photo,
-                        caption=text
-                    )
-                )
-            else:
-                media.append(
-                    telebot.types.InputMediaPhoto(
-                        media=photo
-                    )
-                )
+                    if i == 0:
+                        media.append(
+                            telebot.types.InputMediaPhoto(
+                                media=photo,
+                                caption=text
+                            )
+                        )
+                    else:
+                        media.append(
+                            telebot.types.InputMediaPhoto(
+                                media=photo
+                            )
+                        )
 
-        bot.send_media_group(msg.chat.id, media)
-
-    except Exception as e:
-
-        print("Ошибка загрузки фото:", e)
-
-        bot.send_message(msg.chat.id, text)
-
-else:
-
-    bot.send_message(msg.chat.id, text)
+                bot.send_media_group(msg.chat.id, media)
 
             except Exception as e:
 

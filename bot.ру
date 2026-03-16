@@ -23,6 +23,7 @@ def load_database():
 
     csv_data = StringIO(r.text)
     reader = csv.DictReader(csv_data)
+print(reader.fieldnames)
 
     parts_db = list(reader)
 

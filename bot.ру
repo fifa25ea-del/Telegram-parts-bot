@@ -135,6 +135,7 @@ def search(msg):
         if photos:
 
             photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+            photo_list = photo_list[:8]
 
             try:
 

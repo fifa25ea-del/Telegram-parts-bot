@@ -111,7 +111,6 @@ def search(msg):
     results = find_part(msg.text)
 
     if not results:
-
         bot.send_message(msg.chat.id, "❌ Деталь не найдена")
         return
 
@@ -125,51 +124,59 @@ def search(msg):
         status = p.get("Статус", "")
         photos = p.get(photo_key, "")
 
-if photos:
+        text = (
+            f"🔧 {name}\n"
+            f"Номер: {number}\n"
+            f"Авто: {brand} {model}\n"
+            f"Цена: {price} ₽\n"
+            f"{status}"
+        )
 
-    photo_list = photos.replace("|", ",").split(",")
-    photo_list = [p.strip() for p in photo_list if p.strip()]
+        if photos:
 
-    final_photos = []
+            photo_list = photos.replace("|", ",").split(",")
+            photo_list = [x.strip() for x in photo_list if x.strip()]
 
-    for photo in photo_list:
+            final_photos = []
 
-        if photo.startswith("http"):
-            final_photos.append(photo)
-        else:
-            final_photos.append(
-                "http://export-content.baz-on.ru/pub/c592/productphoto/" + photo
-            )
+            for photo in photo_list:
 
-    try:
-
-        media = []
-
-        for i, photo in enumerate(final_photos):
-
-            if i == 0:
-                media.append(
-                    telebot.types.InputMediaPhoto(
-                        photo,
-                        caption=text
+                if photo.startswith("http"):
+                    final_photos.append(photo)
+                else:
+                    final_photos.append(
+                        "http://export-content.baz-on.ru/pub/c592/productphoto/" + photo
                     )
-                )
-            else:
-                media.append(
-                    telebot.types.InputMediaPhoto(photo)
-                )
 
-        bot.send_media_group(msg.chat.id, media)
+            try:
 
-    except Exception as e:
+                media = []
 
-        print("Ошибка загрузки фото:", e)
+                for i, photo in enumerate(final_photos):
 
-        bot.send_message(msg.chat.id, text)
+                    if i == 0:
+                        media.append(
+                            telebot.types.InputMediaPhoto(
+                                photo,
+                                caption=text
+                            )
+                        )
+                    else:
+                        media.append(
+                            telebot.types.InputMediaPhoto(photo)
+                        )
 
-else:
+                bot.send_media_group(msg.chat.id, media)
 
-    bot.send_message(msg.chat.id, text)
+            except Exception as e:
+
+                print("Ошибка фото:", e)
+
+                bot.send_message(msg.chat.id, text)
+
+        else:
+
+            bot.send_message(msg.chat.id, text)
 if __name__ == "__main__":
 
     load_database()

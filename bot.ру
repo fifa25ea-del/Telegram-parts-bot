@@ -169,12 +169,12 @@ def callback(call):
 
 
 if __name__ == "__main__":
-      print("STARTING BOT...")
+    print("STARTING BOT...")
     
-        try:
-            load_database()
-            print("DATABASE LOADED")
-    
-            bot.infinity_polling()
-        except Exception as e:
-            print("ERROR:", e)
+    try:
+        load_database()
+        print("DATABASE LOADED")
+
+        bot.infinity_polling()
+    except Exception as e:
+        print("ERROR:", e)

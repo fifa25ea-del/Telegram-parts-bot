@@ -294,6 +294,11 @@ def callback(call):
     data = call.data
     chat_id = call.message.chat.id
 
+    results = user_results.get(chat_id, [])
+    if not results and not data.startswith(("checkout", "remove")):
+    bot.answer_callback_query(call.id, "❌ Нет данных")
+    return
+
     # ===== ОФОРМЛЕНИЕ ЗАКАЗА =====
     if data == "checkout":
 

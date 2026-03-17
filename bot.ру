@@ -304,7 +304,7 @@ if data == "checkout":
 
     if not items:
         bot.answer_callback_query(call.id, "❌ Корзина пустая")
-    return
+return
 
     text = "🛒 Новый заказ:\n\n"
     total = 0

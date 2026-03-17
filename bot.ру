@@ -124,33 +124,95 @@ def search(msg):
 def send_card(chat_id, index):
 
     results = user_results.get(chat_id, [])
+
     if not results:
         return
 
     part = results[index]
 
-    name = part.get(name_key, "Нет")
-    article = part.get("Артикул", "")
     number = part.get(number_key, "")
+    name = part.get(name_key, "")
+    brand = part.get("Марка", "")
+    article = part.get("Артикул", "")
+    model = part.get("Модель", "")
     price = part.get("Цена", "")
-    photos = str(part.get(photo_key, ""))
+    status = part.get("Статус", "")
+    photos = str(part.get(photo_key, "")).strip()
 
-    text = f"{name}\nАртикул: {article}\nНомер: {number}\nЦена: {price} ₽\n({index+1}/{len(results)})"
-
-    kb = telebot.types.InlineKeyboardMarkup()
-    kb.add(
-        telebot.types.InlineKeyboardButton("⬅️", callback_data=f"prev_{index}"),
-        telebot.types.InlineKeyboardButton("➡️", callback_data=f"next_{index}")
+    text = (
+        f"🔧 {name}\n"
+        f"Артикул: {article}\n"
+        f"Номер: {number}\n"
+        f"Авто: {brand} {model}\n"
+        f"Цена: {price} ₽\n"
+        f"{status}\n\n"
+        f"({index+1} из {len(results)})"
     )
-    kb.add(
-        telebot.types.InlineKeyboardButton("❤️", callback_data=f"fav_{index}"),
-        telebot.types.InlineKeyboardButton("🛒", callback_data=f"cart_{index}")
+
+    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+
+    prev_btn = telebot.types.InlineKeyboardButton("⬅️", callback_data=f"prev_{index}")
+    next_btn = telebot.types.InlineKeyboardButton("➡️", callback_data=f"next_{index}")
+
+    fav_btn = telebot.types.InlineKeyboardButton(
+        "❤️ В избранное",
+        callback_data=f"fav_{index}"
     )
 
-    if photos:
-        photo = photos.split(",")[0].strip()
-        bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
-    else:
+    cart_btn = telebot.types.InlineKeyboardButton(
+        "🛒 В корзину",
+        callback_data=f"cart_{index}"
+    )
+
+    order_btn = telebot.types.InlineKeyboardButton(
+        "🛒 Заказать",
+        callback_data=f"order_{index}"
+    )
+
+    manager_btn = telebot.types.InlineKeyboardButton(
+        "💬 Связаться с менеджером",
+        url="https://t.me/Stuttgart_mercedes"
+    )
+
+    kb.add(prev_btn, next_btn)
+    kb.add(fav_btn, cart_btn)
+    kb.add(order_btn)
+    kb.add(manager_btn)
+    
+    try:
+
+        if photos:
+
+            photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+            photo_list = photo_list[:8]
+
+            media = []
+
+            for i, photo_url in enumerate(photo_list):
+
+                if i == 0:
+                    media.append(
+                        telebot.types.InputMediaPhoto(
+                            media=photo_url,
+                            caption=text
+                        )
+                    )
+                else:
+                    media.append(
+                        telebot.types.InputMediaPhoto(photo_url)
+                    )
+
+            bot.send_media_group(chat_id, media)
+
+            bot.send_message(chat_id, "⬅️➡️ Листайте детали", reply_markup=kb)
+
+        else:
+
+            bot.send_message(chat_id, text, reply_markup=kb)
+
+    except Exception as e:
+
+        print("Ошибка фото:", e)
         bot.send_message(chat_id, text, reply_markup=kb)
 
 

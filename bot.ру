@@ -1,54 +1,55 @@
-user_favorites = {}
-user_cart = {}
-user_results = {}
 import telebot
 import csv
 import requests
 import io
 
-TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
-CSV_URL = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
+TOKEN = "PUT_YOUR_TOKEN_HERE"
+
+PARTS_CSV = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
+WHEELS_CSV = "https://baz-on.ru/export/c592/77023/drom-wheels.csv"
 
 bot = telebot.TeleBot(TOKEN)
 
+user_favorites = {}
+user_cart = {}
+user_results = {}
+
 parts_db = []
+wheels_db = []
+
+current_mode = {}
 
 number_key = None
 name_key = None
 photo_key = None
 
-# хранение результатов поиска
-user_results = {}
 
 def main_menu():
-
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-
     kb.row("🚗 Найти запчасть")
-    kb.row("❤️ Избранное","🛒 Корзина")
-
+    kb.row("🛞 Шины и диски")
+    kb.row("❤️ Избранное", "🛒 Корзина")
     return kb
 
-def load_database():
 
-    global parts_db, number_key, name_key, photo_key
-
-    print("Загрузка базы...")
-
+def load_csv(url):
     headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(CSV_URL, headers=headers, timeout=30)
+    r = requests.get(url, headers=headers, timeout=30)
     r.encoding = "cp1251"
 
     csv_file = io.StringIO(r.text)
-
     reader = csv.DictReader(csv_file, delimiter=";")
 
-    headers = reader.fieldnames
+    return list(reader), reader.fieldnames
 
-    print("Колонки CSV:", headers)
+
+def load_database():
+    global parts_db, wheels_db, number_key, name_key, photo_key
+
+    parts_db, headers = load_csv(PARTS_CSV)
+    wheels_db, _ = load_csv(WHEELS_CSV)
 
     for h in headers:
-
         h_low = h.lower()
 
         if "номер" in h_low or "артикул" in h_low:
@@ -57,33 +58,16 @@ def load_database():
         if "наимен" in h_low:
             name_key = h
 
-        if "фото" in h_low or "image" in h_low or "photo" in h_low:
+        if "фото" in h_low:
             photo_key = h
 
-    print("Колонка номера:", number_key)
-    print("Колонка названия:", name_key)
-    print("Колонка фото:", photo_key)
 
-    parts_db.clear()
-
-    for row in reader:
-        parts_db.append(row)
-
-    print("База загружена:", len(parts_db))
-
-
-def find_part(query):
-
-    query = query.lower().strip()
-
+def find_part(query, db):
+    query = query.lower()
     results = []
 
-    for part in parts_db:
-
-        number = str(part.get(number_key, "")).lower()
-        name = str(part.get(name_key, "")).lower()
-
-        if query in number or query in name:
+    for part in db:
+        if query in str(part).lower():
             results.append(part)
 
         if len(results) >= 20:
@@ -92,432 +76,98 @@ def find_part(query):
     return results
 
 
-def keyboard():
-
-    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("🚗 Найти запчасть")
-
-    return kb
-
-
 @bot.message_handler(commands=["start"])
 def start(message):
- 
-    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-
-    markup.add("🚗 Найти запчасть")
-    markup.add("❤️ Избранное", "🛒 Корзина")
-
-    bot.send_message(
-        message.chat.id,
-        "Выберите действие:",
-        reply_markup=markup
-    )
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=main_menu())
 
 
-# ===== ПОИСК КНОПКА =====
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
-def ask(msg):
+def parts_mode(msg):
+    current_mode[msg.chat.id] = "parts"
     bot.send_message(msg.chat.id, "Введите номер детали:")
 
 
-# ===== ПОИСК (НЕ ЛОВИМ ВСЕ СООБЩЕНИЯ!) =====
-@bot.message_handler(func=lambda m: m.text and len(m.text) > 2 and not m.text.startswith(("🚗", "🛒", "❤️")))
+@bot.message_handler(func=lambda m: m.text == "🛞 Шины и диски")
+def wheels_mode(msg):
+    current_mode[msg.chat.id] = "wheels"
+    bot.send_message(msg.chat.id, "Введите размер (например r18):")
+
+
+@bot.message_handler(func=lambda m: m.text and len(m.text) > 2 and not m.text.startswith(("🚗","🛞","🛒","❤️")))
 def search(msg):
 
-    results = find_part(msg.text)
+    mode = current_mode.get(msg.chat.id, "parts")
+
+    db = parts_db if mode == "parts" else wheels_db
+
+    results = find_part(msg.text, db)
 
     if not results:
-        bot.send_message(msg.chat.id, "❌ Деталь не найдена")
+        bot.send_message(msg.chat.id, "❌ Ничего не найдено")
         return
 
     user_results[msg.chat.id] = results
-
     send_card(msg.chat.id, 0)
 
 
-# ===== ИЗБРАННОЕ =====
-@bot.message_handler(func=lambda m: m.text == "❤️ Избранное")
-def show_favorites(message):
-
-    chat_id = message.chat.id
-    items = user_favorites.get(chat_id, [])
-
-    if not items:
-        bot.send_message(chat_id, "❌ Избранное пусто")
-        return
-
-    for part in items:
-
-        name = part.get("Наименование", "Без названия")
-        article = part.get("Артикул", "Нет артикула")
-        number = part.get("Номер", "Нет номера")
-        price = part.get("Цена", "0")
-        photo = part.get("Фото")
-
-        if photo:
-            photos = photo.split(",")
-            photo = photos[0].strip()
-
-        text = (
-            f"❤️ {name}\n"
-            f"🔢 Артикул: {article}\n"
-            f"🆔 Номер: {number}\n"
-            f"💰 Цена: {price} ₽"
-        )
-
-        from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
-
-        # кнопки
-        markup = InlineKeyboardMarkup()
-        markup.add(
-            InlineKeyboardButton("❌ Удалить", callback_data=f"fav_remove_{article}"),
-            InlineKeyboardButton("🛒 В корзину", callback_data=f"cart_add_{article}")
-        )
-
-        if photo and photo.startswith("http"):
-            try:
-                bot.send_photo(chat_id, photo, caption=text, reply_markup=markup)
-            except Exception as e:
-                print("Ошибка фото:", e)
-                bot.send_message(chat_id, text, reply_markup=markup)
-        else:
-            bot.send_message(chat_id, text, reply_markup=markup)
-
-
-# ===== КОРЗИНА =====
-@bot.message_handler(func=lambda m: m.text == "🛒 Корзина")
-def show_cart(message):
-
-    chat_id = message.chat.id
-    items = user_cart.get(chat_id, [])
-
-    if not items:
-        bot.send_message(chat_id, "❌ Корзина пустая")
-        return
-
-    total = 0
-
-    for i, part in enumerate(items):
-        try:
-            price = int(part.get("Цена", 0))
-        except:
-            price = 0
-
-        total += price
-
-        text = f"{part.get(name_key)}\n💰 {price} ₽"
-
-        kb = telebot.types.InlineKeyboardMarkup()
-        kb.add(
-            telebot.types.InlineKeyboardButton(
-                "❌ Удалить",
-                callback_data=f"remove_{i}"
-            )
-        )
-
-        bot.send_message(chat_id, text, reply_markup=kb)
-
-    bot.send_message(chat_id, f"💰 Итого: {total} ₽")
-
-    # кнопка оформления
-    kb = telebot.types.InlineKeyboardMarkup()
-    kb.add(
-        telebot.types.InlineKeyboardButton(
-            "🛒 Оформить заказ",
-            callback_data="checkout"
-        )
-    )
-
-    bot.send_message(chat_id, "Оформить заказ?", reply_markup=kb)
-
-
-# ===== КАРТОЧКА ТОВАРА =====
 def send_card(chat_id, index):
-
     results = user_results.get(chat_id, [])
-
-    if not results:
-        return
-
     part = results[index]
 
-    number = part.get(number_key, "")
-    name = part.get(name_key, "")
-    brand = part.get("Марка", "")
+    name = part.get(name_key, "Нет")
     article = part.get("Артикул", "")
-    model = part.get("Модель", "")
+    number = part.get(number_key, "")
     price = part.get("Цена", "")
-    status = part.get("Статус", "")
-    photos = str(part.get(photo_key, "")).strip()
+    photos = str(part.get(photo_key, ""))
 
-    text = (
-        f"🔧 {name}\n"
-        f"Артикул: {article}\n"
-        f"Номер: {number}\n"
-        f"Авто: {brand} {model}\n"
-        f"Цена: {price} ₽\n"
-        f"{status}\n\n"
-        f"({index+1} из {len(results)})"
+    text = f"{name}\nАртикул: {article}\nНомер: {number}\nЦена: {price} ₽\n({index+1}/{len(results)})"
+
+    kb = telebot.types.InlineKeyboardMarkup()
+    kb.add(
+        telebot.types.InlineKeyboardButton("⬅️", callback_data=f"prev_{index}"),
+        telebot.types.InlineKeyboardButton("➡️", callback_data=f"next_{index}")
+    )
+    kb.add(
+        telebot.types.InlineKeyboardButton("❤️", callback_data=f"fav_{index}"),
+        telebot.types.InlineKeyboardButton("🛒", callback_data=f"cart_{index}")
     )
 
-    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-
-    prev_btn = telebot.types.InlineKeyboardButton("⬅️", callback_data=f"prev_{index}")
-    next_btn = telebot.types.InlineKeyboardButton("➡️", callback_data=f"next_{index}")
-
-    fav_btn = telebot.types.InlineKeyboardButton(
-        "❤️ В избранное",
-        callback_data=f"fav_{index}"
-    )
-
-    cart_btn = telebot.types.InlineKeyboardButton(
-        "🛒 В корзину",
-        callback_data=f"cart_{index}"
-    )
-
-    order_btn = telebot.types.InlineKeyboardButton(
-        "🛒 Заказать",
-        callback_data=f"order_{index}"
-    )
-
-    manager_btn = telebot.types.InlineKeyboardButton(
-        "💬 Связаться с менеджером",
-        url="https://t.me/Stuttgart_mercedes"
-    )
-
-    kb.add(prev_btn, next_btn)
-    kb.add(fav_btn, cart_btn)
-    kb.add(order_btn)
-    kb.add(manager_btn)
-    
-    try:
-
-        if photos:
-
-            photo_list = [x.strip() for x in photos.split(",") if x.strip()]
-            photo_list = photo_list[:8]
-
-            media = []
-
-            for i, photo_url in enumerate(photo_list):
-
-                if i == 0:
-                    media.append(
-                        telebot.types.InputMediaPhoto(
-                            media=photo_url,
-                            caption=text
-                        )
-                    )
-                else:
-                    media.append(
-                        telebot.types.InputMediaPhoto(photo_url)
-                    )
-
-            bot.send_media_group(chat_id, media)
-
-            bot.send_message(chat_id, "⬅️➡️ Листайте детали", reply_markup=kb)
-
-        else:
-
-            bot.send_message(chat_id, text, reply_markup=kb)
-
-    except Exception as e:
-
-        print("Ошибка фото:", e)
+    if photos:
+        photo = photos.split(",")[0].strip()
+        bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
+    else:
         bot.send_message(chat_id, text, reply_markup=kb)
 
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
-
     data = call.data
     chat_id = call.message.chat.id
-
-    # ===== ИЗБРАННОЕ =====
-
-    if data.startswith("fav_remove_"):
-        article = data.replace("fav_remove_", "")
-    
-        items = user_favorites.get(chat_id, [])
-    
-        # удаляем товар
-        user_favorites[chat_id] = [p for p in items if str(p.get("Артикул")) != article]
-    
-        bot.answer_callback_query(call.id, "❌ Удалено из избранного")
-        bot.send_message(chat_id, "Обновлено. Нажмите ❤️ Избранное")
-    
-        return
-
-
-# ===== ДОБАВИТЬ В КОРЗИНУ =====
-
-    if data.startswith("cart_add_"):
-        article = data.replace("cart_add_", "")
-    
-        # ищем товар в избранном или результатах
-        all_items = user_favorites.get(chat_id, []) + user_results.get(chat_id, [])
-    
-        for part in all_items:
-            if str(part.get("Артикул")) == article:
-    
-                if chat_id not in user_cart:
-                    user_cart[chat_id] = []
-    
-                user_cart[chat_id].append(part)
-    
-                bot.answer_callback_query(call.id, "🛒 Добавлено в корзину")
-                break
-    
-        return
-
     results = user_results.get(chat_id, [])
-    if not results and not data.startswith(("checkout", "remove")):
-        bot.answer_callback_query(call.id, "❌ Нет данных")
+
+    if data.startswith("fav_"):
+        i = int(data.split("_")[1])
+        user_favorites.setdefault(chat_id, []).append(results[i])
+        bot.answer_callback_query(call.id, "Добавлено ❤️")
         return
 
-    # ===== ОФОРМЛЕНИЕ ЗАКАЗА =====
-    if data == "checkout":
-
-        items = user_cart.get(chat_id, [])
-
-        if not items:
-            bot.answer_callback_query(call.id, "❌ Корзина пустая")
-            return
-
-        text = "🛒 Новый заказ:\n\n"
-        total = 0
-
-        for part in items:
-            try:
-                price = int(part.get("Цена", 0))
-            except:
-                price = 0
-
-            total += price
-            text += f"{part.get(name_key)} — {price} ₽\n"
-
-        text += f"\n💰 Итого: {total} ₽"
-
-        user = call.from_user.username or "без username"
-        text += f"\n\nКлиент: @{user}"
-
-        manager_id = 5053130650
-
-        try:
-            bot.send_message(manager_id, text)
-        except Exception as e:
-            print("Ошибка отправки:", e)
-
-        user_cart[chat_id] = []
-
-        bot.answer_callback_query(call.id, "✅ Заказ отправлен")
-
+    if data.startswith("cart_"):
+        i = int(data.split("_")[1])
+        user_cart.setdefault(chat_id, []).append(results[i])
+        bot.answer_callback_query(call.id, "Добавлено 🛒")
         return
 
-    # ===== КНОПКА ЗАКАЗА =====
-    if "order" in data:
+    if data.startswith("next_") or data.startswith("prev_"):
+        i = int(data.split("_")[1])
+        i = i + 1 if "next" in data else i - 1
 
-        index = int(data.split("_")[1])
-        part = results[index]
+        if i < 0: i = len(results)-1
+        if i >= len(results): i = 0
 
-        name = part.get(name_key, "")
-        article = part.get("Артикул", "")
-        price = part.get("Цена", "")
-
-        username = call.from_user.username or "нет username"
-        first_name = call.from_user.first_name
-        user_id = call.from_user.id
+        bot.delete_message(chat_id, call.message.message_id)
+        send_card(chat_id, i)
 
 
-        text = (
-    "🛒 Новый заказ\n\n"
-    f"Деталь: {name}\n"
-    f"Артикул: {article}\n"
-    f"Цена: {price} ₽\n\n"
-    f"Клиент: {first_name}\n"
-    f"Username: @{username}\n"
-    f"ID: {user_id}"
-)
-
-        manager_id = 5053130650
-
-        try:
-            bot.send_message(manager_id, text)
-        except Exception as e:
-            print("Ошибка отправки менеджеру:", e)
-
-        bot.answer_callback_query(
-            call.id,
-            "✅ Заказ отправлен менеджеру"
-        )
-
-        return
-
-    # ===== НАВИГАЦИЯ ПО ТОВАРАМ =====
-    index = int(data.split("_")[1])
-
-    if "next" in data:
-        index += 1
-    else:
-        index -= 1
-
-    if index < 0:
-        index = len(results) - 1
-
-    if index >= len(results):
-        index = 0
-
-    bot.delete_message(chat_id, call.message.message_id)
-
-    send_card(chat_id, index)
-
-    # ===== ИЗБРАННОЕ =====
-    if "fav" in data:
-
-      index = int(data.split("_")[1])
-      part = results[index]
-
-      if chat_id not in user_favorites:
-        user_favorites[chat_id] = []
-
-      user_favorites[chat_id].append(part)
-
-      bot.answer_callback_query(call.id, "❤️ Добавлено в избранное")
-      return
-
-
-    # ===== КОРЗИНА =====
-    if "cart" in data:
-
-      index = int(data.split("_")[1])
-      part = results[index]
-
-      if chat_id not in user_cart:
-        user_cart[chat_id] = []
-
-      user_cart[chat_id].append(part)
-
-      bot.answer_callback_query(call.id, "🛒 Добавлено в корзину")
-      return
-  # ===== УДАЛЕНИЕ ИЗ КОРЗИНЫ =====
-    if "remove" in data:
-
-      index = int(data.split("_")[1])
-
-      if chat_id in user_cart and len(user_cart[chat_id]) > index:
-          user_cart[chat_id].pop(index)
-
-      bot.answer_callback_query(call.id, "❌ Удалено из корзины")
-
-    # обновляем корзину
-    show_cart(call.message)
-
-    return
 if __name__ == "__main__":
-
     load_database()
-
-    print("BOT STARTED")
-
     bot.infinity_polling()

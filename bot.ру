@@ -48,21 +48,25 @@ def load_database():
     global parts_db, wheels_db, number_key, name_key, photo_key
 
     parts_db, headers = load_csv(PARTS_CSV)
-    wheels_db, _ = load_csv(WHEELS_CSV)
+    wheels_db, headers2 = load_csv(WHEELS_CSV)
 
+    # 🔥 принудительно задаём ключи (фикс бага)
     for h in headers:
         h_low = h.lower()
 
-        if "номер" in h_low or "артикул" in h_low:
+        if "артикул" in h_low or "номер" in h_low:
             number_key = h
 
-        if "наимен" in h_low:
+        if "наимен" in h_low or "название" in h_low:
             name_key = h
 
-        if "фото" in h_low:
+        if "фото" in h_low or "image" in h_low:
             photo_key = h
 
-    print("Базы загружены")
+    print("Найденные ключи:")
+    print("NAME:", name_key)
+    print("NUMBER:", number_key)
+    print("PHOTO:", photo_key)
 
 
 # ===== ПОИСК =====
@@ -201,7 +205,10 @@ def show_cart(message):
             reply_markup=kb
         )
 
-    bot.send_message(message.chat.id, f"💰 Итого: {total} ₽")
+        bot.send_message(
+            message.chat.id,
+            f"{part.get(name_key) or 'Без названия'}\n💰 {part.get('Цена')} ₽"
+        )
 
 
 # ===== CALLBACK =====

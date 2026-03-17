@@ -19,6 +19,14 @@ photo_key = None
 # хранение результатов поиска
 user_results = {}
 
+def main_menu():
+
+    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    kb.row("🚗 Найти запчасть")
+    kb.row("❤️ Избранное","🛒 Корзина")
+
+    return kb
 
 def load_database():
 

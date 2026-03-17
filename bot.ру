@@ -15,8 +15,6 @@ user_favorites = {}
 user_cart = {}
 user_results = {}
 current_mode = {}
-user_mode[chat_id] = "parts"   # запчасти
-user_mode[chat_id] = "wheels"  # диски
 
 parts_db = []
 wheels_db = []

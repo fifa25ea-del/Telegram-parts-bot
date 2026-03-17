@@ -277,7 +277,7 @@ def show_favorites(message):
         bot.send_message(chat_id, "❌ Избранное пусто")
         return
 
-    for part in items:
+    for index, part in enumerate(items):
 
         name = part.get(name_key) or part.get("Наименование") or "Без названия"
         article = part.get("Артикул", "Нет артикула")
@@ -296,10 +296,21 @@ def show_favorites(message):
             f"💰 Цена: {price} ₽"
         )
 
+        item_id = part.get("Артикул") or str(index)
+
+        kb = telebot.types.InlineKeyboardMarkup()
+
+        kb.add(
+            telebot.types.InlineKeyboardButton(
+                "💔 Убрать",
+                callback_data=f"removefav_{item_id}"
+            )
+        )
+
         if photo:
-            bot.send_photo(chat_id, photo, caption=text)
+            bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
         else:
-            bot.send_message(chat_id, text)
+            bot.send_message(chat_id, text, reply_markup=kb)
 
 # ===== КОРЗИНА =====
 @bot.message_handler(func=lambda m: m.text == "🛒 Корзина")

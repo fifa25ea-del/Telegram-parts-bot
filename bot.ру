@@ -293,31 +293,31 @@ def callback(call):
     # ===== ИЗБРАННОЕ =====
     if "fav" in data:
 
-    index = int(data.split("_")[1])
-    part = results[index]
+      index = int(data.split("_")[1])
+      part = results[index]
 
-    if chat_id not in user_favorites:
+      if chat_id not in user_favorites:
         user_favorites[chat_id] = []
 
-    user_favorites[chat_id].append(part)
+      user_favorites[chat_id].append(part)
 
-    bot.answer_callback_query(call.id, "❤️ Добавлено в избранное")
-    return
+      bot.answer_callback_query(call.id, "❤️ Добавлено в избранное")
+      return
 
 
     # ===== КОРЗИНА =====
     if "cart" in data:
 
-    index = int(data.split("_")[1])
-    part = results[index]
+      index = int(data.split("_")[1])
+      part = results[index]
 
-    if chat_id not in user_cart:
+      if chat_id not in user_cart:
         user_cart[chat_id] = []
 
-    user_cart[chat_id].append(part)
+      user_cart[chat_id].append(part)
 
-    bot.answer_callback_query(call.id, "🛒 Добавлено в корзину")
-    return
+      bot.answer_callback_query(call.id, "🛒 Добавлено в корзину")
+      return
 
 if __name__ == "__main__":
 

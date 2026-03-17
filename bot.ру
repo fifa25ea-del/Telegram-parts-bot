@@ -168,8 +168,7 @@ def smart_search(msg):
 def search(msg):
 
     chat_id = msg.chat.id
-    mode = current_mode.
-    get(chat_id, "parts")
+    mode = current_mode.get(chat_id, "parts")
 
     db = parts_db if mode == "parts" else wheels_db
 

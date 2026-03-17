@@ -3,6 +3,10 @@ import telebot
 import csv
 import requests
 import io
+import re
+
+def split_words(text):
+    return re.findall(r'\w+', text.lower())
 
 # ===== НАСТРОЙКИ =====
 TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
@@ -79,13 +83,16 @@ def load_database():
 
 # ===== ПОИСК =====
 def find_part(query, db):
-    query = query.lower().strip()
+
+    query_words = split_words(query)
     results = []
 
     for part in db:
-        text = " ".join(str(v).lower() for v in part.values())
+        text = str(part).lower()
+        words = split_words(text)
 
-        if query in text:
+        # 🔥 проверяем, чтобы ВСЕ слова совпали ТОЧНО
+        if all(q in words for q in query_words):
             results.append(part)
 
         if len(results) >= 20:

@@ -29,7 +29,7 @@ def main_menu():
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row("🚗 Найти запчасть")
     kb.row("🛞 Шины и диски")
-    kb.row("❤️ Избранное", "🛒 Корзина")
+    kb.row("❤️ Избранное")
     return kb
 
 
@@ -213,7 +213,8 @@ def send_with_photo(chat_id, text, photos, index):
 
     kb.add(
         telebot.types.InlineKeyboardButton("❤️", callback_data=f"fav_{index}"),
-        telebot.types.InlineKeyboardButton("🛒", callback_data=f"cart_{index}")
+    kb.add(
+        telebot.types.InlineKeyboardButton("💬 Менеджер", url="https://t.me/Stuttgart_mercedes")
     )
 
     try:
@@ -357,16 +358,6 @@ def callback(call):
 
         return
 
-    # =======================
-    # 🛒 КОРЗИНА
-    # =======================
-    if data.startswith("cart_"):
-        user_cart.setdefault(chat_id, [])
-
-        user_cart[chat_id].append(item)
-        bot.answer_callback_query(call.id, "🛒 Добавлено")
-
-        return
 
     # =======================
     # ❌ УДАЛЕНИЕ

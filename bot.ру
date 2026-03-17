@@ -424,7 +424,7 @@ if data == "checkout":
       bot.answer_callback_query(call.id, "🛒 Добавлено в корзину")
       return
   # ===== УДАЛЕНИЕ ИЗ КОРЗИНЫ =====
-if "remove" in data:
+    if "remove" in data:
 
     index = int(data.split("_")[1])
 

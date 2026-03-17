@@ -93,11 +93,16 @@ def keyboard():
 
 @bot.message_handler(commands=["start"])
 def start(msg):
+ 
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+
+    markup.add("🚗 Найти запчасть")
+    markup.add("❤️ Избранное", "🛒 Корзина")
 
     bot.send_message(
-        msg.chat.id,
-        "🚗 Бот поиска автозапчастей",
-        reply_markup=keyboard()
+        message.chat.id,
+        "Выберите действие:",
+        reply_markup=markup
     )
 
 
@@ -119,6 +124,70 @@ def search(msg):
     user_results[msg.chat.id] = results
 
     send_card(msg.chat.id, 0)
+
+@bot.message_handler(func=lambda m: m.text == "❤️ Избранное")
+def show_favorites(message):
+
+    items = user_favorites.get(message.chat.id, [])
+
+    if not items:
+        bot.send_message(message.chat.id, "❌ Избранное пусто")
+        return
+
+    text = "❤️ Избранное:\n\n"
+
+    for i, part in enumerate(items, 1):
+        text += f"{i}. {part.get(name_key)} — {part.get('Цена')} ₽\n"
+
+    bot.send_message(message.chat.id, text)
+
+@bot.message_handler(func=lambda m: m.text == "🛒 Корзина")
+def show_cart(message):
+
+    chat_id = message.chat.id
+    items = user_cart.get(chat_id, [])
+
+    if not items:
+        bot.send_message(chat_id, "❌ Корзина пустая")
+        return
+
+    total = 0
+
+    for i, part in enumerate(items):
+        try:
+            price = int(part.get("Цена", 0))
+        except:
+            price = 0
+
+        total += price
+
+        text = f"{part.get(name_key)}\n💰 {price} ₽"
+
+        kb = telebot.types.InlineKeyboardMarkup()
+
+        kb.add(
+            telebot.types.InlineKeyboardButton(
+                "❌ Удалить",
+                callback_data=f"remove_{i}"
+            )
+        )
+
+        bot.send_message(chat_id, text, reply_markup=kb)
+
+    bot.send_message(chat_id, f"💰 Итого: {total} ₽")
+
+    # кнопка оформления
+    kb = telebot.types.InlineKeyboardMarkup()
+    kb.add(
+        telebot.types.InlineKeyboardButton(
+            "🛒 Оформить заказ",
+            callback_data="checkout"
+        )
+    )
+
+    bot.send_message(chat_id, "Оформить заказ?", reply_markup=kb)
+
+    bot.send_message(message.chat.id, text)
 
 
 def send_card(chat_id, index):
@@ -228,10 +297,46 @@ def callback(call):
     data = call.data
     chat_id = call.message.chat.id
 
-    results = user_results.get(chat_id)
+   # ===== ОФОРМЛЕНИЕ ЗАКАЗА =====
+if data == "checkout":
 
-    if not results:
+    items = user_cart.get(chat_id, [])
+
+    if not items:
+        bot.answer_callback_query(call.id, "❌ Корзина пустая")
         return
+
+    text = "🛒 Новый заказ:\n\n"
+    total = 0
+
+    for part in items:
+        try:
+            price = int(part.get("Цена", 0))
+        except:
+            price = 0
+
+        total += price
+
+        text += f"{part.get(name_key)} — {price} ₽\n"
+
+    text += f"\n💰 Итого: {total} ₽"
+
+    user = call.from_user.username or "без username"
+
+    text += f"\n\nКлиент: @{user}"
+
+    manager_id = 5053130650
+
+    try:
+        bot.send_message(manager_id, text)
+    except Exception as e:
+        print("Ошибка отправки:", e)
+
+    user_cart[chat_id] = []
+
+    bot.answer_callback_query(call.id, "✅ Заказ отправлен")
+
+    return
 
     # ===== КНОПКА ЗАКАЗА =====
     if "order" in data:
@@ -318,6 +423,20 @@ def callback(call):
 
       bot.answer_callback_query(call.id, "🛒 Добавлено в корзину")
       return
+    # ===== УДАЛЕНИЕ ИЗ КОРЗИНЫ =====
+    if "remove" in data:
+
+    index = int(data.split("_")[1])
+
+    if chat_id in user_cart and len(user_cart[chat_id]) > index:
+        user_cart[chat_id].pop(index)
+
+    bot.answer_callback_query(call.id, "❌ Удалено из корзины")
+
+    # обновляем корзину
+    show_cart(call.message)
+
+    return
 
 if __name__ == "__main__":
 

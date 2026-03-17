@@ -1,5 +1,6 @@
 user_favorites = {}
 user_cart = {}
+user_results = {}
 import telebot
 import csv
 import requests
@@ -165,14 +166,23 @@ def show_favorites(message):
             f"💰 Цена: {price} ₽"
         )
 
+        from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+        # кнопки
+        markup = InlineKeyboardMarkup()
+        markup.add(
+            InlineKeyboardButton("❌ Удалить", callback_data=f"fav_remove_{article}"),
+            InlineKeyboardButton("🛒 В корзину", callback_data=f"cart_add_{article}")
+        )
+
         if photo and photo.startswith("http"):
             try:
-                bot.send_photo(chat_id, photo, caption=text)
+                bot.send_photo(chat_id, photo, caption=text, reply_markup=markup)
             except Exception as e:
                 print("Ошибка фото:", e)
-                bot.send_message(chat_id, text)
+                bot.send_message(chat_id, text, reply_markup=markup)
         else:
-            bot.send_message(chat_id, text)
+            bot.send_message(chat_id, text, reply_markup=markup)
 
 
 # ===== КОРЗИНА =====
@@ -323,6 +333,43 @@ def callback(call):
 
     data = call.data
     chat_id = call.message.chat.id
+
+    # ===== ИЗБРАННОЕ =====
+
+    if data.startswith("fav_remove_"):
+        article = data.replace("fav_remove_", "")
+    
+        items = user_favorites.get(chat_id, [])
+    
+        # удаляем товар
+        user_favorites[chat_id] = [p for p in items if str(p.get("Артикул")) != article]
+    
+        bot.answer_callback_query(call.id, "❌ Удалено из избранного")
+        bot.send_message(chat_id, "Обновлено. Нажмите ❤️ Избранное")
+    
+        return
+
+
+# ===== ДОБАВИТЬ В КОРЗИНУ =====
+
+    if data.startswith("cart_add_"):
+        article = data.replace("cart_add_", "")
+    
+        # ищем товар в избранном или результатах
+        all_items = user_favorites.get(chat_id, []) + user_results.get(chat_id, [])
+    
+        for part in all_items:
+            if str(part.get("Артикул")) == article:
+    
+                if chat_id not in user_cart:
+                    user_cart[chat_id] = []
+    
+                user_cart[chat_id].append(part)
+    
+                bot.answer_callback_query(call.id, "🛒 Добавлено в корзину")
+                break
+    
+        return
 
     results = user_results.get(chat_id, [])
     if not results and not data.startswith(("checkout", "remove")):

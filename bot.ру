@@ -29,7 +29,6 @@ bot = telebot.TeleBot(TOKEN)
 
 favorites = load_favorites()
 user_index = {}
-user_favorites = {}
 user_cart = {}
 user_results = {}
 current_mode = {}
@@ -397,15 +396,21 @@ def callback(call):
     # ❤️ ИЗБРАННОЕ
     # =======================
     if data.startswith("fav_"):
-        user_favorites.setdefault(chat_id, [])
+    user_id = str(chat_id)
 
-        if item not in user_favorites[chat_id]:
-            user_favorites[chat_id].append(item)
-            bot.answer_callback_query(call.id, "❤️ Добавлено")
-        else:
-            bot.answer_callback_query(call.id, "Уже есть")
+    item_id = item.get("Артикул") or str(i)
 
-        return
+    if user_id not in favorites:
+        favorites[user_id] = []
+
+    if item_id in favorites[user_id]:
+        bot.answer_callback_query(call.id, "Уже в избранном")
+    else:
+        favorites[user_id].append(item_id)
+        save_favorites(favorites)
+        bot.answer_callback_query(call.id, "❤️ Добавлено")
+
+    return
 
 
     # =======================

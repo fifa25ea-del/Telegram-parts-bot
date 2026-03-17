@@ -158,18 +158,33 @@ def send_card(chat_id, index):
 @bot.message_handler(func=lambda m: m.text == "❤️ Избранное")
 def show_favorites(message):
 
-    items = user_favorites.get(message.chat.id, [])
+    chat_id = message.chat.id
+    items = user_favorites.get(chat_id, [])
 
     if not items:
-        bot.send_message(message.chat.id, "❌ Пусто")
+        bot.send_message(chat_id, "❌ Избранное пусто")
         return
 
     for part in items:
-        bot.send_message(
-            message.chat.id,
-            f"{part.get(name_key)}\n💰 {part.get('Цена')} ₽"
+
+        name = part.get("Наименование", "Без названия")
+        article = part.get("Артикул", "Нет артикула")
+        number = part.get("Номер", "Нет номера")
+        price = part.get("Цена", "0")
+        photo = part.get("Фото")
+
+        if photo:
+            photos = photo.split(",")
+            photo = photos[0].strip()
+
+        text = (
+            f"❤️ {name}\n"
+            f"🔢 Артикул: {article}\n"
+            f"🆔 Номер: {number}\n"
+            f"💰 Цена: {price} ₽"
         )
 
+        from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # ===== КОРЗИНА =====
 @bot.message_handler(func=lambda m: m.text == "🛒 Корзина")

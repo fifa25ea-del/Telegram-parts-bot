@@ -169,5 +169,6 @@ def callback(call):
 
 
 if __name__ == "__main__":
-    load_database()
-    bot.infinity_polling()
+        load_database()
+        print("BOT STARTED")
+        bot.infinity_polling()

@@ -54,25 +54,17 @@ def ask_ai(q):
         },
         json={
             "model": "mistralai/mistral-7b-instruct:free",
-            "messages": [{"role": "user", "content": q}]
+            "messages": [
+                {"role": "system", "content": "Ты авто-консультант. Помогай и объясняй."},
+                {"role": "user", "content": q}
+            ]
         }
     )
 
     print(response.status_code)
     print(response.text)
-                    "role": "system",
-                    "content": "Ты авто-консультант. Помогай и объясняй."
-                },
-                {
-                    "role": "user",
-                    "content": question
-                }
-            ]
-        }
-    )
 
     data = response.json()
-    print(data)  # 👈 ВОТ ЭТО ВАЖНО
 
     if "choices" not in data:
         return f"Ошибка API:\n{data}"

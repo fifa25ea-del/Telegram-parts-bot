@@ -479,4 +479,6 @@ def callback(call):
 if __name__ == "__main__":
     print("START BOT")
     load_database()
+    print("parts_db:", len(parts_db))
+    print("wheels_db:", len(wheels_db))
     bot.infinity_polling()

@@ -426,12 +426,12 @@ if data == "checkout":
   # ===== УДАЛЕНИЕ ИЗ КОРЗИНЫ =====
     if "remove" in data:
 
-    index = int(data.split("_")[1])
+      index = int(data.split("_")[1])
 
-    if chat_id in user_cart and len(user_cart[chat_id]) > index:
-        user_cart[chat_id].pop(index)
+      if chat_id in user_cart and len(user_cart[chat_id]) > index:
+          user_cart[chat_id].pop(index)
 
-    bot.answer_callback_query(call.id, "❌ Удалено из корзины")
+      bot.answer_callback_query(call.id, "❌ Удалено из корзины")
 
     # обновляем корзину
     show_cart(call.message)

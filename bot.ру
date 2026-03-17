@@ -47,7 +47,9 @@ def ask_ai(question):
     response = requests.post(
         url="https://openrouter.ai/api/v1/chat/completions",
         headers={
-            "Authorization": "Bearer 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",
+            "Authorization": "Bearer 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
+
+",
             "Content-Type": "application/json"
         },
         json={
@@ -55,12 +57,7 @@ def ask_ai(question):
             "messages": [
                 {
                     "role": "system",
-                    "content": (
-                        "Ты авто-консультант.\n"
-                        "Отвечай просто.\n"
-                        "Не продавай.\n"
-                        "Помогай выбрать и объясняй."
-                    )
+                    "content": "Ты авто-консультант. Помогай и объясняй."
                 },
                 {
                     "role": "user",
@@ -71,6 +68,10 @@ def ask_ai(question):
     )
 
     data = response.json()
+    print(data)  # 👈 ВОТ ЭТО ВАЖНО
+
+    if "choices" not in data:
+        return f"Ошибка API:\n{data}"
 
     return data["choices"][0]["message"]["content"]
 

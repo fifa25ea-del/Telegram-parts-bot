@@ -212,10 +212,9 @@ def send_with_photo(chat_id, text, photos, index):
     )
 
     kb.add(
-        telebot.types.InlineKeyboardButton("❤️", callback_data=f"fav_{index}"),
-    kb.add(
-        telebot.types.InlineKeyboardButton("💬 Менеджер", url="https://t.me/Stuttgart_mercedes")
-    )
+    telebot.types.InlineKeyboardButton("❤️", callback_data=f"fav_{index}"),
+    telebot.types.InlineKeyboardButton("💬 Менеджер", url="https://t.me/Stuttgart_mercedes")
+)
 
     try:
         if photos:

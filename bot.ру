@@ -189,7 +189,8 @@ def send_wheel_card(chat_id, index):
         f"🛞 {name}\n\n"
         f"Артикул: {article}\n"
         f"💰 {price} ₽\n\n"
-        f"R{radius} | {width}J | ET{et} | {pcd}\n\n"
+        f"📏 R{radius or '-'} | {width or '-'}J | ET{et or '-'}\n"
+        f"🔩 PCD: {pcd or '-'}\n\n"
         f"({index+1}/{len(results)})"
     )
 

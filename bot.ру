@@ -106,13 +106,14 @@ def start(msg):
     )
 
 
+# ===== ПОИСК КНОПКА =====
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
 def ask(msg):
-
     bot.send_message(msg.chat.id, "Введите номер детали:")
 
 
-@bot.message_handler(func=lambda m: True)
+# ===== ПОИСК (НЕ ЛОВИМ ВСЕ СООБЩЕНИЯ!) =====
+@bot.message_handler(func=lambda m: m.text and len(m.text) > 2 and not m.text.startswith(("🚗", "🛒", "❤️")))
 def search(msg):
 
     results = find_part(msg.text)
@@ -125,6 +126,8 @@ def search(msg):
 
     send_card(msg.chat.id, 0)
 
+
+# ===== ИЗБРАННОЕ =====
 @bot.message_handler(func=lambda m: m.text == "❤️ Избранное")
 def show_favorites(message):
 
@@ -141,6 +144,8 @@ def show_favorites(message):
 
     bot.send_message(message.chat.id, text)
 
+
+# ===== КОРЗИНА =====
 @bot.message_handler(func=lambda m: m.text == "🛒 Корзина")
 def show_cart(message):
 
@@ -164,7 +169,6 @@ def show_cart(message):
         text = f"{part.get(name_key)}\n💰 {price} ₽"
 
         kb = telebot.types.InlineKeyboardMarkup()
-
         kb.add(
             telebot.types.InlineKeyboardButton(
                 "❌ Удалить",
@@ -187,12 +191,11 @@ def show_cart(message):
 
     bot.send_message(chat_id, "Оформить заказ?", reply_markup=kb)
 
-    bot.send_message(message.chat.id, text)
 
-
+# ===== КАРТОЧКА ТОВАРА =====
 def send_card(chat_id, index):
 
-    results = user_results.get(chat_id)
+    results = user_results.get(chat_id, [])
 
     if not results:
         return
@@ -220,28 +223,22 @@ def send_card(chat_id, index):
 
     kb = telebot.types.InlineKeyboardMarkup(row_width=2)
 
-    prev_btn = telebot.types.InlineKeyboardButton(
-        "⬅️",
-        callback_data=f"prev_{index}"
-    )
+    prev_btn = telebot.types.InlineKeyboardButton("⬅️", callback_data=f"prev_{index}")
+    next_btn = telebot.types.InlineKeyboardButton("➡️", callback_data=f"next_{index}")
 
-    next_btn = telebot.types.InlineKeyboardButton(
-        "➡️",
-        callback_data=f"next_{index}"
-    )
     fav_btn = telebot.types.InlineKeyboardButton(
-    "❤️ В избранное",
-    callback_data=f"fav_{index}"
+        "❤️ В избранное",
+        callback_data=f"fav_{index}"
     )
 
     cart_btn = telebot.types.InlineKeyboardButton(
-    "🛒 В корзину",
-    callback_data=f"cart_{index}"
+        "🛒 В корзину",
+        callback_data=f"cart_{index}"
     )
 
     order_btn = telebot.types.InlineKeyboardButton(
-    "🛒 Заказать",
-    callback_data=f"order_{index}"
+        "🛒 Заказать",
+        callback_data=f"order_{index}"
     )
 
     manager_btn = telebot.types.InlineKeyboardButton(
@@ -253,7 +250,7 @@ def send_card(chat_id, index):
     kb.add(fav_btn, cart_btn)
     kb.add(order_btn)
     kb.add(manager_btn)
-
+    
     try:
 
         if photos:

@@ -1,3 +1,20 @@
+import json
+
+FAV_FILE = "favorites.json"
+
+
+def load_favorites():
+    try:
+        with open(FAV_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+
+
+def save_favorites(data):
+    with open(FAV_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
 import telebot
 import csv
 import requests
@@ -10,6 +27,8 @@ WHEELS_CSV = "https://baz-on.ru/export/c592/77023/drom-wheels.csv"
 
 bot = telebot.TeleBot(TOKEN)
 
+user_id = str(call.from_user.id)
+favorites = load_favorites()
 user_index = {}
 user_favorites = {}
 user_cart = {}
@@ -150,6 +169,10 @@ def send_part_card(chat_id, index):
 
     results = user_results.get(chat_id, [])
     part = results[index]
+    user_id = str(chat_id)
+    user_fav = favorites.get(user_id, [])
+
+    item_id = str(index)  # или лучше article
 
     name = part.get(name_key, "")
     article = part.get("Артикул", "")

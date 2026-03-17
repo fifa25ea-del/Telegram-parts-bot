@@ -1,4 +1,4 @@
-imort telebot
+import telebot
 import csv
 import requests
 import io

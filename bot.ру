@@ -312,6 +312,19 @@ def show_favorites(message):
         else:
             bot.send_message(chat_id, text, reply_markup=kb)
 
+@bot.callback_query_handler(func=lambda call: call.data.startswith("removefav_"))
+def remove_favorite(call):
+        user_id = str(call.from_user.id)
+
+        _, item_id = call.data.split("_")
+
+        if user_id in favorites and item_id in favorites[user_id]:
+            favorites[user_id].remove(item_id)
+            save_favorites(favorites)
+
+        bot.answer_callback_query(call.id, "❌ Удалено")
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+
 # ===== КОРЗИНА =====
 @bot.message_handler(func=lambda m: m.text == "🛒 Корзина")
 def show_cart(message):

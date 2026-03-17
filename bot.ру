@@ -148,12 +148,12 @@ def show_favorites(message):
 
     for part in items:
 
-        name = part.get(name_key, "Без названия")
-        article = part.get(number_key, "Нет артикула")
+        name = part.get("Наименование", "Без названия")
+        article = part.get("Артикул", "Нет артикула")
+        number = part.get("Номер", "Нет номера")
         price = part.get("Цена", "0")
-        photo = part.get(photo_key)
+        photo = part.get("Фото")
 
-        # 👇 фикс фото
         if photo:
             photos = photo.split(",")
             photo = photos[0].strip()
@@ -161,8 +161,9 @@ def show_favorites(message):
         text = (
             f"❤️ {name}\n"
             f"🔢 Артикул: {article}\n"
+            f"🆔 Номер: {number}\n"
             f"💰 Цена: {price} ₽"
-    )
+        )
 
         if photo and photo.startswith("http"):
             try:

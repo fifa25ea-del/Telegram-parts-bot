@@ -139,18 +139,30 @@ def search(msg):
 @bot.message_handler(func=lambda m: m.text == "❤️ Избранное")
 def show_favorites(message):
 
-    items = user_favorites.get(message.chat.id, [])
+    chat_id = message.chat.id
+    items = user_favorites.get(chat_id, [])
 
     if not items:
-        bot.send_message(message.chat.id, "❌ Избранное пусто")
+        bot.send_message(chat_id, "❌ Избранное пусто")
         return
 
-    text = "❤️ Избранное:\n\n"
+    for part in items:
 
-    for i, part in enumerate(items, 1):
-        text += f"{i}. {part.get(name_key)} — {part.get('Цена')} ₽\n"
+        name = part.get(name_key, "Без названия")
+        article = part.get(number_key, "Нет артикула")
+        price = part.get("Цена", "0")
+        photo = part.get(photo_key)
 
-    bot.send_message(message.chat.id, text)
+        text = (
+            f"❤️ {name}\n"
+            f"🔢 Артикул: {article}\n"
+            f"💰 Цена: {price} ₽"
+        )
+
+        if photo:
+            bot.send_photo(chat_id, photo, caption=text)
+        else:
+            bot.send_message(chat_id, text)
 
 
 # ===== КОРЗИНА =====

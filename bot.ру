@@ -78,14 +78,34 @@ def load_database():
             photo_key = h
 
 # ===== ПОИСК =====
+def clean(text):
+    return "".join(e for e in text.lower() if e.isalnum())
+
+
 def find_part(query, db):
-    query = query.lower().strip()
+
+    query_clean = clean(query)
     results = []
 
     for part in db:
-        text = " ".join(str(v).lower() for v in part.values())
+        text = " ".join(str(v) for v in part.values())
 
-        if query in text:
+        text_clean = clean(text)
+
+        # 🔥 поиск по очищенному тексту
+        if query_clean in text_clean:
+            results.append(part)
+            continue
+
+        # 🔥 доп: поиск по словам
+        words = query.lower().split()
+        score = 0
+
+        for word in words:
+            if word in text.lower():
+                score += 1
+
+        if score > 0:
             results.append(part)
 
         if len(results) >= 20:

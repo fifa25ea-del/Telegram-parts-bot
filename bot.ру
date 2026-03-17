@@ -396,19 +396,19 @@ def callback(call):
     # ❤️ ИЗБРАННОЕ
     # =======================
     if data.startswith("fav_"):
-    user_id = str(chat_id)
+        user_id = str(chat_id)
 
-    item_id = item.get("Артикул") or str(i)
+        item_id = item.get("Артикул") or str(i)
 
-    if user_id not in favorites:
-        favorites[user_id] = []
+        if user_id not in favorites:
+            favorites[user_id] = []
 
-    if item_id in favorites[user_id]:
-        bot.answer_callback_query(call.id, "Уже в избранном")
-    else:
-        favorites[user_id].append(item_id)
-        save_favorites(favorites)
-        bot.answer_callback_query(call.id, "❤️ Добавлено")
+        if item_id in favorites[user_id]:
+            bot.answer_callback_query(call.id, "Уже в избранном")
+        else:
+            favorites[user_id].append(item_id)
+            save_favorites(favorites)
+            bot.answer_callback_query(call.id, "❤️ Добавлено")
 
     return
 

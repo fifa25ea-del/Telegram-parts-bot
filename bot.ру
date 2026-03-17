@@ -1,3 +1,4 @@
+import erequests
 import json
 
 FAV_FILE = "favorites.json"
@@ -32,6 +33,7 @@ user_index = {}
 user_cart = {}
 user_results = {}
 current_mode = {}
+ai_mode = {}
 
 parts_db = []
 wheels_db = []
@@ -40,6 +42,38 @@ number_key = None
 name_key = None
 photo_key = None
 
+def ask_ai(question):
+
+    response = requests.post(
+        url="https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": "Bearer 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",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": "mistralai/mistral-7b-instruct",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "Ты авто-консультант.\n"
+                        "Отвечай просто.\n"
+                        "Не продавай.\n"
+                        "Помогай выбрать и объясняй."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": question
+                }
+            ]
+        }
+    )
+
+    data = response.json()
+
+    return data["choices"][0]["message"]["content"]
+
 
 # ===== МЕНЮ =====
 def main_menu():
@@ -47,6 +81,7 @@ def main_menu():
     kb.row("🚗 Найти запчасть")
     kb.row("🛞 Шины и диски")
     kb.row("❤️ Избранное")
+    kb.row("🤖 ИИ Консультант")
     return kb
 
 
@@ -86,6 +121,20 @@ def load_database():
     print("NUMBER:", number_key)
     print("PHOTO:", photo_key)
 
+# ===== ИИ ОТВЕТ (СТАВИТЬ СЮДА) =====
+@bot.message_handler(func=lambda m: ai_mode.get(m.chat.id))
+def ai_answer(message):
+
+    try:
+        answer = ask_ai(message.text)
+        bot.send_message(message.chat.id, answer)
+
+    except Exception as e:
+        print(e)
+        bot.send_message(message.chat.id, "Ошибка ИИ")
+
+    ai_mode[message.chat.id] = False
+
 
 # ===== ПОИСК =====
 def find_part(query, db):
@@ -106,6 +155,17 @@ def find_part(query, db):
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=main_menu())
+
+@bot.message_handler(func=lambda m: m.text == "🤖 ИИ Консультант")
+def ai_start(message):
+    ai_mode[message.chat.id] = True
+
+    bot.send_message(
+        message.chat.id,
+        "🤖 Задай вопрос по авто\n\nНапример:\n"
+        "бампер w212 подойдет?\n"
+        "какой мотор надежнее"
+    )
 
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
 def find_parts(message):

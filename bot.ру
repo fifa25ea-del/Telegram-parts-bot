@@ -1,4 +1,4 @@
-import erequests
+import requests
 import json
 
 FAV_FILE = "favorites.json"

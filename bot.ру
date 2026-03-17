@@ -8,6 +8,7 @@ import re
 def split_words(text):
     return re.findall(r'\w+', text.lower())
 
+
 # ===== НАСТРОЙКИ =====
 TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
 PARTS_CSV = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
@@ -88,12 +89,23 @@ def find_part(query, db):
     results = []
 
     for part in db:
-        text = str(part).lower()
-        words = split_words(text)
+        name = str(part.get(name_key, "")).lower()
+        words = split_words(name)
 
-        # 🔥 проверяем, чтобы ВСЕ слова совпали ТОЧНО
-        if all(q in words for q in query_words):
-            results.append(part)
+        # 🔥 ЕСЛИ ОДНО СЛОВО → СТРОГОЕ СОВПАДЕНИЕ
+        if len(query_words) == 1:
+            if query_words[0] in words:
+                
+                # ❌ исключаем "усилитель бампера" и т.д.
+                if len(words) > 2:
+                    continue
+
+                results.append(part)
+
+        # 🔥 ЕСЛИ НЕСКОЛЬКО СЛОВ
+        else:
+            if all(q in words for q in query_words):
+                results.append(part)
 
         if len(results) >= 20:
             break

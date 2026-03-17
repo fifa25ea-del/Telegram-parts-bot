@@ -27,7 +27,6 @@ WHEELS_CSV = "https://baz-on.ru/export/c592/77023/drom-wheels.csv"
 
 bot = telebot.TeleBot(TOKEN)
 
-user_id = str(call.from_user.id)
 favorites = load_favorites()
 user_index = {}
 user_favorites = {}

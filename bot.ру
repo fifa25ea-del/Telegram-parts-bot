@@ -1,37 +1,19 @@
-import requests
-API_KEY = "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"
 import json
-
-FAV_FILE = "favorites.json"
-
-
-def load_favorites():
-    try:
-        with open(FAV_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
-
-
-def save_favorites(data):
-    with open(FAV_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
 import telebot
 import csv
 import requests
 import io
 
+# ===== НАСТРОЙКИ =====
 TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
-
 PARTS_CSV = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 WHEELS_CSV = "https://baz-on.ru/export/c592/77023/drom-wheels.csv"
+FAV_FILE = "favorites.json"
 
 bot = telebot.TeleBot(TOKEN)
 
-favorites = load_favorites()
-user_index = {}
-user_cart = {}
+# ===== ДАННЫЕ =====
+favorites = {}
 user_results = {}
 current_mode = {}
 ai_mode = {}
@@ -43,37 +25,19 @@ number_key = None
 name_key = None
 photo_key = None
 
-def ask_ai(q):
-    response = requests.post(
-        "https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {API_KEY}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "model": "openai/gpt-3.5-turbo",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "Ты авто-консультант. Помогай и объясняй."
-                },
-                {
-                    "role": "user",
-                    "content": q
-                }
-            ]
-        }
-    )
+# ===== ИЗБРАННОЕ =====
+def load_favorites():
+    try:
+        with open(FAV_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
 
-    print(response.status_code)
-    print(response.text)
+def save_favorites(data):
+    with open(FAV_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-    data = response.json()
-
-    if "choices" not in data:
-        return f"Ошибка API:\n{data}"
-
-    return data["choices"][0]["message"]["content"]
+favorites = load_favorites()
 
 # ===== МЕНЮ =====
 def main_menu():
@@ -81,9 +45,8 @@ def main_menu():
     kb.row("🚗 Найти запчасть")
     kb.row("🛞 Шины и диски")
     kb.row("❤️ Избранное")
-    kb.row("🤖 ИИ Консультант")
+    kb.row("🤖 Умный поиск")
     return kb
-
 
 # ===== ЗАГРУЗКА CSV =====
 def load_csv(url):
@@ -96,14 +59,12 @@ def load_csv(url):
 
     return list(reader), reader.fieldnames
 
-
 def load_database():
     global parts_db, wheels_db, number_key, name_key, photo_key
 
     parts_db, headers = load_csv(PARTS_CSV)
     wheels_db, headers2 = load_csv(WHEELS_CSV)
 
-    # 🔥 принудительно задаём ключи (фикс бага)
     for h in headers:
         h_low = h.lower()
 
@@ -116,33 +77,15 @@ def load_database():
         if "фото" in h_low or "image" in h_low:
             photo_key = h
 
-    print("Найденные ключи:")
-    print("NAME:", name_key)
-    print("NUMBER:", number_key)
-    print("PHOTO:", photo_key)
-
-# ===== ИИ ОТВЕТ (СТАВИТЬ СЮДА) =====
-@bot.message_handler(func=lambda m: ai_mode.get(m.chat.id))
-def ai_answer(message):
-
-    try:
-        answer = ask_ai(message.text)
-        bot.send_message(message.chat.id, answer)
-
-    except Exception as e:
-        print(e)
-        bot.send_message(message.chat.id, "Ошибка ИИ")
-
-    ai_mode[message.chat.id] = False
-
-
 # ===== ПОИСК =====
 def find_part(query, db):
-    query = query.lower()
+    query = query.lower().strip()
     results = []
 
     for part in db:
-        if query in str(part).lower():
+        text = " ".join(str(v).lower() for v in part.values())
+
+        if query in text:
             results.append(part)
 
         if len(results) >= 20:
@@ -150,61 +93,63 @@ def find_part(query, db):
 
     return results
 
+def find_smart(query, db):
+    words = query.lower().split()
+    results = []
+
+    for part in db:
+        text = " ".join(str(v).lower() for v in part.values())
+
+        score = 0
+        for word in words:
+            if word in text:
+                score += 1
+
+        if score > 0:
+            results.append((score, part))
+
+    results.sort(key=lambda x: x[0], reverse=True)
+
+    return [r[1] for r in results[:10]]
 
 # ===== СТАРТ =====
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=main_menu())
 
-@bot.message_handler(func=lambda m: m.text == "🤖 ИИ Консультант")
-def ai_start(message):
-    ai_mode[message.chat.id] = True
-
-    bot.send_message(
-        message.chat.id,
-        "🤖 Задай вопрос по авто\n\nНапример:\n"
-        "бампер w212 подойдет?\n"
-        "какой мотор надежнее"
-    )
-
-@bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
-def find_parts(message):
-    chat_id = message.chat.id
-
-    current_mode[chat_id] = "parts"
-
-    bot.send_message(chat_id, "🔎 Введите номер или название запчасти")
-
-@bot.message_handler(func=lambda m: m.text == "🛞 Шины и диски")
-def find_wheels(message):
-    chat_id = message.chat.id
-
-    current_mode[chat_id] = "wheels"
-
-    bot.send_message(chat_id, "🔎 Введите параметры дисков")
-
-
 # ===== РЕЖИМЫ =====
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
 def parts_mode(msg):
-    current_mode[msg.chat.id] = "parts"
-    bot.send_message(msg.chat.id, "Введите номер детали:")
+    chat_id = msg.chat.id
 
+    ai_mode[chat_id] = False
+    current_mode[chat_id] = "parts"
+
+    bot.send_message(chat_id, "🔎 Введите название или номер детали")
 
 @bot.message_handler(func=lambda m: m.text == "🛞 Шины и диски")
 def wheels_mode(msg):
-    current_mode[msg.chat.id] = "wheels"
-    bot.send_message(msg.chat.id, "Введите размер (например r18):")
+    chat_id = msg.chat.id
 
+    ai_mode[chat_id] = False
+    current_mode[chat_id] = "wheels"
 
-# ===== ПОИСК =====
-@bot.message_handler(func=lambda m: m.text and len(m.text) > 2 and not m.text.startswith(("🚗","🛞","🛒","❤️")))
-def search(msg):
+    bot.send_message(chat_id, "🔎 Введите размер (например r18)")
 
-    mode = current_mode.get(msg.chat.id, "parts")
-    db = parts_db if mode == "parts" else wheels_db
+@bot.message_handler(func=lambda m: m.text == "🤖 Умный поиск")
+def smart_mode(msg):
+    chat_id = msg.chat.id
 
-    results = find_part(msg.text, db)
+    ai_mode[chat_id] = True
+    current_mode[chat_id] = None
+
+    bot.send_message(chat_id, "🤖 Напиши что ищешь\n\nПример:\nбампер w212")
+
+# ===== УМНЫЙ ПОИСК =====
+@bot.message_handler(func=lambda m: ai_mode.get(m.chat.id))
+def smart_search(msg):
+
+    results = find_smart(msg.text, parts_db + wheels_db)
 
     if not results:
         bot.send_message(msg.chat.id, "❌ Ничего не найдено")
@@ -213,6 +158,29 @@ def search(msg):
     user_results[msg.chat.id] = results
     send_card(msg.chat.id, 0)
 
+# ===== ОБЫЧНЫЙ ПОИСК =====
+@bot.message_handler(func=lambda m: (
+    not ai_mode.get(m.chat.id)
+    and m.text
+    and len(m.text) > 2
+    and not m.text.startswith(("🚗","🛞","❤️","🤖"))
+))
+def search(msg):
+
+    chat_id = msg.chat.id
+    mode = current_mode.
+    get(chat_id, "parts")
+
+    db = parts_db if mode == "parts" else wheels_db
+
+    results = find_part(msg.text, db)
+
+    if not results:
+        bot.send_message(chat_id, "❌ Ничего не найдено")
+        return
+
+    user_results[chat_id] = results
+    send_card(chat_id, 0)
 
 # ===== КАРТОЧКА =====
 def send_card(chat_id, index):

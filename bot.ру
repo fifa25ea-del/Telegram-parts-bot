@@ -3,7 +3,7 @@ import csv
 import requests
 import io
 
-TOKEN = "8668461577:AAHisD8fV_0GqXAXoU57FXOeexTi2x1yI74"
+TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
 
 PARTS_CSV = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 WHEELS_CSV = "https://baz-on.ru/export/c592/77023/drom-wheels.csv"
@@ -169,6 +169,12 @@ def callback(call):
 
 
 if __name__ == "__main__":
+      print("STARTING BOT...")
+    
+    try:
         load_database()
-        print("BOT STARTED")
+        print("DATABASE LOADED")
+
         bot.infinity_polling()
+    except Exception as e:
+        print("ERROR:", e)

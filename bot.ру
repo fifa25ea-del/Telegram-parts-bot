@@ -49,14 +49,18 @@ def ask_ai(q):
         headers={
             "Authorization": f"Bearer {API_KEY}",
             "Content-Type": "application/json",
-            "HTTP-Referer": "http://localhost",
-            "X-Title": "MyBot"
         },
         json={
-            "model": "mistralai/mistral-7b-instruct:free",
+            "model": "openchat/openchat-7b:free",
             "messages": [
-                {"role": "system", "content": "Ты авто-консультант. Помогай и объясняй."},
-                {"role": "user", "content": q}
+                {
+                    "role": "system",
+                    "content": "Ты авто-консультант. Помогай и объясняй."
+                },
+                {
+                    "role": "user",
+                    "content": q
+                }
             ]
         }
     )
@@ -70,7 +74,6 @@ def ask_ai(q):
         return f"Ошибка API:\n{data}"
 
     return data["choices"][0]["message"]["content"]
-
 
 # ===== МЕНЮ =====
 def main_menu():

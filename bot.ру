@@ -173,24 +173,30 @@ def send_part_card(chat_id, index):
 def send_wheel_card(chat_id, index):
 
     results = user_results.get(chat_id, [])
+    if not results:
+        return
+
     part = results[index]
 
-    name = part.get("Наименование") or part.get("name")
-    article = part.get("Артикул") or part.get("article")
-    price = part.get("Цена") or part.get("price")
-    photos = str(part.get("Фото") or part.get("photo") or "").strip()
+    brand = part.get("Производитель диска", "")
+    model = part.get("Модель диска", "")
+    article = part.get("Артикул", "")
+    price = part.get("Цена", "")
+    photos = str(part.get("Фото", "")).strip()
 
-    radius = part.get("Диаметр (R)") or part.get("R")
-    width = part.get("Ширина")
-    pcd = part.get("PCD")
-    et = part.get("ET") or part.get("Вылет (ET)")
+    radius = part.get("Диаметр диска", "")
+    width = part.get("Ширина диска", "")
+    et = part.get("Вылет диска", "")
+    pcd = part.get("PCD диска", "")
+    dia = part.get("Диаметр осевого отверстия диска", "")
 
     text = (
-        f"🛞 {name}\n\n"
+        f"🛞 {brand} {model}\n\n"
         f"Артикул: {article}\n"
         f"💰 {price} ₽\n\n"
         f"📏 R{radius or '-'} | {width or '-'}J | ET{et or '-'}\n"
-        f"🔩 PCD: {pcd or '-'}\n\n"
+        f"🔩 PCD: {pcd or '-'}\n"
+        f"🕳 DIA: {dia or '-'}\n\n"
         f"({index+1}/{len(results)})"
     )
 

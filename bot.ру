@@ -140,7 +140,7 @@ def search(msg):
 # ===== КАРТОЧКА =====
 def send_card(chat_id, index):
 
-    mode = user_mode.get(chat_id, "parts")
+    mode = current_mode.get(chat_id, "parts")
 
     if mode == "wheels":
         send_wheel_card(chat_id, index)

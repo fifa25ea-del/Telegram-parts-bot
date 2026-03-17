@@ -423,8 +423,8 @@ if data == "checkout":
 
       bot.answer_callback_query(call.id, "🛒 Добавлено в корзину")
       return
-    # ===== УДАЛЕНИЕ ИЗ КОРЗИНЫ =====
-    if "remove" in data:
+  # ===== УДАЛЕНИЕ ИЗ КОРЗИНЫ =====
+if "remove" in data:
 
     index = int(data.split("_")[1])
 
@@ -437,7 +437,6 @@ if data == "checkout":
     show_cart(call.message)
 
     return
-
 if __name__ == "__main__":
 
     load_database()

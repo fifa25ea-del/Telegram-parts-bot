@@ -271,13 +271,21 @@ def send_with_photo(chat_id, text, photos, index):
 def show_favorites(message):
 
     chat_id = message.chat.id
-    items = user_favorites.get(chat_id, [])
+    user_id = str(chat_id)
 
-    if not items:
+    fav_ids = favorites.get(user_id, [])
+
+    if not fav_ids:
         bot.send_message(chat_id, "❌ Избранное пусто")
         return
 
-    for index, part in enumerate(items):
+    results = user_results.get(chat_id, [])
+
+    for part in results:
+        item_id = part.get("Артикул") or str(part)
+
+        if item_id not in fav_ids:
+            continue
 
         name = part.get(name_key) or part.get("Наименование") or "Без названия"
         article = part.get("Артикул", "Нет артикула")
@@ -286,20 +294,16 @@ def show_favorites(message):
         photo = part.get(photo_key) or part.get("Фото")
 
         if photo:
-            photos = photo.split(",")
-            photo = photos[0].strip()
+            photo = photo.split(",")[0].strip()
 
         text = (
             f"❤️ {name}\n"
-            f"🔢 Артикул: {article}\n"
+            f"🧾 Артикул: {article}\n"
             f"🆔 Номер: {number}\n"
             f"💰 Цена: {price} ₽"
         )
 
-        item_id = part.get("Артикул") or str(index)
-
         kb = telebot.types.InlineKeyboardMarkup()
-
         kb.add(
             telebot.types.InlineKeyboardButton(
                 "💔 Убрать",

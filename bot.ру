@@ -297,44 +297,44 @@ def callback(call):
     data = call.data
     chat_id = call.message.chat.id
 
-   # ===== ОФОРМЛЕНИЕ ЗАКАЗА =====
-if data == "checkout":
+    # ===== ОФОРМЛЕНИЕ ЗАКАЗА =====
+    if data == "checkout":
 
-    items = user_cart.get(chat_id, [])
+        items = user_cart.get(chat_id, [])
 
-    if not items:
-        bot.answer_callback_query(call.id, "❌ Корзина пустая")
-    return
+        if not items:
+            bot.answer_callback_query(call.id, "❌ Корзина пустая")
+            return
 
-    text = "🛒 Новый заказ:\n\n"
-    total = 0
+        text = "🛒 Новый заказ:\n\n"
+        total = 0
 
-    for part in items:
+        for part in items:
+            try:
+                price = int(part.get("Цена", 0))
+            except:
+                price = 0
+
+            total += price
+            text += f"{part.get(name_key)} — {price} ₽\n"
+
+        text += f"\n💰 Итого: {total} ₽"
+
+        user = call.from_user.username or "без username"
+        text += f"\n\nКлиент: @{user}"
+
+        manager_id = 5053130650
+
         try:
-            price = int(part.get("Цена", 0))
-        except:
-            price = 0
+            bot.send_message(manager_id, text)
+        except Exception as e:
+            print("Ошибка отправки:", e)
 
-        total += price
-        text += f"{part.get(name_key)} — {price} ₽\n"
+        user_cart[chat_id] = []
 
-    text += f"\n💰 Итого: {total} ₽"
+        bot.answer_callback_query(call.id, "✅ Заказ отправлен")
 
-    user = call.from_user.username or "без username"
-    text += f"\n\nКлиент: @{user}"
-
-    manager_id = 5053130650
-
-    try:
-        bot.send_message(manager_id, text)
-    except Exception as e:
-        print("Ошибка отправки:", e)
-
-    user_cart[chat_id] = []
-
-    bot.answer_callback_query(call.id, "✅ Заказ отправлен")
-
-    return
+        return
 
     # ===== КНОПКА ЗАКАЗА =====
     if "order" in data:

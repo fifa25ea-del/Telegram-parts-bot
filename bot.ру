@@ -1,3 +1,5 @@
+user_favorites = {}
+user_cart = {}
 import telebot
 import csv
 import requests
@@ -158,11 +160,20 @@ def send_card(chat_id, index):
         "➡️",
         callback_data=f"next_{index}"
     )
+    fav_btn = telebot.types.InlineKeyboardButton(
+    "❤️ В избранное",
+    callback_data=f"fav_{index}"
+    )
+
+    cart_btn = telebot.types.InlineKeyboardButton(
+    "🛒 В корзину",
+    callback_data=f"cart_{index}"
+    )
 
     order_btn = telebot.types.InlineKeyboardButton(
     "🛒 Заказать",
     callback_data=f"order_{index}"
-)
+    )
 
     manager_btn = telebot.types.InlineKeyboardButton(
         "💬 Связаться с менеджером",
@@ -170,6 +181,7 @@ def send_card(chat_id, index):
     )
 
     kb.add(prev_btn, next_btn)
+    kb.add(fav_btn, cart_btn)
     kb.add(order_btn)
     kb.add(manager_btn)
 
@@ -277,6 +289,35 @@ def callback(call):
     bot.delete_message(chat_id, call.message.message_id)
 
     send_card(chat_id, index)
+
+    # ===== ИЗБРАННОЕ =====
+    if "fav" in data:
+
+    index = int(data.split("_")[1])
+    part = results[index]
+
+    if chat_id not in user_favorites:
+        user_favorites[chat_id] = []
+
+    user_favorites[chat_id].append(part)
+
+    bot.answer_callback_query(call.id, "❤️ Добавлено в избранное")
+    return
+
+
+    # ===== КОРЗИНА =====
+    if "cart" in data:
+
+    index = int(data.split("_")[1])
+    part = results[index]
+
+    if chat_id not in user_cart:
+        user_cart[chat_id] = []
+
+    user_cart[chat_id].append(part)
+
+    bot.answer_callback_query(call.id, "🛒 Добавлено в корзину")
+    return
 
 if __name__ == "__main__":
 

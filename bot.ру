@@ -193,7 +193,7 @@ def callback(call):
     send_card(chat_id, index)
 
 # ===== ЗАПУСК =====
-if name == "__main__":
+if __name__ == "__main__":
     print("Бот запущен")
     load_database()
     bot.infinity_polling()

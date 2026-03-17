@@ -148,21 +148,25 @@ def show_favorites(message):
 
     for part in items:
 
-        name = part.get(name_key, "Без названия")
-        article = part.get(number_key, "Нет артикула")
-        price = part.get("Цена", "0")
-        photo = part.get(photo_key)
+    name = part.get(name_key, "Без названия")
+    article = part.get(number_key, "Нет артикула")
+    price = part.get("Цена", "0")
+    photo = part.get(photo_key)
 
-        text = (
-            f"❤️ {name}\n"
-            f"🔢 Артикул: {article}\n"
-            f"💰 Цена: {price} ₽"
-        )
+    text = (
+        f"❤️ {name}\n"
+        f"🔢 Артикул: {article}\n"
+        f"💰 Цена: {price} ₽"
+    )
 
-        if photo:
+    if photo and isinstance(photo, str) and photo.startswith("http"):
+        try:
             bot.send_photo(chat_id, photo, caption=text)
-        else:
+        except Exception as e:
+            print("Ошибка фото:", e)
             bot.send_message(chat_id, text)
+    else:
+        bot.send_message(chat_id, text)
 
 
 # ===== КОРЗИНА =====

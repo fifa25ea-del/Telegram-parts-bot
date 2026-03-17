@@ -141,32 +141,77 @@ def send_card(chat_id, index):
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
+
     data = call.data
     chat_id = call.message.chat.id
     results = user_results.get(chat_id, [])
 
+    # ===== ИЗБРАННОЕ =====
     if data.startswith("fav_"):
-        i = int(data.split("_")[1])
-        user_favorites.setdefault(chat_id, []).append(results[i])
-        bot.answer_callback_query(call.id, "Добавлено ❤️")
+        index = int(data.split("_")[1])
+
+        if chat_id not in user_favorites:
+            user_favorites[chat_id] = []
+
+        user_favorites[chat_id].append(results[index])
+
+        bot.answer_callback_query(call.id, "❤️ Добавлено в избранное")
         return
 
+    # ===== КОРЗИНА =====
     if data.startswith("cart_"):
-        i = int(data.split("_")[1])
-        user_cart.setdefault(chat_id, []).append(results[i])
-        bot.answer_callback_query(call.id, "Добавлено 🛒")
+        index = int(data.split("_")[1])
+
+        if chat_id not in user_cart:
+            user_cart[chat_id] = []
+
+        user_cart[chat_id].append(results[index])
+
+        bot.answer_callback_query(call.id, "🛒 Добавлено в корзину")
         return
 
-    if data.startswith("next_") or data.startswith("prev_"):
-        i = int(data.split("_")[1])
-        i = i + 1 if "next" in data else i - 1
+    # ===== УДАЛЕНИЕ ИЗ ИЗБРАННОГО =====
+    if data.startswith("fav_remove_"):
+        article = data.replace("fav_remove_", "")
 
-        if i < 0: i = len(results)-1
-        if i >= len(results): i = 0
+        user_favorites[chat_id] = [
+            p for p in user_favorites.get(chat_id, [])
+            if str(p.get("Артикул")) != article
+        ]
+
+        bot.answer_callback_query(call.id, "❌ Удалено из избранного")
+        bot.send_message(chat_id, "Обновлено ❤️")
+        return
+
+    # ===== УДАЛЕНИЕ ИЗ КОРЗИНЫ =====
+    if data.startswith("remove_"):
+        index = int(data.split("_")[1])
+
+        if chat_id in user_cart and len(user_cart[chat_id]) > index:
+            user_cart[chat_id].pop(index)
+
+        bot.answer_callback_query(call.id, "❌ Удалено")
+        show_cart(call.message)
+        return
+
+    # ===== НАВИГАЦИЯ =====
+    if data.startswith("next_") or data.startswith("prev_"):
+
+        index = int(data.split("_")[1])
+
+        if "next" in data:
+            index += 1
+        else:
+            index -= 1
+
+        if index < 0:
+            index = len(results) - 1
+        if index >= len(results):
+            index = 0
 
         bot.delete_message(chat_id, call.message.message_id)
-        send_card(chat_id, i)
-
+        send_card(chat_id, index)
+        return
 
 if __name__ == "__main__":
     print("STARTING BOT...")

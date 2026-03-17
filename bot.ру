@@ -13,17 +13,17 @@ bot = telebot.TeleBot(TOKEN)
 user_favorites = {}
 user_cart = {}
 user_results = {}
+current_mode = {}
 
 parts_db = []
 wheels_db = []
-
-current_mode = {}
 
 number_key = None
 name_key = None
 photo_key = None
 
 
+# ===== МЕНЮ =====
 def main_menu():
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row("🚗 Найти запчасть")
@@ -32,6 +32,7 @@ def main_menu():
     return kb
 
 
+# ===== ЗАГРУЗКА CSV =====
 def load_csv(url):
     headers = {"User-Agent": "Mozilla/5.0"}
     r = requests.get(url, headers=headers, timeout=30)
@@ -61,7 +62,10 @@ def load_database():
         if "фото" in h_low:
             photo_key = h
 
+    print("Базы загружены")
 
+
+# ===== ПОИСК =====
 def find_part(query, db):
     query = query.lower()
     results = []
@@ -76,11 +80,13 @@ def find_part(query, db):
     return results
 
 
+# ===== СТАРТ =====
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=main_menu())
 
 
+# ===== РЕЖИМЫ =====
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
 def parts_mode(msg):
     current_mode[msg.chat.id] = "parts"
@@ -93,11 +99,11 @@ def wheels_mode(msg):
     bot.send_message(msg.chat.id, "Введите размер (например r18):")
 
 
+# ===== ПОИСК =====
 @bot.message_handler(func=lambda m: m.text and len(m.text) > 2 and not m.text.startswith(("🚗","🛞","🛒","❤️")))
 def search(msg):
 
     mode = current_mode.get(msg.chat.id, "parts")
-
     db = parts_db if mode == "parts" else wheels_db
 
     results = find_part(msg.text, db)
@@ -110,8 +116,13 @@ def search(msg):
     send_card(msg.chat.id, 0)
 
 
+# ===== КАРТОЧКА =====
 def send_card(chat_id, index):
+
     results = user_results.get(chat_id, [])
+    if not results:
+        return
+
     part = results[index]
 
     name = part.get(name_key, "Нет")
@@ -139,6 +150,61 @@ def send_card(chat_id, index):
         bot.send_message(chat_id, text, reply_markup=kb)
 
 
+# ===== ИЗБРАННОЕ =====
+@bot.message_handler(func=lambda m: m.text == "❤️ Избранное")
+def show_favorites(message):
+
+    items = user_favorites.get(message.chat.id, [])
+
+    if not items:
+        bot.send_message(message.chat.id, "❌ Пусто")
+        return
+
+    for part in items:
+        bot.send_message(
+            message.chat.id,
+            f"{part.get(name_key)}\n💰 {part.get('Цена')} ₽"
+        )
+
+
+# ===== КОРЗИНА =====
+@bot.message_handler(func=lambda m: m.text == "🛒 Корзина")
+def show_cart(message):
+
+    items = user_cart.get(message.chat.id, [])
+
+    if not items:
+        bot.send_message(message.chat.id, "❌ Корзина пустая")
+        return
+
+    total = 0
+
+    for i, part in enumerate(items):
+        try:
+            price = int(part.get("Цена", 0))
+        except:
+            price = 0
+
+        total += price
+
+        kb = telebot.types.InlineKeyboardMarkup()
+        kb.add(
+            telebot.types.InlineKeyboardButton(
+                "❌ Удалить",
+                callback_data=f"remove_{i}"
+            )
+        )
+
+        bot.send_message(
+            message.chat.id,
+            f"{part.get(name_key)}\n💰 {price} ₽",
+            reply_markup=kb
+        )
+
+    bot.send_message(message.chat.id, f"💰 Итого: {total} ₽")
+
+
+# ===== CALLBACK =====
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
 
@@ -146,80 +212,44 @@ def callback(call):
     chat_id = call.message.chat.id
     results = user_results.get(chat_id, [])
 
-    # ===== ИЗБРАННОЕ =====
+    # ❤️ избранное
     if data.startswith("fav_"):
-        index = int(data.split("_")[1])
-
-        if chat_id not in user_favorites:
-            user_favorites[chat_id] = []
-
-        user_favorites[chat_id].append(results[index])
-
-        bot.answer_callback_query(call.id, "❤️ Добавлено в избранное")
+        i = int(data.split("_")[1])
+        user_favorites.setdefault(chat_id, []).append(results[i])
+        bot.answer_callback_query(call.id, "❤️ Добавлено")
         return
 
-    # ===== КОРЗИНА =====
+    # 🛒 корзина
     if data.startswith("cart_"):
-        index = int(data.split("_")[1])
-
-        if chat_id not in user_cart:
-            user_cart[chat_id] = []
-
-        user_cart[chat_id].append(results[index])
-
-        bot.answer_callback_query(call.id, "🛒 Добавлено в корзину")
+        i = int(data.split("_")[1])
+        user_cart.setdefault(chat_id, []).append(results[i])
+        bot.answer_callback_query(call.id, "🛒 Добавлено")
         return
 
-    # ===== УДАЛЕНИЕ ИЗ ИЗБРАННОГО =====
-    if data.startswith("fav_remove_"):
-        article = data.replace("fav_remove_", "")
-
-        user_favorites[chat_id] = [
-            p for p in user_favorites.get(chat_id, [])
-            if str(p.get("Артикул")) != article
-        ]
-
-        bot.answer_callback_query(call.id, "❌ Удалено из избранного")
-        bot.send_message(chat_id, "Обновлено ❤️")
-        return
-
-    # ===== УДАЛЕНИЕ ИЗ КОРЗИНЫ =====
+    # ❌ удалить
     if data.startswith("remove_"):
-        index = int(data.split("_")[1])
+        i = int(data.split("_")[1])
+        if chat_id in user_cart and len(user_cart[chat_id]) > i:
+            user_cart[chat_id].pop(i)
 
-        if chat_id in user_cart and len(user_cart[chat_id]) > index:
-            user_cart[chat_id].pop(index)
-
-        bot.answer_callback_query(call.id, "❌ Удалено")
-        show_cart(call.message)
+        bot.answer_callback_query(call.id, "Удалено")
         return
 
-    # ===== НАВИГАЦИЯ =====
+    # навигация
     if data.startswith("next_") or data.startswith("prev_"):
 
-        index = int(data.split("_")[1])
+        i = int(data.split("_")[1])
+        i = i + 1 if "next" in data else i - 1
 
-        if "next" in data:
-            index += 1
-        else:
-            index -= 1
-
-        if index < 0:
-            index = len(results) - 1
-        if index >= len(results):
-            index = 0
+        if i < 0: i = len(results)-1
+        if i >= len(results): i = 0
 
         bot.delete_message(chat_id, call.message.message_id)
-        send_card(chat_id, index)
-        return
+        send_card(chat_id, i)
 
+
+# ===== ЗАПУСК =====
 if __name__ == "__main__":
-    print("STARTING BOT...")
-    
-    try:
-        load_database()
-        print("DATABASE LOADED")
-
-        bot.infinity_polling()
-    except Exception as e:
-        print("ERROR:", e)
+    print("START BOT")
+    load_database()
+    bot.infinity_polling()

@@ -296,42 +296,82 @@ def callback(call):
     chat_id = call.message.chat.id
     results = user_results.get(chat_id, [])
 
-    # ❤️ избранное
+    # защита
+    if not results:
+        bot.answer_callback_query(call.id, "Нет данных")
+        return
+
+    try:
+        i = int(data.split("_")[1])
+    except:
+        return
+
+    if i >= len(results):
+        bot.answer_callback_query(call.id, "Ошибка индекса")
+        return
+
+    item = results[i]
+
+    # =======================
+    # ❤️ ИЗБРАННОЕ
+    # =======================
     if data.startswith("fav_"):
-        i = int(data.split("_")[1])
-        user_favorites.setdefault(chat_id, []).append(results[i])
-        bot.answer_callback_query(call.id, "❤️ Добавлено")
+        user_favorites.setdefault(chat_id, [])
+
+        if item not in user_favorites[chat_id]:
+            user_favorites[chat_id].append(item)
+            bot.answer_callback_query(call.id, "❤️ Добавлено")
+        else:
+            bot.answer_callback_query(call.id, "Уже есть")
+
         return
 
-    # 🛒 корзина
+    # =======================
+    # 🛒 КОРЗИНА
+    # =======================
     if data.startswith("cart_"):
-        i = int(data.split("_")[1])
-        user_cart.setdefault(chat_id, []).append(results[i])
+        user_cart.setdefault(chat_id, [])
+
+        user_cart[chat_id].append(item)
         bot.answer_callback_query(call.id, "🛒 Добавлено")
+
         return
 
-    # ❌ удалить
+    # =======================
+    # ❌ УДАЛЕНИЕ
+    # =======================
     if data.startswith("remove_"):
         i = int(data.split("_")[1])
+
         if chat_id in user_cart and len(user_cart[chat_id]) > i:
             user_cart[chat_id].pop(i)
+            bot.answer_callback_query(call.id, "❌ Удалено")
+        else:
+            bot.answer_callback_query(call.id, "Ошибка удаления")
 
-        bot.answer_callback_query(call.id, "Удалено")
         return
 
-    # навигация
+    # =======================
+    # ⬅️ ➡️ ПЕРЕКЛЮЧЕНИЕ
+    # =======================
     if data.startswith("next_") or data.startswith("prev_"):
 
-        i = int(data.split("_")[1])
-        i = i + 1 if "next" in data else i - 1
+        current = user_index.get(chat_id, 0)
 
-        if i < 0: i = len(results)-1
-        if i >= len(results): i = 0
+        if "next" in data:
+            current += 1
+        else:
+            current -= 1
+
+        if current < 0:
+            current = len(results) - 1
+        if current >= len(results):
+            current = 0
+
+        user_index[chat_id] = current
 
         bot.delete_message(chat_id, call.message.message_id)
-        send_card(chat_id, i)
-
-
+        send_card(chat_id, current)
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     print("START BOT")

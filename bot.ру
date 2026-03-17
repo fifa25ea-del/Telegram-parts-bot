@@ -84,34 +84,39 @@ def clean(text):
 
 def find_part(query, db):
 
-    query_clean = clean(query)
+    query_raw = query.lower()
+    query_clean = "".join(e for e in query_raw if e.isalnum())
+
     results = []
 
     for part in db:
-        text = " ".join(str(v) for v in part.values())
+        text = str(part).lower()
+        text_clean = "".join(e for e in text if e.isalnum())
 
-        text_clean = clean(text)
+        # 🔥 1. старый рабочий поиск (ОСНОВА)
+        if query_raw in text:
+            results.append(part)
+            continue
 
-        # 🔥 поиск по очищенному тексту
+        # 🔥 2. поиск без пробелов (АРТИКУЛЫ)
         if query_clean in text_clean:
             results.append(part)
             continue
 
-        # 🔥 доп: поиск по словам
-        words = query.lower().split()
+        # 🔥 3. поиск по словам
+        words = query_raw.split()
         score = 0
 
-        for word in words:
-            if word in text.lower():
+        for w in words:
+            if w in text:
                 score += 1
 
-        if score > 0:
+        if score >= 2:
             results.append(part)
 
         if len(results) >= 20:
             break
 
-    return results
 
 def find_smart(query, db):
     words = query.lower().split()

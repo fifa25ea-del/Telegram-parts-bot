@@ -171,7 +171,7 @@ def send_part_card(chat_id, index):
     user_id = str(chat_id)
     user_fav = favorites.get(user_id, [])
 
-    item_id = str(index)  # или лучше article
+    item_id = part.get("Артикул") or str(index)
 
     name = part.get(name_key, "")
     article = part.get("Артикул", "")

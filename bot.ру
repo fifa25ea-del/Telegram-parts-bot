@@ -20,7 +20,7 @@ import telebot
 import csv
 import requests
 import io
-
+API_KEY = "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"
 TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
 
 PARTS_CSV = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
@@ -47,7 +47,7 @@ def ask_ai(question):
     response = requests.post(
         url="https://openrouter.ai/api/v1/chat/completions",
         headers={
-            "Authorization": "Bearer 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",
+            "Authorization": "Bearer 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",
             "Content-Type": "application/json"
         },
         json={

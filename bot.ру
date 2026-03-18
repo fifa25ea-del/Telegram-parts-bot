@@ -1,61 +1,37 @@
-import json
 import telebot
 import csv
 import requests
 import io
-import re
 
-def split_words(text):
-    return re.findall(r'\w+', text.lower())
+TOKEN = "PUT_YOUR_TOKEN_HERE"
 
-
-# ===== НАСТРОЙКИ =====
-TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
 PARTS_CSV = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 WHEELS_CSV = "https://baz-on.ru/export/c592/77023/drom-wheels.csv"
-FAV_FILE = "favorites.json"
 
 bot = telebot.TeleBot(TOKEN)
 
-# ===== ДАННЫЕ =====
-favorites = {}
-user_results = {}
-current_mode = {}
-ai_mode = {}
-user_index = {}
+user_favorites = {}
 user_cart = {}
-user_last_msg = {}
+user_results = {}
 
 parts_db = []
 wheels_db = []
+
+current_mode = {}
 
 number_key = None
 name_key = None
 photo_key = None
 
-# ===== ИЗБРАННОЕ =====
-def load_favorites():
-    try:
-        with open(FAV_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
 
-def save_favorites(data):
-    with open(FAV_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-favorites = load_favorites()
-
-# ===== МЕНЮ =====
 def main_menu():
     kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     kb.row("🚗 Найти запчасть")
     kb.row("🛞 Шины и диски")
-    kb.row("❤️ Избранное")
+    kb.row("❤️ Избранное", "🛒 Корзина")
     return kb
 
-# ===== ЗАГРУЗКА CSV =====
+
 def load_csv(url):
     headers = {"User-Agent": "Mozilla/5.0"}
     r = requests.get(url, headers=headers, timeout=30)
@@ -66,57 +42,32 @@ def load_csv(url):
 
     return list(reader), reader.fieldnames
 
+
 def load_database():
     global parts_db, wheels_db, number_key, name_key, photo_key
 
     parts_db, headers = load_csv(PARTS_CSV)
-    wheels_db, headers2 = load_csv(WHEELS_CSV)
+    wheels_db, _ = load_csv(WHEELS_CSV)
 
     for h in headers:
         h_low = h.lower()
 
-        if "артикул" in h_low or "номер" in h_low:
+        if "номер" in h_low or "артикул" in h_low:
             number_key = h
 
-        if "наимен" in h_low or "название" in h_low:
+        if "наимен" in h_low:
             name_key = h
 
-        if "фото" in h_low or "image" in h_low:
+        if "фото" in h_low:
             photo_key = h
 
-def find_wheels(query, db):
 
-    query = query.lower().replace(" ", "")
-    results = []
-
-    for part in db:
-        radius = str(part.get("Диаметр диска", "")).lower()
-
-        if not radius:
-            continue
-
-        # ищем r18 или 18
-        if query in radius or query in f"r{radius}":
-            results.append(part)
-
-        if len(results) >= 20:
-            break
-
-    return results
-# ===== ПОИСК =====
 def find_part(query, db):
-
-    query = query.lower().replace(" ", "")
+    query = query.lower()
     results = []
 
     for part in db:
-        number = str(part.get("Номер", "")).lower().replace(" ", "")
-
-        if not number:
-            continue
-
-        # 🔥 точное или частичное совпадение
-        if query in number:
+        if query in str(part).lower():
             results.append(part)
 
         if len(results) >= 20:
@@ -124,426 +75,99 @@ def find_part(query, db):
 
     return results
 
-# ===== СТАРТ =====
+
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=main_menu())
 
-# ===== РЕЖИМЫ =====
+
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
 def parts_mode(msg):
-    chat_id = msg.chat.id
+    current_mode[msg.chat.id] = "parts"
+    bot.send_message(msg.chat.id, "Введите номер детали:")
 
-    ai_mode[chat_id] = False
-    current_mode[chat_id] = "parts"
-
-    bot.send_message(chat_id, "🔎 Введите название или номер детали")
 
 @bot.message_handler(func=lambda m: m.text == "🛞 Шины и диски")
 def wheels_mode(msg):
-    chat_id = msg.chat.id
+    current_mode[msg.chat.id] = "wheels"
+    bot.send_message(msg.chat.id, "Введите размер (например r18):")
 
-    ai_mode[chat_id] = False
-    current_mode[chat_id] = "wheels"
 
-    bot.send_message(chat_id, "🔎 Введите размер (например r18)")
-
-def send_wheels_preview(chat_id, results):
-
-    media = []
-
-    for i, part in enumerate(results[:10]):
-        photos = str(part.get("Фото", "")).split(",")
-
-        if not photos or not photos[0]:
-            continue
-
-        caption = "📦 В наличии несколько комплектов\nСмотрите по отдельности ниже 👇"
-
-        if i == 0:
-            media.append(
-                telebot.types.InputMediaPhoto(photos[0], caption=caption)
-            )
-        else:
-            media.append(
-                telebot.types.InputMediaPhoto(photos[0])
-            )
-
-    if media:
-        bot.send_media_group(chat_id, media)
-
-    bot.send_message(chat_id, "👇 Листай или выбери номер")
-
-# ===== ОБЫЧНЫЙ ПОИСК =====
-@bot.message_handler(func=lambda m: (
-    not ai_mode.get(m.chat.id)
-    and m.text
-    and len(m.text) > 2
-    and not m.text.startswith(("🚗","🛞","❤️"))
-))
+@bot.message_handler(func=lambda m: m.text and len(m.text) > 2 and not m.text.startswith(("🚗","🛞","🛒","❤️")))
 def search(msg):
 
-    chat_id = msg.chat.id
-    mode = current_mode.get(chat_id, "parts")
+    mode = current_mode.get(msg.chat.id, "parts")
 
-    results = []  # ✅ ВСЕГДА создаём
+    db = parts_db if mode == "parts" else wheels_db
 
-    # ===== ДИСКИ =====
-    if mode == "wheels":
-        results = find_wheels(msg.text, wheels_db)
+    results = find_part(msg.text, db)
 
-        if not results:
-            bot.send_message(chat_id, "❌ Ничего не найдено")
-            return
-
-        user_results[chat_id] = results
-        user_index[chat_id] = 0
-
-        # 🔥 ПРЕВЬЮ АЛЬБОМ
-        send_wheels_preview(chat_id, results)
-
-        # 🔥 КАРТОЧКА
-        send_card(chat_id, 0)
+    if not results:
+        bot.send_message(msg.chat.id, "❌ Ничего не найдено")
         return
 
-    # ===== ЗАПЧАСТИ =====
-    else:
-        results = find_part(msg.text, parts_db)
+    user_results[msg.chat.id] = results
+    send_card(msg.chat.id, 0)
 
-        if not results:
-            bot.send_message(chat_id, "❌ Ничего не найдено")
-            return
 
-        user_results[chat_id] = results
-        user_index[chat_id] = 0
-
-        send_card(chat_id, 0)
-
-# ===== КАРТОЧКА =====
 def send_card(chat_id, index):
+    results = user_results.get(chat_id, [])
+    part = results[index]
 
-    mode = current_mode.get(chat_id, "parts")
+    name = part.get(name_key, "Нет")
+    article = part.get("Артикул", "")
+    number = part.get(number_key, "")
+    price = part.get("Цена", "")
+    photos = str(part.get(photo_key, ""))
 
-    if mode == "wheels":
-        send_wheel_card(chat_id, index)
+    text = f"{name}\nАртикул: {article}\nНомер: {number}\nЦена: {price} ₽\n({index+1}/{len(results)})"
+
+    kb = telebot.types.InlineKeyboardMarkup()
+    kb.add(
+        telebot.types.InlineKeyboardButton("⬅️", callback_data=f"prev_{index}"),
+        telebot.types.InlineKeyboardButton("➡️", callback_data=f"next_{index}")
+    )
+    kb.add(
+        telebot.types.InlineKeyboardButton("❤️", callback_data=f"fav_{index}"),
+        telebot.types.InlineKeyboardButton("🛒", callback_data=f"cart_{index}")
+    )
+
+    if photos:
+        photo = photos.split(",")[0].strip()
+        bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
     else:
-        send_part_card(chat_id, index)
-def send_part_card(chat_id, index):
-
-    results = user_results.get(chat_id, [])
-    if not results or index >= len(results):
-        return
-    part = results[index]
-    user_id = str(chat_id)
-    user_fav = favorites.get(user_id, [])
-
-    item_id = part.get("Артикул") or str(index)
-
-    name = part.get(name_key, "")
-    article = part.get("Артикул", "")
-    number = part.get("Номер", "")
-    brand = part.get("Марка", "")
-    model = part.get("Модель", "")
-    price = part.get("Цена", "")
-    photos = str(part.get(photo_key, "")).strip()
-
-    text = (
-        f"🔧 {name}\n"
-        f"Артикул: {article}\n"
-        f"Номер: {number}\n"
-        f"{brand} {model}\n"
-        f"💰 {price} ₽\n\n"
-        f"({index+1}/{len(results)})"
-    )
-
-    send_with_photo(chat_id, text, photos, index)
-
-def send_wheel_card(chat_id, index):
-
-    results = user_results.get(chat_id, [])
-    if not results or index >= len(results):
-        return
-
-    part = results[index]
-
-    brand = part.get("Производитель диска", "")
-    model = part.get("Модель диска", "")
-    article = part.get("Артикул", "")
-    price = part.get("Цена", "")
-    photos = str(part.get("Фото", "")).strip()
-
-    radius = part.get("Диаметр диска", "")
-    width = part.get("Ширина диска", "")
-    et = part.get("Вылет диска", "")
-    pcd = part.get("PCD диска", "")
-    dia = part.get("Диаметр осевого отверстия диска", "")
-
-    text = (
-        f"🛞 {brand} {model}\n\n"
-        f"Артикул: {article}\n"
-        f"💰 {price} ₽\n\n"
-        f"📏 R{radius or '-'} | {width or '-'}J | ET{et or '-'}\n"
-        f"🔩 PCD: {pcd or '-'}\n"
-        f"🕳 DIA: {dia or '-'}\n\n"
-        f"({index+1}/{len(results)})"
-    )
-
-    send_with_photo(chat_id, text, photos, index)
-
-def send_with_photo(chat_id, text, photos, index):
-
-    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-
-    kb.add(
-        telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{index}"),
-        telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{index}")
-    )
-
-    kb.add(
-        telebot.types.InlineKeyboardButton("❤️ Сохранить", callback_data=f"fav_{index}"),
-        telebot.types.InlineKeyboardButton("💬 Связаться", url="https://t.me/Stuttgart_mercedes")
-    )
-
-    mode = current_mode.get(chat_id, "parts")
-
-    try:
-        photo_list = [x.strip() for x in str(photos).split(",") if x.strip()]
-
-        # ===== 🛞 ДИСКИ =====
-        if mode == "wheels":
-
-            if not photo_list:
-                bot.send_message(chat_id, text, reply_markup=kb)
-                return
-
-            main_photo = photo_list[0]
-
-            bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
-
-      # ===== 🚗 ЗАПЧАСТИ =====
-    elif mode == "parts":
-    
-        sent_ids = []  # 👈 список всех сообщений
-    
-        if not photo_list:
-            sent = bot.send_message(chat_id, text, reply_markup=kb)
-            sent_ids.append(sent.message_id)
-            user_last_msg[chat_id] = sent_ids
-            return
-    
-        # до 10 фото
-        media = []
-    
-        for i, url in enumerate(photo_list[:10]):
-            if i == 0:
-                media.append(
-                    telebot.types.InputMediaPhoto(url, caption=text)
-                )
-            else:
-                media.append(
-                    telebot.types.InputMediaPhoto(url)
-                )
-    
-        sent_msgs = bot.send_media_group(chat_id, media)
-    
-        # сохраняем ВСЕ id фото
-        for msg in sent_msgs:
-            sent_ids.append(msg.message_id)
-    
-        # кнопки отдельным сообщением
-        sent_kb = bot.send_message(chat_id, "⬇️ Действия:", reply_markup=kb)
-        sent_ids.append(sent_kb.message_id)
-    
-        # сохраняем список
-        user_last_msg[chat_id] = sent_ids
-# ===== ИЗБРАННОЕ =====
-@bot.message_handler(func=lambda m: m.text and "Избранное" in m.text)
-def show_favorites(message):
-
-    chat_id = message.chat.id
-    user_id = str(chat_id)
-
-    fav_ids = favorites.get(user_id, [])
-
-    if not fav_ids:
-        bot.send_message(chat_id, "❌ Избранное пусто")
-        return
-
-    results = user_results.get(chat_id, [])
-
-    for part in results:
-        item_id = part.get("Артикул") or str(part)
-
-        if item_id not in fav_ids:
-            continue
-
-        name = part.get(name_key) or part.get("Наименование") or "Без названия"
-        article = part.get("Артикул", "Нет артикула")
-        number = part.get("Номер", "Нет номера")
-        price = part.get("Цена", "0")
-        photo = part.get(photo_key) or part.get("Фото")
-
-        if photo:
-            photo = photo.split(",")[0].strip()
-
-        text = (
-            f"❤️ {name}\n"
-            f"🧾 Артикул: {article}\n"
-            f"🆔 Номер: {number}\n"
-            f"💰 Цена: {price} ₽"
-        )
-
-        kb = telebot.types.InlineKeyboardMarkup()
-        kb.add(
-            telebot.types.InlineKeyboardButton(
-                "💔 Убрать",
-                callback_data=f"removefav_{item_id}"
-            )
-        )
-
-        if photo:
-            bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
-        else:
-            bot.send_message(chat_id, text, reply_markup=kb)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("removefav_"))
-def remove_favorite(call):
-        user_id = str(call.from_user.id)
-
-        _, item_id = call.data.split("_")
-
-        if user_id in favorites and item_id in favorites[user_id]:
-            favorites[user_id].remove(item_id)
-            save_favorites(favorites)
-
-        bot.answer_callback_query(call.id, "❌ Удалено")
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-
+        bot.send_message(chat_id, text, reply_markup=kb)
 
 
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
-
     data = call.data
     chat_id = call.message.chat.id
     results = user_results.get(chat_id, [])
 
-    if not results:
-        bot.answer_callback_query(call.id, "Нет данных")
-        return
-
-    # =======================
-    # ❤️ ИЗБРАННОЕ
-    # =======================
     if data.startswith("fav_"):
         i = int(data.split("_")[1])
-
-        if i >= len(results):
-            return
-
-        item = results[i]
-        user_id = str(chat_id)
-
-        item_id = item.get("Артикул") or str(i)
-
-        if user_id not in favorites:
-            favorites[user_id] = []
-
-        if item_id in favorites[user_id]:
-            bot.answer_callback_query(call.id, "Уже в избранном")
-        else:
-            favorites[user_id].append(item_id)
-            save_favorites(favorites)
-            bot.answer_callback_query(call.id, "❤️ Добавлено")
-
+        user_favorites.setdefault(chat_id, []).append(results[i])
+        bot.answer_callback_query(call.id, "Добавлено ❤️")
         return
 
-    # =======================
-    # ⬅️ ➡️ ПЕРЕКЛЮЧЕНИЕ
-    # =======================
+    if data.startswith("cart_"):
+        i = int(data.split("_")[1])
+        user_cart.setdefault(chat_id, []).append(results[i])
+        bot.answer_callback_query(call.id, "Добавлено 🛒")
+        return
+
     if data.startswith("next_") or data.startswith("prev_"):
-    
-        current = user_index.get(chat_id, 0)
-    
-        if "next" in data:
-            current += 1
-        else:
-            current -= 1
-    
-        if current < 0:
-            current = len(results) - 1
-        if current >= len(results):
-            current = 0
-    
-        user_index[chat_id] = current
-        mode = current_mode.get(chat_id, "parts")
-    
-        # ===== 🛞 WHEELS (через edit) =====
-        if mode == "wheels":
-            part = results[current]
-    
-            photos = str(part.get("Фото", ""))
-            photo_list = [x.strip() for x in photos.split(",") if x.strip()]
-            main_photo = photo_list[0] if photo_list else None
-    
-            text = (
-                f"🛞 {part.get('Производитель диска','')} {part.get('Модель диска','')}\n\n"
-                f"Артикул: {part.get('Артикул','')}\n"
-                f"💰 {part.get('Цена','')} ₽\n\n"
-                f"📏 R{part.get('Диаметр диска','-')} | {part.get('Ширина диска','-')}J | ET{part.get('Вылет диска','-')}\n"
-                f"🔩 PCD: {part.get('PCD диска','-')}\n"
-                f"🕳 DIA: {part.get('Диаметр осевого отверстия диска','-')}\n\n"
-                f"({current+1}/{len(results)})"
-            )
-    
-            kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-            kb.add(
-                telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{current}"),
-                telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{current}")
-            )
-            kb.add(
-                telebot.types.InlineKeyboardButton("❤️ Сохранить", callback_data=f"fav_{current}"),
-                telebot.types.InlineKeyboardButton("💬 Связаться", url="https://t.me/Stuttgart_mercedes")
-            )
-    
-            try:
-                if main_photo:
-                    media = telebot.types.InputMediaPhoto(main_photo, caption=text)
-                    bot.edit_message_media(
-                        media=media,
-                        chat_id=chat_id,
-                        message_id=call.message.message_id,
-                        reply_markup=kb
-                    )
-                else:
-                    bot.edit_message_caption(
-                        caption=text,
-                        chat_id=chat_id,
-                        message_id=call.message.message_id,
-                        reply_markup=kb
-                    )
-            except Exception as e:
-                print("Ошибка редактирования:", e)
-    
-            return
-            
-               # ===== 🚗 PARTS =====
-            else:
-            
-                # 🧹 удаляем ВСЕ старые сообщения
-                old_msgs = user_last_msg.get(chat_id, [])
-            
-                for msg_id in old_msgs:
-                    try:
-                        bot.delete_message(chat_id, msg_id)
-                    except:
-                        pass
-            
-                # 🚀 отправляем новую карточку
-                send_card(chat_id, current)
-                return
-# ===== ЗАПУСК =====
+        i = int(data.split("_")[1])
+        i = i + 1 if "next" in data else i - 1
+
+        if i < 0: i = len(results)-1
+        if i >= len(results): i = 0
+
+        bot.delete_message(chat_id, call.message.message_id)
+        send_card(chat_id, i)
+
+
 if __name__ == "__main__":
-    print("START BOT")
     load_database()
     bot.infinity_polling()

@@ -536,6 +536,36 @@ def callback(call):
 
         return
 
+    if data.startswith("donor_photos_"):
+
+        idx = int(data.split("_")[-1])
+        part = results[idx]
+    
+        photos = str(part.get("Фото") or part.get("photo") or "")
+    
+        photo_list = [
+            x.strip() for x in photos.split(",") if x.strip().startswith("http")
+        ]
+    
+        if not photo_list:
+            bot.answer_callback_query(call.id, "❌ Нет фото")
+            return
+    
+        media = []
+    
+        for i, url in enumerate(photo_list[:10]):
+            if i == 0:
+                media.append(
+                    telebot.types.InputMediaPhoto(url, caption="📸 Фото донора")
+                )
+            else:
+                media.append(
+                    telebot.types.InputMediaPhoto(url)
+                )
+    
+        bot.send_media_group(chat_id, media)
+        return
+
     # =======================
     # ⬅️ ➡️ ПЕРЕКЛЮЧЕНИЕ
     # =======================
@@ -627,6 +657,9 @@ def callback(call):
             kb.add(
                 telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{current}"),
                 telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{current}")
+            )
+            kb.add(
+                telebot.types.InlineKeyboardButton("📸 Все фото", callback_data=f"donor_photos_{current}")
             )
         
             try:

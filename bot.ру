@@ -9,7 +9,8 @@ def find_part(query, db):
     query = query.lower()
     words = query.split()
 
-    # 🔥 тип из запроса (ПЕРВОЕ СЛОВО)
+    filters = parse_filters(query)
+
     query_type = re.split(r"[ ,\-()]", query)[0]
 
     results = []
@@ -17,19 +18,32 @@ def find_part(query, db):
     for part in db:
         name = str(part.get(name_key, "")).lower()
 
-        # 🔥 тип товара (ПЕРВОЕ СЛОВО)
         part_type = re.split(r"[ ,\-()]", name)[0]
 
-        # 💣 ГЛАВНЫЙ ФИЛЬТР
-        if query_type != part_type:
+        # 🔥 1. тип
+        if part_type != query_type:
             continue
 
-        # 🔍 проверка остальных слов (КРОМЕ ПЕРВОГО)
-        if all(word in name for word in words[1:]):
+        # 🔥 2. перед / зад
+        if filters["position"]:
+            if filters["position"] not in name:
+                continue
+
+        # 🔥 3. левый / правый
+        if filters["side"]:
+            if filters["side"] not in name:
+                continue
+
+        # 🔥 4. остальные слова
+        extra_words = [
+            w for w in words
+            if w not in ["перед", "зад", "лев", "прав"]
+        ]
+
+        if all(word in name for word in extra_words):
             results.append(part)
 
     return results[:10]
-
 import re
 
 PART_TYPES = [
@@ -77,6 +91,28 @@ name_key = None
 photo_key = None
 
 # ===== ИЗБРАННОЕ =====
+def parse_filters(query):
+    query = query.lower()
+
+    filters = {
+        "position": None,  # перед / зад
+        "side": None       # левый / правый
+    }
+
+    if "перед" in query:
+        filters["position"] = "перед"
+
+    elif "зад" in query:
+        filters["position"] = "зад"
+
+    if "лев" in query:
+        filters["side"] = "лев"
+
+    elif "прав" in query:
+        filters["side"] = "прав"
+
+    return filters
+
 def detect_part_type(text):
     for t in PART_TYPES:
         if t in text:

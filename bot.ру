@@ -9,38 +9,24 @@ def find_part(query, db):
     query = query.lower()
     words = query.split()
 
-    filters = parse_filters(query)
-
-    query_type = re.split(r"[ ,\-()]", query)[0]
+    query_type = words[0]  # первое слово запроса
 
     results = []
 
     for part in db:
         name = str(part.get(name_key, "")).lower()
 
-        part_type = re.split(r"[ ,\-()]", name)[0]
-
-        # 🔥 1. тип
-        if part_type != query_type:
+        # 🔥 ищем тип как ОТДЕЛЬНОЕ слово
+        if not re.search(rf"\b{query_type}\b", name):
             continue
 
-        # 🔥 2. перед / зад
-        if filters["position"]:
-            if filters["position"] not in name:
+        # ❌ исключаем "усилитель бампера"
+        if query_type == "бампер":
+            if "усилитель" in name or "кронштейн" in name:
                 continue
 
-        # 🔥 3. левый / правый
-        if filters["side"]:
-            if filters["side"] not in name:
-                continue
-
-        # 🔥 4. остальные слова
-        extra_words = [
-            w for w in words
-            if w not in ["перед", "зад", "лев", "прав"]
-        ]
-
-        if all(word in name for word in extra_words):
+        # 🔍 остальные слова
+        if all(word in name for word in words[1:]):
             results.append(part)
 
     return results[:10]

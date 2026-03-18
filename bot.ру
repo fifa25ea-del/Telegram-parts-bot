@@ -26,6 +26,8 @@ ai_mode = {}
 user_index = {}
 user_cart = {}
 user_last_msg = {}
+user_photo_index = {}
+
 
 donors_db = []
 parts_db = []
@@ -349,18 +351,34 @@ def send_donor_card(chat_id, index):
         f"({index+1}/{len(results)})"
     )
 
-    photo = str(d.get("Фото","")).split(",")[0].strip()
+    photos = str(d.get("Фото") or d.get("photo") or "")
 
-    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{index}"),
-        telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{index}")
-    )
+        photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+        
+        photo_index = user_photo_index.get(chat_id, 0)
+        
+        if photo_index >= len(photo_list):
+            photo_index = 0
+        
+        current_photo = photo_list[photo_index] if photo_list else None
 
-    if photo:
-        bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
-    else:
-        bot.send_message(chat_id, text, reply_markup=kb)
+        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+        
+        kb.add(
+            telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{index}"),
+            telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{index}")
+        )
+        
+        kb.add(
+            telebot.types.InlineKeyboardButton("📸 ⬅️", callback_data=f"photo_prev"),
+            telebot.types.InlineKeyboardButton("📸 ➡️", callback_data=f"photo_next")
+        )
+        if current_photo:
+            sent = bot.send_photo(chat_id, current_photo, caption=text, reply_markup=kb)
+        else:
+            sent = bot.send_message(chat_id, text, reply_markup=kb)
+
+user_last_msg[chat_id] = sent.message_id
 
 def send_with_photo(chat_id, text, photos, index):
 

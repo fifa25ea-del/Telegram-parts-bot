@@ -605,6 +605,51 @@ def callback(call):
     
             return
 
+        elif mode == "donors":
+
+            part = results[current]
+        
+            photo = str(part.get("Фото", "")).split(",")[0].strip()
+        
+            text = (
+                f"🚘 Донор №{part.get('Номер','')}\n\n"
+                f"{part.get('Марка','')} {part.get('Модель','')}\n"
+                f"Кузов: {part.get('Кузов','')}\n"
+                f"Двигатель: {part.get('Двигатель','')}\n"
+                f"Год: {part.get('Год','')}\n"
+                f"Пробег: {part.get('Пробег','')}\n"
+                f"Цвет: {part.get('Цвет','')}\n"
+                f"VIN: {part.get('VIN','')}\n\n"
+                f"({current+1}/{len(results)})"
+            )
+        
+            kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+            kb.add(
+                telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{current}"),
+                telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{current}")
+            )
+        
+            try:
+                if photo:
+                    media = telebot.types.InputMediaPhoto(photo, caption=text)
+                    bot.edit_message_media(
+                        media=media,
+                        chat_id=chat_id,
+                        message_id=call.message.message_id,
+                        reply_markup=kb
+                    )
+                else:
+                    bot.edit_message_caption(
+                        caption=text,
+                        chat_id=chat_id,
+                        message_id=call.message.message_id,
+                        reply_markup=kb
+                    )
+            except Exception as e:
+                print("Ошибка donors edit:", e)
+        
+            return
+
         # ===== 🚗 PARTS =====
         else:
             

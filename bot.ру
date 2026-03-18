@@ -251,9 +251,7 @@ def search(msg):
         # 🔥 ПРЕВЬЮ АЛЬБОМ
         send_wheels_preview(chat_id, results)
 
-        # 🔥 КАРТОЧКА
-        send_card(chat_id, 0)
-        return
+
 
     # ===== ЗАПЧАСТИ =====
     else:

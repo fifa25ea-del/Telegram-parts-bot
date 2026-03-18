@@ -5,8 +5,12 @@ import requests
 import io
 import re
 
-def split_words(text):
-    return re.findall(r'\w+', text.lower())
+def detect_part_type(text):
+    text = text.lower()
+
+    first_word = re.split(r"[ ,\-()]", text)[0]
+
+    return first_word
 
 import re
 

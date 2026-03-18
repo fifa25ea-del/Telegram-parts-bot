@@ -132,6 +132,31 @@ def find_wheels(query, db):
             break
 
     return results
+def send_wheels_preview(chat_id, results):
+
+    media = []
+
+    for i, part in enumerate(results[:10]):
+        photos = str(part.get("Фото", "")).split(",")
+
+        if not photos or not photos[0]:
+            continue
+
+        caption = f"{i+1}. {part.get('Модель диска','')} \n💰 {part.get('Цена','')} ₽"
+
+        if i == 0:
+            media.append(
+                telebot.types.InputMediaPhoto(photos[0], caption=caption)
+            )
+        else:
+            media.append(
+                telebot.types.InputMediaPhoto(photos[0])
+            )
+
+    if media:
+        bot.send_media_group(chat_id, media)
+
+    bot.send_message(chat_id, "👇 Листай или выбери номер")
 
 # ===== МЕНЮ =====
 def main_menu():
@@ -184,17 +209,21 @@ def search(msg):
     mode = current_mode.get(msg.chat.id, "parts")
 
     if mode == "wheels":
-        results = find_wheels(msg.text, wheels_db)
-    else:
-        results = find_part(msg.text, parts_db)
+    results = find_wheels(msg.text, wheels_db)
 
     if not results:
-        bot.send_message(msg.chat.id, "❌ Ничего не найдено")
+        bot.send_message(chat_id, "❌ Ничего не найдено")
         return
 
-    user_results[msg.chat.id] = results
-    user_index[msg.chat.id] = 0
-    send_card(msg.chat.id, 0)
+    user_results[chat_id] = results
+    user_index[chat_id] = 0
+
+    # 🔥 1. ПРЕВЬЮ (АЛЬБОМ)
+    send_wheels_preview(chat_id, results)
+
+    # 🔥 2. ПЕРВАЯ КАРТОЧКА
+    send_card(chat_id, 0)
+    return
 
 # ===== КАРТОЧКА =====
 def send_card(chat_id, index):

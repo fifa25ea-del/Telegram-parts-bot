@@ -213,7 +213,7 @@ def send_wheels_preview(chat_id, results):
     if media:
         bot.send_media_group(chat_id, media)
 
-    bot.send_message(chat_id, "👇 Листай или выбери номер")
+        bot.send_message(chat_id, "👇 Листай или выбери номер")
 
 # ===== ОБЫЧНЫЙ ПОИСК =====
 @bot.message_handler(func=lambda m: (

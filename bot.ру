@@ -173,22 +173,38 @@ def search(msg):
     chat_id = msg.chat.id
     mode = current_mode.get(chat_id, "parts")
 
+    results = []  # ✅ ВСЕГДА создаём
+
+    # ===== ДИСКИ =====
     if mode == "wheels":
         results = find_wheels(msg.text, wheels_db)
 
-    if not results:
-        bot.send_message(chat_id, "❌ Ничего не найдено")
+        if not results:
+            bot.send_message(chat_id, "❌ Ничего не найдено")
+            return
+
+        user_results[chat_id] = results
+        user_index[chat_id] = 0
+
+        # 🔥 ПРЕВЬЮ АЛЬБОМ
+        send_wheels_preview(chat_id, results)
+
+        # 🔥 КАРТОЧКА
+        send_card(chat_id, 0)
         return
 
-    user_results[chat_id] = results
-    user_index[chat_id] = 0
+    # ===== ЗАПЧАСТИ =====
+    else:
+        results = find_part(msg.text, parts_db)
 
-    # 🔥 1. ПРЕВЬЮ (АЛЬБОМ)
-    send_wheels_preview(chat_id, results)
+        if not results:
+            bot.send_message(chat_id, "❌ Ничего не найдено")
+            return
 
-    # 🔥 2. ПЕРВАЯ КАРТОЧКА
-    send_card(chat_id, 0)
-    return
+        user_results[chat_id] = results
+        user_index[chat_id] = 0
+
+        send_card(chat_id, 0)
 
 # ===== КАРТОЧКА =====
 def send_card(chat_id, index):

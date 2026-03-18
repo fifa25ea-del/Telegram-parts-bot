@@ -3,7 +3,7 @@ import csv
 import requests
 import io
 
-TOKEN = "PUT_YOUR_TOKEN_HERE"
+TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
 
 PARTS_CSV = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 WHEELS_CSV = "https://baz-on.ru/export/c592/77023/drom-wheels.csv"

@@ -318,31 +318,15 @@ def send_with_photo(chat_id, text, photos, index):
         photo_list = [x.strip() for x in str(photos).split(",") if x.strip()]
 
         # ===== 🛞 ДИСКИ =====
-        if mode == "wheels":
+       if mode == "wheels":
 
-            if not photo_list:
-                bot.send_message(chat_id, text, reply_markup=kb)
-                return
+    if not photo_list:
+        bot.send_message(chat_id, text, reply_markup=kb)
+        return
 
-            # берем максимум 10 фото
-            photo_list = photo_list[:10]
+    main_photo = photo_list[0]
 
-            media = []
-
-            for i, url in enumerate(photo_list):
-                if i == 0:
-                    media.append(
-                        telebot.types.InputMediaPhoto(url, caption=text)
-                    )
-                else:
-                    media.append(
-                        telebot.types.InputMediaPhoto(url)
-                    )
-
-            bot.send_media_group(chat_id, media)
-
-            # кнопки отдельным сообщением
-            bot.send_message(chat_id, "⬇️ Действия:", reply_markup=kb)
+    bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
 
         # ===== 🚗 ЗАПЧАСТИ (КАК БЫЛО) =====
         else:
@@ -478,23 +462,74 @@ def callback(call):
     # =======================
     if data.startswith("next_") or data.startswith("prev_"):
 
-        current = user_index.get(chat_id, 0)
+    current = user_index.get(chat_id, 0)
 
-        if "next" in data:
-            current += 1
-        else:
-            current -= 1
+    if "next" in data:
+        current += 1
+    else:
+        current -= 1
 
-        if current < 0:
-            current = len(results) - 1
-        if current >= len(results):
-            current = 0
+    if current < 0:
+        current = len(results) - 1
+    if current >= len(results):
+        current = 0
 
-        user_index[chat_id] = current
+    user_index[chat_id] = current
 
+    part = results[current]
+
+    mode = current_mode.get(chat_id, "parts")
+
+    if mode == "wheels":
+        photos = str(part.get("Фото", ""))
+        photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+
+        main_photo = photo_list[0] if photo_list else None
+
+        text = (
+            f"🛞 {part.get('Производитель диска','')} {part.get('Модель диска','')}\n\n"
+            f"Артикул: {part.get('Артикул','')}\n"
+            f"💰 {part.get('Цена','')} ₽\n\n"
+            f"📏 R{part.get('Диаметр диска','-')} | {part.get('Ширина диска','-')}J | ET{part.get('Вылет диска','-')}\n"
+            f"🔩 PCD: {part.get('PCD диска','-')}\n"
+            f"🕳 DIA: {part.get('Диаметр осевого отверстия диска','-')}\n\n"
+            f"({current+1}/{len(results)})"
+        )
+
+        kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+        kb.add(
+            telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{current}"),
+            telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{current}")
+        )
+        kb.add(
+            telebot.types.InlineKeyboardButton("❤️ Сохранить", callback_data=f"fav_{current}"),
+            telebot.types.InlineKeyboardButton("💬 Связаться", url="https://t.me/Stuttgart_mercedes")
+        )
+
+        try:
+            if main_photo:
+                media = telebot.types.InputMediaPhoto(main_photo, caption=text)
+                bot.edit_message_media(
+                    media=media,
+                    chat_id=chat_id,
+                    message_id=call.message.message_id,
+                    reply_markup=kb
+                )
+            else:
+                bot.edit_message_caption(
+                    caption=text,
+                    chat_id=chat_id,
+                    message_id=call.message.message_id,
+                    reply_markup=kb
+                )
+        except Exception as e:
+            print("Ошибка редактирования:", e)
+
+    else:
         bot.delete_message(chat_id, call.message.message_id)
         send_card(chat_id, current)
 
+    return
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     print("START BOT")

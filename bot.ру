@@ -85,25 +85,35 @@ def load_database():
 
 # ===== ПОИСК =====
 def find_part(query, db):
-    query = query.lower().strip()
+    words = query.lower().split()
+    main_word = words[0]
 
     results = []
 
     for part in db:
-        text = " ".join(str(v).lower() for v in part.values())
+        name = str(part.get(name_key, "")).lower()
 
-        # 🔥 точный поиск по артикулу
-        if query in str(part.get(number_key, "")).lower():
-            return [part]
+        # 🔥 1 СЛОВО (бампер)
+        if len(words) == 1:
+            if main_word in name:
 
-        # 🔥 обычный поиск
-        if query in text:
-            results.append(part)
+                # ❌ убираем мусор (усилители, кронштейны)
+                if any(x in name for x in ["кронштейн", "усилитель", "накладка"]):
+                    if main_word not in ["кронштейн", "усилитель", "накладка"]:
+                        continue
 
-        if len(results) >= 10:
-            break
+                # 🔥 ВОТ СЮДА ВСТАВЛЯЕТСЯ ТВОЙ КУСОК
+                if not name.startswith(main_word):
+                    continue
 
-    return results
+                results.append(part)
+
+        # 🔥 НЕСКОЛЬКО СЛОВ
+        else:
+            if all(w in name for w in words):
+                results.append(part)
+
+    return results[:10]
 
 def find_smart(query, db):
     words = query.lower().split()

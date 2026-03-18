@@ -81,6 +81,25 @@ def load_database():
         if "фото" in h_low or "image" in h_low:
             photo_key = h
 
+def find_wheels(query, db):
+
+    query = query.lower().replace(" ", "")
+    results = []
+
+    for part in db:
+        radius = str(part.get("Диаметр диска", "")).lower()
+
+        if not radius:
+            continue
+
+        # ищем r18 или 18
+        if query in radius or query in f"r{radius}":
+            results.append(part)
+
+        if len(results) >= 20:
+            break
+
+    return results
 # ===== ПОИСК =====
 def find_part(query, db):
 

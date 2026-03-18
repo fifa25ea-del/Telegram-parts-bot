@@ -96,17 +96,21 @@ def load_database():
 
 def find_wheels(query, db):
 
-    query = query.lower().replace(" ", "")
+    query = query.lower().replace(" ", "").replace("-", "")
     results = []
 
     for part in db:
-        radius = str(part.get("Диаметр диска", "")).lower()
 
-        if not radius:
-            continue
+        radius = str(part.get("Диаметр диска", "")).lower().replace(" ", "")
+        brand = str(part.get("Производитель диска", "")).lower()
+        model = str(part.get("Модель диска", "")).lower()
 
-        # ищем r18 или 18
+        # 🔥 поиск по радиусу
         if query in radius or query in f"r{radius}":
+            results.append(part)
+
+        # 🔥 поиск по бренду/модели
+        elif query in brand or query in model:
             results.append(part)
 
         if len(results) >= 20:

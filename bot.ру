@@ -113,10 +113,12 @@ def load_database():
             photo_key = h
 
 # ===== ПОИСК =====
-def find_strict(query, db):
+def find_part(query, db):
     query = query.lower()
+    words = query.split()
 
     query_type = detect_part_type(query)
+
     results = []
 
     for part in db:
@@ -124,13 +126,20 @@ def find_strict(query, db):
 
         part_type = detect_part_type(name)
 
-        # 🔥 ГЛАВНОЕ ПРАВИЛО
+        # 💣 ЖЁСТКИЙ ФИЛЬТР ТИПА
         if query_type:
-            if part_type != query_type:
-                continue  # ❌ отсекаем всё лишнее
+            if not part_type:
+                continue
 
-        # 🔍 дальше обычная проверка
-        if all(word in name for word in query.split()):
+            if part_type != query_type:
+                continue
+
+            # 🔥 ДОПОЛНИТЕЛЬНО: исключаем "усилитель бампера"
+            if not name.startswith(query_type):
+                continue
+
+        # 🔍 проверка слов
+        if all(word in name for word in words):
             results.append(part)
 
     return results[:10]

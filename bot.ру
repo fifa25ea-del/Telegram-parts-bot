@@ -72,6 +72,8 @@ def load_database():
     parts_db, headers = load_csv(PARTS_CSV)
     wheels_db, headers2 = load_csv(WHEELS_CSV)
 
+    parts_db.reverse()
+
     for h in headers:
         h_low = h.lower()
 

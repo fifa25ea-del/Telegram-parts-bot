@@ -5,71 +5,63 @@ import requests
 import io
 import re
 
-def split_words(text):
-    return re.findall(r'\w+', text.lower())
-import re
-
-def find_part(query, db):
-    query = query.lower()
-    words = query.split()
-
-    main_word = words[0]
-
-    results = []
-
-    for part in db:
-        name = str(part.get("Наименование", "")).lower()
-        body = str(part.get("Кузов", "")).lower()
-
-        # 💣 1. ТОЧНОЕ СЛОВО (НЕ бампера!)
-        if not re.search(rf"\b{main_word}\b", name):
-            continue
-
-        # 💣 2. кузов отдельно
-        body_ok = True
-        for word in words[1:]:
-            if word.startswith("w"):
-                if word not in body:
-                    body_ok = False
-                    break
-
-        if not body_ok:
-            continue
-
-        # 💣 3. убираем мусор
-        if main_word == "бампер":
-            if any(x in name for x in ["усилитель", "проводка", "кронштейн"]):
-                continue
-
-        results.append(part)
-
-    return results[:10]
-PART_TYPES = [
-"бампер",
- "амортизатор",
- "фара",
- "дверь",
- "двигатель",
- "редуктор",
- "генератор",
- "датчик",
- "глушитель",
- "бачок",
- "вентилятор",
- "блок",
- "крыло",
- "капот",
- "радиатор",
- "стартер",
- "насос",
- "стекло",
- "зеркало"
+BAD_WORDS = [
+    "усилитель", "кронштейн", "крепление",
+    "проводка", "абсорбер", "датчик",
+    "крепеж", "провод"
 ]
 
-BAD_WORDS = {
-    "бампер": ["усилитель", "кронштейн", "крепление", "проводка"],
-    "фара": ["крепление", "блок"],
-}
+def split_words(text):
+    return re.findall(r'\w+', text.lower())
+
+
+def find_smart(query, db):
+
+    query_words = split_words(query)
+    if not query_words:
+        return []
+
+    scored = []
+
+    main_word = query_words[0]
+
+    for part in db:
+        name = str(part.get(name_key, "")).lower()
+        words = split_words(name)
+
+        score = 0
+
+        # 🔥 главное слово обязательно
+        if main_word in words:
+            score += 5
+        else:
+            continue
+
+        # 🔥 если начинается с него — топ
+        if words and words[0] == main_word:
+            score += 4
+
+        # 🔥 проверка остальных слов
+        for q in query_words[1:]:
+            if q in words:
+                score += 3
+
+        # ❌ штраф за мусор
+        if any(bad in words for bad in BAD_WORDS):
+            score -= 5
+
+        # ❌ выкидываем совсем плохие
+        if score <= 0:
+            continue
+
+        scored.append((score, part))
+
+    # 🔥 сортировка как в маркетплейсе
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    results = [item[1] for item in scored[:10]]
+
+    return results
 
 # ===== НАСТРОЙКИ =====
 TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"

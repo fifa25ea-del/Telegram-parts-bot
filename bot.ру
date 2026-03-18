@@ -18,6 +18,7 @@ FAV_FILE = "favorites.json"
 bot = telebot.TeleBot(TOKEN)
 
 # ===== ДАННЫЕ =====
+user_index = {}
 favorites = {}
 user_results = {}
 current_mode = {}
@@ -84,30 +85,22 @@ def load_database():
 
 # ===== ПОИСК =====
 def find_part(query, db):
+    query = query.lower().strip()
 
-    query_words = split_words(query)
     results = []
 
     for part in db:
-        name = str(part.get(name_key, "")).lower()
-        words = split_words(name)
+        text = " ".join(str(v).lower() for v in part.values())
 
-        # 🔥 ЕСЛИ ОДНО СЛОВО → СТРОГОЕ СОВПАДЕНИЕ
-        if len(query_words) == 1:
-            if query_words[0] in words:
-                
-                # ❌ исключаем "усилитель бампера" и т.д.
-                if len(words) > 2:
-                    continue
+        # 🔥 точный поиск по артикулу
+        if query in str(part.get(number_key, "")).lower():
+            return [part]
 
-                results.append(part)
+        # 🔥 обычный поиск
+        if query in text:
+            results.append(part)
 
-        # 🔥 ЕСЛИ НЕСКОЛЬКО СЛОВ
-        else:
-            if all(q in words for q in query_words):
-                results.append(part)
-
-        if len(results) >= 20:
+        if len(results) >= 10:
             break
 
     return results
@@ -130,6 +123,23 @@ def find_smart(query, db):
     results.sort(key=lambda x: x[0], reverse=True)
 
     return [r[1] for r in results[:10]]
+
+def find_wheels(query, db):
+    query = query.lower().replace(" ", "")
+
+    results = []
+
+    for part in db:
+        radius = str(part.get("Диаметр диска", "")).lower()
+
+        if query in radius or query in "r" + radius:
+            results.append(part)
+
+        if len(results) >= 10:
+            break
+
+    return results
+
 
 # ===== СТАРТ =====
 @bot.message_handler(commands=["start"])
@@ -189,17 +199,19 @@ def search(msg):
     chat_id = msg.chat.id
     mode = current_mode.get(chat_id, "parts")
 
-    db = parts_db if mode == "parts" else wheels_db
-
-    results = find_part(msg.text, db)
+    if mode == "wheels":
+        results = find_wheels(msg.text, wheels_db)
+    else:
+        results = find_part(msg.text, parts_db)
 
     if not results:
         bot.send_message(chat_id, "❌ Ничего не найдено")
         return
 
     user_results[chat_id] = results
-    send_card(chat_id, 0)
+    user_index[chat_id] = 0
 
+    send_card(chat_id, 0)
 # ===== КАРТОЧКА =====
 def send_card(chat_id, index):
 
@@ -471,7 +483,6 @@ def callback(call):
         else:
             bot.answer_callback_query(call.id, "Ошибка удаления")
 
-        return
 
     # =======================
     # ⬅️ ➡️ ПЕРЕКЛЮЧЕНИЕ
@@ -494,6 +505,7 @@ def callback(call):
 
         bot.delete_message(chat_id, call.message.message_id)
         send_card(chat_id, current)
+
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     print("START BOT")

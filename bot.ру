@@ -117,19 +117,24 @@ def find_wheels(query, db):
             break
 
     return results
-# ===== ПОИСК =====
+
+def normalize(text):
+    return str(text).lower().replace(" ", "").replace("-", "")
+
+
 def find_part(query, db):
 
-    query = query.lower().replace(" ", "")
+    query = normalize(query)
     results = []
 
     for part in db:
-        number = str(part.get("Номер", "")).lower().replace(" ", "")
+
+        raw_number = part.get(number_key, "")
+        number = normalize(raw_number)
 
         if not number:
             continue
 
-        # 🔥 точное или частичное совпадение
         if query in number:
             results.append(part)
 

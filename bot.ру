@@ -8,6 +8,41 @@ import re
 def split_words(text):
     return re.findall(r'\w+', text.lower())
 
+import re
+
+PART_TYPES = set()
+
+for part in parts_db:
+    name = str(part.get(name_key, "")).lower()
+    
+    first_word = re.split(r"[ ,\-()]", name)[0]
+    
+    if len(first_word) > 2:
+        PART_TYPES.add(first_word)
+
+PART_TYPES = list(PART_TYPES)
+
+PART_TYPES = [
+"бампер",
+ "амортизатор",
+ "фара",
+ "дверь",
+ "двигатель",
+ "редуктор",
+ "генератор",
+ "датчик",
+ "глушитель",
+ "бачок",
+ "вентилятор",
+ "блок",
+ "крыло",
+ "капот",
+ "радиатор",
+ "стартер",
+ "насос",
+ "стекло",
+ "зеркало"
+]
 
 # ===== НАСТРОЙКИ =====
 TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
@@ -32,6 +67,12 @@ name_key = None
 photo_key = None
 
 # ===== ИЗБРАННОЕ =====
+def detect_part_type(text):
+    for t in PART_TYPES:
+        if t in text:
+            return t
+    return None
+
 def load_favorites():
     try:
         with open(FAV_FILE, "r", encoding="utf-8") as f:
@@ -84,34 +125,25 @@ def load_database():
             photo_key = h
 
 # ===== ПОИСК =====
-def find_part(query, db):
-    words = query.lower().split()
-    main_word = words[0]
+def find_strict(query, db):
+    query = query.lower()
 
+    query_type = detect_part_type(query)
     results = []
 
     for part in db:
         name = str(part.get(name_key, "")).lower()
 
-        # 🔥 1 СЛОВО (бампер)
-        if len(words) == 1:
-            if main_word in name:
+        part_type = detect_part_type(name)
 
-                # ❌ убираем мусор (усилители, кронштейны)
-                if any(x in name for x in ["кронштейн", "усилитель", "накладка"]):
-                    if main_word not in ["кронштейн", "усилитель", "накладка"]:
-                        continue
+        # 🔥 ГЛАВНОЕ ПРАВИЛО
+        if query_type:
+            if part_type != query_type:
+                continue  # ❌ отсекаем всё лишнее
 
-                # 🔥 ВОТ СЮДА ВСТАВЛЯЕТСЯ ТВОЙ КУСОК
-                if not name.startswith(main_word):
-                    continue
-
-                results.append(part)
-
-        # 🔥 НЕСКОЛЬКО СЛОВ
-        else:
-            if all(w in name for w in words):
-                results.append(part)
+        # 🔍 дальше обычная проверка
+        if all(word in name for word in query.split()):
+            results.append(part)
 
     return results[:10]
 

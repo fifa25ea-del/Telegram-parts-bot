@@ -9,23 +9,26 @@ def find_part(query, db):
     query = query.lower()
     words = query.split()
 
-    main_word = words[0]
+    main = words[0]
 
     results = []
 
     for part in db:
         name = str(part.get(name_key, "")).lower()
 
-        # 🔥 берём первое слово товара
-        first_word = re.split(r"[ ,\-()]", name)[0]
-
-        # 💣 ТОЛЬКО СОВПАДЕНИЕ ТИПА
-        if first_word != main_word:
+        # 🔍 проверка слов
+        if not all(word in name for word in words):
             continue
 
-        # 🔍 остальные слова (например 212)
-        if all(word in name for word in words[1:]):
-            results.append(part)
+        # 💣 ГЛАВНЫЙ ФИЛЬТР
+        if main in BAD_WORDS:
+            bad_list = BAD_WORDS[main]
+
+            # если найдено плохое слово — пропускаем
+            if any(bad in name for bad in bad_list):
+                continue
+
+        results.append(part)
 
     return results[:10]
 
@@ -50,6 +53,11 @@ PART_TYPES = [
  "стекло",
  "зеркало"
 ]
+
+BAD_WORDS = {
+    "бампер": ["усилитель", "кронштейн", "крепление", "проводка"],
+    "фара": ["крепление", "блок"],
+}
 
 # ===== НАСТРОЙКИ =====
 TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"

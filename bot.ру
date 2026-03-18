@@ -395,6 +395,7 @@ def send_donor_card(chat_id, index):
         f"Кузов: {d.get('Кузов','')}\n"
         f"Двигатель: {d.get('Двигатель','')}\n"
         f"Год: {d.get('Год','')}\n"
+        f"Пробег: {d.get('Пробег','')}\n"
         f"Цвет: {d.get('Цвет','')}\n"
         f"VIN: {d.get('VIN','')}\n\n"
         f"({index+1}/{len(results)})"

@@ -24,6 +24,7 @@ current_mode = {}
 ai_mode = {}
 user_index = {}
 user_cart = {}
+user_last_msg = {}
 
 parts_db = []
 wheels_db = []
@@ -476,13 +477,16 @@ def callback(call):
 
     # ===== 🚗 PARTS (ВОТ ТУТ МЕНЯЕМ) =====
     else:
+    # удаляем старую карточку
         try:
-            bot.delete_message(chat_id, call.message.message_id)
-        except:
-            pass
-
+            old_msg_id = user_last_msg.get(chat_id)
+            if old_msg_id:
+                bot.delete_message(chat_id, old_msg_id)
+        except Exception as e:
+            print("Ошибка удаления:", e)
+    
+        # отправляем новую
         send_card(chat_id, current)
-
     return
 
     if mode == "wheels":

@@ -814,4 +814,64 @@ def callback(call):
 if __name__ == "__main__":
     print("START BOT")
     load_database()
+    @bot.message_handler(func=lambda message: True)
+def handle_text(message):
+    chat_id = message.chat.id
+    text = message.text
+
+    # ===== КНОПКИ =====
+    if text == "🚗 Найти запчасть":
+        current_mode[chat_id] = "parts"
+        bot.send_message(chat_id, "🔎 Введите номер детали")
+        return
+
+    if text == "🛞 Шины и диски":
+        current_mode[chat_id] = "wheels"
+        bot.send_message(chat_id, "🔎 Введите параметры (например R18)")
+        return
+
+    if text == "🚘 В разборе":
+        current_mode[chat_id] = "donors"
+        user_results[chat_id] = donors_db[:20]
+        user_index[chat_id] = 0
+        user_photo_index[chat_id] = 0
+
+        send_donor_card(chat_id, 0)
+        return
+
+    # ===== ПОИСК =====
+    mode = current_mode.get(chat_id)
+
+    if mode == "parts":
+        results = find_part(text, parts_db)
+
+        print("ПОИСК:", text)
+        print("НАЙДЕНО:", len(results))
+
+        if not results:
+            bot.send_message(chat_id, "❌ Ничего не найдено")
+            return
+
+        user_results[chat_id] = results
+        user_index[chat_id] = 0
+        user_photo_index[chat_id] = 0
+
+        send_part_card(chat_id, 0)
+        return
+
+    elif mode == "wheels":
+        results = find_wheels(text, wheels_db)
+
+        if not results:
+            bot.send_message(chat_id, "❌ Ничего не найдено")
+            return
+
+        user_results[chat_id] = results
+        user_index[chat_id] = 0
+
+        send_wheel_card(chat_id, 0)
+        return
+
+    # если ничего не выбрано
+    bot.send_message(chat_id, "Выберите действие из меню", reply_markup=main_menu())
     bot.infinity_polling()

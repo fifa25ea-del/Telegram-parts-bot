@@ -453,23 +453,37 @@ def callback(call):
     # =======================
     if data.startswith("next_") or data.startswith("prev_"):
 
-        current = user_index.get(chat_id, 0)
+    current = user_index.get(chat_id, 0)
 
-        if "next" in data:
-            current += 1
-        else:
-            current -= 1
+    if "next" in data:
+        current += 1
+    else:
+        current -= 1
 
-        if current < 0:
-            current = len(results) - 1
-        if current >= len(results):
-            current = 0
-    
-        user_index[chat_id] = current
-    
-        part = results[current]
-    
-        mode = current_mode.get(chat_id, "parts")
+    if current < 0:
+        current = len(results) - 1
+    if current >= len(results):
+        current = 0
+
+    user_index[chat_id] = current
+
+    mode = current_mode.get(chat_id, "parts")
+
+    # ===== 🛞 WHEELS (НЕ ТРОГАЕМ — ОНИ УЖЕ ЧЕРЕЗ EDIT) =====
+    if mode == "wheels":
+        # твой код с edit_message_media остаётся
+        pass
+
+    # ===== 🚗 PARTS (ВОТ ТУТ МЕНЯЕМ) =====
+    else:
+        try:
+            bot.delete_message(chat_id, call.message.message_id)
+        except:
+            pass
+
+        send_card(chat_id, current)
+
+    return
 
     if mode == "wheels":
         photos = str(part.get("Фото", ""))

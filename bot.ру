@@ -5,12 +5,30 @@ import requests
 import io
 import re
 
-def detect_part_type(text):
-    text = text.lower()
+def find_part(query, db):
+    query = query.lower()
+    words = query.split()
 
-    first_word = re.split(r"[ ,\-()]", text)[0]
+    # 🔥 тип из запроса (ПЕРВОЕ СЛОВО)
+    query_type = re.split(r"[ ,\-()]", query)[0]
 
-    return first_word
+    results = []
+
+    for part in db:
+        name = str(part.get(name_key, "")).lower()
+
+        # 🔥 тип товара (ПЕРВОЕ СЛОВО)
+        part_type = re.split(r"[ ,\-()]", name)[0]
+
+        # 💣 ГЛАВНЫЙ ФИЛЬТР
+        if query_type != part_type:
+            continue
+
+        # 🔍 проверка остальных слов (КРОМЕ ПЕРВОГО)
+        if all(word in name for word in words[1:]):
+            results.append(part)
+
+    return results[:10]
 
 import re
 

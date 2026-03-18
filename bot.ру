@@ -576,7 +576,7 @@ def callback(call):
         return
 
     if data.startswith("photo_"):
-    
+
         current = user_index.get(chat_id, 0)
         part = results[current]
     
@@ -603,19 +603,22 @@ def callback(call):
         new_photo = photo_list[photo_index]
     
         try:
-            media = telebot.types.InputMediaPhoto(new_photo)
+            media = telebot.types.InputMediaPhoto(
+                new_photo,
+                caption=call.message.caption
+            )
     
             bot.edit_message_media(
                 media=media,
                 chat_id=chat_id,
-                message_id=call.message.message_id
+                message_id=call.message.message_id,
+                reply_markup=call.message.reply_markup
             )
     
         except Exception as e:
             print("Ошибка фото:", e)
     
         return
-
     # =======================
     # ⬅️ ➡️ ПЕРЕКЛЮЧЕНИЕ
     # =======================

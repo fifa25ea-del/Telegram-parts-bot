@@ -584,6 +584,47 @@ def callback(call):
         bot.send_media_group(chat_id, media)
         return
 
+    if data.startswith("photo_"):
+    
+        current = user_index.get(chat_id, 0)
+        part = results[current]
+    
+        photos = str(part.get("Фото") or part.get("photo") or "")
+        photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+    
+        if not photo_list:
+            return
+    
+        photo_index = user_photo_index.get(chat_id, 0)
+    
+        if "next" in data:
+            photo_index += 1
+        else:
+            photo_index -= 1
+    
+        if photo_index < 0:
+            photo_index = len(photo_list) - 1
+        if photo_index >= len(photo_list):
+            photo_index = 0
+    
+        user_photo_index[chat_id] = photo_index
+    
+        new_photo = photo_list[photo_index]
+    
+        try:
+            media = telebot.types.InputMediaPhoto(new_photo)
+    
+            bot.edit_message_media(
+                media=media,
+                chat_id=chat_id,
+                message_id=call.message.message_id
+            )
+    
+        except Exception as e:
+            print("Ошибка фото:", e)
+    
+        return
+
     # =======================
     # ⬅️ ➡️ ПЕРЕКЛЮЧЕНИЕ
     # =======================

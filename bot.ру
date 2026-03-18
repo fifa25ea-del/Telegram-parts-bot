@@ -317,16 +317,16 @@ def send_with_photo(chat_id, text, photos, index):
     try:
         photo_list = [x.strip() for x in str(photos).split(",") if x.strip()]
 
-     # ===== 🛞 ДИСКИ =====
-     if mode == "wheels":
+        # ===== 🛞 ДИСКИ =====
+        if mode == "wheels":
 
-        if not photo_list:
-            bot.send_message(chat_id, text, reply_markup=kb)
-            return
+            if not photo_list:
+                bot.send_message(chat_id, text, reply_markup=kb)
+                return
 
-        main_photo = photo_list[0]
+            main_photo = photo_list[0]
 
-        bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
+            bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
 
         # ===== 🚗 ЗАПЧАСТИ (КАК БЫЛО) =====
         else:

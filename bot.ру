@@ -165,6 +165,7 @@ def load_database():
 
         if "фото" in h_low or "image" in h_low:
             photo_key = h
+print(parts_db[0])
 
 # ===== ПОИСК =====
 def find_part(query, db):

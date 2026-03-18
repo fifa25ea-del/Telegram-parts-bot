@@ -9,29 +9,37 @@ def find_part(query, db):
     query = query.lower()
     words = query.split()
 
-    main = words[0]
+    main_word = words[0]
 
     results = []
 
     for part in db:
-        name = str(part.get(name_key, "")).lower()
+        name = str(part.get("Наименование", "")).lower()
+        body = str(part.get("Кузов", "")).lower()
 
-        # 🔍 проверка слов
-        if not all(word in name for word in words):
+        # 💣 1. ТОЧНОЕ СЛОВО (НЕ бампера!)
+        if not re.search(rf"\b{main_word}\b", name):
             continue
 
-        # 💣 ГЛАВНЫЙ ФИЛЬТР
-        if main in BAD_WORDS:
-            bad_list = BAD_WORDS[main]
+        # 💣 2. кузов отдельно
+        body_ok = True
+        for word in words[1:]:
+            if word.startswith("w"):
+                if word not in body:
+                    body_ok = False
+                    break
 
-            # если найдено плохое слово — пропускаем
-            if any(bad in name for bad in bad_list):
+        if not body_ok:
+            continue
+
+        # 💣 3. убираем мусор
+        if main_word == "бампер":
+            if any(x in name for x in ["усилитель", "проводка", "кронштейн"]):
                 continue
 
         results.append(part)
 
     return results[:10]
-
 PART_TYPES = [
 "бампер",
  "амортизатор",

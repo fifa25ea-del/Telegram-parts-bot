@@ -345,6 +345,19 @@ def send_wheel_card(chat_id, index):
         f"({index+1}/{len(results)})"
     )
 
+    # ===== КНОПКИ =====
+    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+
+    kb.add(
+        telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{index}"),
+        telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{index}")
+    )
+
+    kb.add(
+        telebot.types.InlineKeyboardButton("❤️ Сохранить", callback_data=f"fav_{index}"),
+        telebot.types.InlineKeyboardButton("💬 Связаться", url="https://t.me/Stuttgart_mercedes")
+    )
+
     if main_photo:
         sent = bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
     else:

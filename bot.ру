@@ -5,6 +5,10 @@ import requests
 import io
 import re
 
+def split_words(text):
+    return re.findall(r'\w+', text.lower())
+import re
+
 def find_part(query, db):
     query = query.lower()
     words = query.split()
@@ -202,23 +206,38 @@ def find_part(query, db):
     return results[:10]
 
 def find_smart(query, db):
-    words = query.lower().split()
+
+    query_words = split_words(query)
     results = []
 
+    if not query_words:
+        return []
+
+    main_word = query_words[0]  # 🔥 главное слово (бампер, фара и т.д.)
+
     for part in db:
-        text = " ".join(str(v).lower() for v in part.values())
+        name = str(part.get(name_key, "")).lower()
+        words = split_words(name)
 
-        score = 0
-        for word in words:
-            if word in text:
-                score += 1
+        # ❌ если нет главного слова — сразу мимо
+        if main_word not in words:
+            continue
 
-        if score > 0:
-            results.append((score, part))
+        # ❌ отсекаем мусор (усилитель, кронштейн и т.д.)
+        if any(bad in words for bad in BAD_WORDS):
+            continue
 
-    results.sort(key=lambda x: x[0], reverse=True)
+        # ✅ если несколько слов — все должны совпасть
+        if len(query_words) > 1:
+            if not all(q in words for q in query_words):
+                continue
 
-    return [r[1] for r in results[:10]]
+        results.append(part)
+
+        if len(results) >= 10:  # 🔥 максимум 10
+            break
+
+    return results
 
 def find_wheels(query, db):
     query = query.lower().replace(" ", "")

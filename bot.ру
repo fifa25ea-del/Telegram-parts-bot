@@ -318,6 +318,11 @@ def send_wheel_card(chat_id, index):
 
     part = results[index]
 
+    photos = str(part.get("Фото", ""))
+        photo_list = [x.strip() for x in photos.split(",") if x.strip().startswith("http")]
+
+        main_photo = photo_list[0] if photo_list else None
+
     brand = part.get("Производитель диска", "")
     model = part.get("Модель диска", "")
     article = part.get("Артикул", "")

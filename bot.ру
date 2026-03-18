@@ -9,28 +9,29 @@ def find_part(query, db):
     query = query.lower()
     words = query.split()
 
-    query_type = words[0]  # первое слово запроса
+    main = words[0]
 
     results = []
 
     for part in db:
         name = str(part.get(name_key, "")).lower()
 
-        # 🔥 ищем тип как ОТДЕЛЬНОЕ слово
-        if not re.search(rf"\b{query_type}\b", name):
+        # 🔥 РАЗБИВАЕМ СТРОКУ В СЛОВА
+        name_words = re.findall(r"\w+", name)
+
+        # 💣 "бампер" должен быть ОТДЕЛЬНЫМ словом
+        if main not in name_words:
             continue
 
-        # ❌ исключаем "усилитель бампера"
-        if query_type == "бампер":
-            if "усилитель" in name or "кронштейн" in name:
-                continue
+        # 💣 И ГЛАВНОЕ: он должен быть БЛИЖЕ К НАЧАЛУ
+        if name_words.index(main) > 1:
+            continue
 
-        # 🔍 остальные слова
+        # 🔍 остальные слова (w212 и т.д.)
         if all(word in name for word in words[1:]):
             results.append(part)
 
     return results[:10]
-import re
 
 PART_TYPES = [
 "бампер",

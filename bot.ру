@@ -15,6 +15,11 @@ def split_words(text):
     return re.findall(r'\w+', text.lower())
 
 
+def word_match(q, w):
+    # 🔥 главное: частичное совпадение
+    return q in w or w in q
+
+
 def find_smart(query, db):
 
     query_words = split_words(query)
@@ -31,37 +36,33 @@ def find_smart(query, db):
 
         score = 0
 
-        # 🔥 главное слово обязательно
-        if main_word in words:
+        # 🔥 главное слово (частичное!)
+        if any(word_match(main_word, w) for w in words):
             score += 5
         else:
             continue
 
-        # 🔥 если начинается с него — топ
-        if words and words[0] == main_word:
+        # 🔥 если начинается
+        if words and word_match(main_word, words[0]):
             score += 4
 
-        # 🔥 проверка остальных слов
+        # 🔥 остальные слова
         for q in query_words[1:]:
-            if q in words:
+            if any(word_match(q, w) for w in words):
                 score += 3
 
         # ❌ штраф за мусор
         if any(bad in words for bad in BAD_WORDS):
             score -= 5
 
-        # ❌ выкидываем совсем плохие
         if score <= 0:
             continue
 
         scored.append((score, part))
 
-    # 🔥 сортировка как в маркетплейсе
     scored.sort(key=lambda x: x[0], reverse=True)
 
-    results = [item[1] for item in scored[:10]]
-
-    return results
+    return [x[1] for x in scored[:10]]
 
 # ===== НАСТРОЙКИ =====
 TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"

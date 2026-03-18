@@ -5,133 +5,136 @@ import requests
 import io
 import re
 
+def split_words(text):
+    return re.findall(r'\w+', text.lower())
+
+
+# ===== НАСТРОЙКИ =====
 TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
 PARTS_CSV = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 WHEELS_CSV = "https://baz-on.ru/export/c592/77023/drom-wheels.csv"
+FAV_FILE = "favorites.json"
 
 bot = telebot.TeleBot(TOKEN)
 
 # ===== ДАННЫЕ =====
-parts_db = []
-wheels_db = []
-
+favorites = {}
 user_results = {}
-user_index = {}
 current_mode = {}
 ai_mode = {}
 
-name_key = None
+parts_db = []
+wheels_db = []
+
 number_key = None
+name_key = None
 photo_key = None
 
-BAD_WORDS = [
-    "усилитель", "кронштейн", "крепление",
-    "проводка", "абсорбер", "датчик", "провод"
-]
+# ===== ИЗБРАННОЕ =====
+def load_favorites():
+    try:
+        with open(FAV_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
 
-# ===== УТИЛИТЫ =====
-def split_words(text):
-    return re.findall(r'\w+', text.lower())
+def save_favorites(data):
+    with open(FAV_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-# ===== ЗАГРУЗКА =====
+favorites = load_favorites()
+
+# ===== МЕНЮ =====
+def main_menu():
+    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.row("🚗 Найти запчасть")
+    kb.row("🛞 Шины и диски")
+    kb.row("❤️ Избранное")
+    return kb
+
+# ===== ЗАГРУЗКА CSV =====
 def load_csv(url):
-    r = requests.get(url)
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers, timeout=30)
     r.encoding = "cp1251"
-    data = io.StringIO(r.text)
-    reader = csv.DictReader(data, delimiter=";")
+
+    csv_file = io.StringIO(r.text)
+    reader = csv.DictReader(csv_file, delimiter=";")
+
     return list(reader), reader.fieldnames
 
 def load_database():
-    global parts_db, wheels_db, name_key, number_key, photo_key
+    global parts_db, wheels_db, number_key, name_key, photo_key
 
     parts_db, headers = load_csv(PARTS_CSV)
     wheels_db, headers2 = load_csv(WHEELS_CSV)
 
     for h in headers:
         h_low = h.lower()
-        if "наимен" in h_low:
-            name_key = h
+
         if "артикул" in h_low or "номер" in h_low:
             number_key = h
-        if "фото" in h_low:
-            photo_key = h
 
-    print("PARTS:", len(parts_db))
-    print("WHEELS:", len(wheels_db))
+        if "наимен" in h_low or "название" in h_low:
+            name_key = h
+
+        if "фото" in h_low or "image" in h_low:
+            photo_key = h
 
 # ===== ПОИСК =====
 def find_part(query, db):
 
-    query = query.lower().strip()
-    words = split_words(query)
-
+    query_words = split_words(query)
     results = []
 
     for part in db:
         name = str(part.get(name_key, "")).lower()
-        article = str(part.get(number_key, "")).lower()
+        words = split_words(name)
 
-        # точный артикул
-        if query == article:
-            return [part]
+        # 🔥 ЕСЛИ ОДНО СЛОВО → СТРОГОЕ СОВПАДЕНИЕ
+        if len(query_words) == 1:
+            if query_words[0] in words:
+                
+                # ❌ исключаем "усилитель бампера" и т.д.
+                if len(words) > 2:
+                    continue
 
-        name_words = split_words(name)
+                results.append(part)
 
-        # ВСЕ слова должны быть
-        if not all(word in name_words for word in words):
-            continue
+        # 🔥 ЕСЛИ НЕСКОЛЬКО СЛОВ
+        else:
+            if all(q in words for q in query_words):
+                results.append(part)
 
-        # фильтр мусора
-        if any(bad in name_words for bad in BAD_WORDS):
-            continue
-
-        results.append(part)
-
-        if len(results) >= 10:
+        if len(results) >= 20:
             break
 
     return results
 
-def find_smart(query, db):
+# ===== СТАРТ =====
+@bot.message_handler(commands=["start"])
+def start(message):
+    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=main_menu())
 
-    words = split_words(query)
-    results = []
+# ===== РЕЖИМЫ =====
+@bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
+def parts_mode(msg):
+    chat_id = msg.chat.id
 
-    for part in db:
-        name = str(part.get(name_key, "")).lower()
-        name_words = split_words(name)
+    ai_mode[chat_id] = False
+    current_mode[chat_id] = "parts"
 
-        score = 0
+    bot.send_message(chat_id, "🔎 Введите название или номер детали")
 
-        for w in words:
-            if w in name_words:
-                score += 2
+@bot.message_handler(func=lambda m: m.text == "🛞 Шины и диски")
+def wheels_mode(msg):
+    chat_id = msg.chat.id
 
-        if any(bad in name_words for bad in BAD_WORDS):
-            score -= 2
+    ai_mode[chat_id] = False
+    current_mode[chat_id] = "wheels"
 
-        if score > 0:
-            results.append((score, part))
+    bot.send_message(chat_id, "🔎 Введите размер (например r18)")
 
-    results.sort(reverse=True, key=lambda x: x[0])
-
-    return [x[1] for x in results[:10]]
-
-def find_wheels(query, db):
-
-    query = query.lower().replace(" ", "")
-    results = []
-
-    for part in db:
-        radius = str(part.get("Диаметр диска", "")).lower()
-
-        if query in radius or query in "r" + radius:
-            results.append(part)
-
-        if len(results) >= 10:
-            break
-
-    return results
 def send_wheels_preview(chat_id, results):
 
     media = []
@@ -158,55 +161,17 @@ def send_wheels_preview(chat_id, results):
 
     bot.send_message(chat_id, "👇 Листай или выбери номер")
 
-# ===== МЕНЮ =====
-def main_menu():
-    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.row("🚗 Найти запчасть")
-    kb.row("🛞 Шины и диски")
-    kb.row("🤖 Умный поиск")
-    return kb
-
-# ===== РЕЖИМЫ =====
-@bot.message_handler(commands=["start"])
-def start(msg):
-    bot.send_message(msg.chat.id, "Выберите действие:", reply_markup=main_menu())
-
-@bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
-def parts_mode(msg):
-    current_mode[msg.chat.id] = "parts"
-    ai_mode[msg.chat.id] = False
-    bot.send_message(msg.chat.id, "Введите название или номер детали")
-
-@bot.message_handler(func=lambda m: m.text == "🛞 Шины и диски")
-def wheels_mode(msg):
-    current_mode[msg.chat.id] = "wheels"
-    ai_mode[msg.chat.id] = False
-    bot.send_message(msg.chat.id, "Введите размер (r18)")
-
-@bot.message_handler(func=lambda m: m.text == "🤖 Умный поиск")
-def smart_mode(msg):
-    ai_mode[msg.chat.id] = True
-    bot.send_message(msg.chat.id, "Напиши что ищешь\nПример: бампер w212")
-
-# ===== УМНЫЙ =====
-@bot.message_handler(func=lambda m: ai_mode.get(m.chat.id))
-def smart_search(msg):
-
-    results = find_smart(msg.text, parts_db)
-
-    if not results:
-        bot.send_message(msg.chat.id, "❌ Ничего не найдено")
-        return
-
-    user_results[msg.chat.id] = results
-    user_index[msg.chat.id] = 0
-    send_card(msg.chat.id, 0)
-
-# ===== ОБЫЧНЫЙ =====
-@bot.message_handler(func=lambda m: m.text and not m.text.startswith(("🚗","🛞","🤖")))
+# ===== ОБЫЧНЫЙ ПОИСК =====
+@bot.message_handler(func=lambda m: (
+    not ai_mode.get(m.chat.id)
+    and m.text
+    and len(m.text) > 2
+    and not m.text.startswith(("🚗","🛞","❤️"))
+))
 def search(msg):
+
     chat_id = msg.chat.id
-    mode = current_mode.get(msg.chat.id, "parts")
+    mode = current_mode.get(chat_id, "parts")
 
     if mode == "wheels":
         results = find_wheels(msg.text, wheels_db)
@@ -228,61 +193,297 @@ def search(msg):
 # ===== КАРТОЧКА =====
 def send_card(chat_id, index):
 
+    mode = current_mode.get(chat_id, "parts")
+
+    if mode == "wheels":
+        send_wheel_card(chat_id, index)
+    else:
+        send_part_card(chat_id, index)
+def send_part_card(chat_id, index):
+
+    results = user_results.get(chat_id, [])
+    part = results[index]
+    user_id = str(chat_id)
+    user_fav = favorites.get(user_id, [])
+
+    item_id = part.get("Артикул") or str(index)
+
+    name = part.get(name_key, "")
+    article = part.get("Артикул", "")
+    number = part.get("Номер", "")
+    brand = part.get("Марка", "")
+    model = part.get("Модель", "")
+    price = part.get("Цена", "")
+    photos = str(part.get(photo_key, "")).strip()
+
+    text = (
+        f"🔧 {name}\n"
+        f"Артикул: {article}\n"
+        f"Номер: {number}\n"
+        f"{brand} {model}\n"
+        f"💰 {price} ₽\n\n"
+        f"({index+1}/{len(results)})"
+    )
+
+    send_with_photo(chat_id, text, photos, index)
+
+def send_wheel_card(chat_id, index):
+
     results = user_results.get(chat_id, [])
     if not results:
         return
 
     part = results[index]
 
-    name = part.get(name_key, "")
-    article = part.get(number_key, "")
+    brand = part.get("Производитель диска", "")
+    model = part.get("Модель диска", "")
+    article = part.get("Артикул", "")
     price = part.get("Цена", "")
-    photos = str(part.get(photo_key, "")).split(",")
+    photos = str(part.get("Фото", "")).strip()
 
-    text = f"{name}\nАртикул: {article}\n💰 {price} ₽\n({index+1}/{len(results)})"
+    radius = part.get("Диаметр диска", "")
+    width = part.get("Ширина диска", "")
+    et = part.get("Вылет диска", "")
+    pcd = part.get("PCD диска", "")
+    dia = part.get("Диаметр осевого отверстия диска", "")
 
-    kb = telebot.types.InlineKeyboardMarkup()
+    text = (
+        f"🛞 {brand} {model}\n\n"
+        f"Артикул: {article}\n"
+        f"💰 {price} ₽\n\n"
+        f"📏 R{radius or '-'} | {width or '-'}J | ET{et or '-'}\n"
+        f"🔩 PCD: {pcd or '-'}\n"
+        f"🕳 DIA: {dia or '-'}\n\n"
+        f"({index+1}/{len(results)})"
+    )
+
+    send_with_photo(chat_id, text, photos, index)
+
+def send_with_photo(chat_id, text, photos, index):
+
+    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+
     kb.add(
-        telebot.types.InlineKeyboardButton("⬅️", callback_data="prev"),
-        telebot.types.InlineKeyboardButton("➡️", callback_data="next")
+        telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{index}"),
+        telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{index}")
+    )
+
+    kb.add(
+        telebot.types.InlineKeyboardButton("❤️ Сохранить", callback_data=f"fav_{index}"),
+        telebot.types.InlineKeyboardButton("💬 Связаться", url="https://t.me/Stuttgart_mercedes")
     )
 
     try:
-        if photos and photos[0]:
-            bot.send_photo(chat_id, photos[0], caption=text, reply_markup=kb)
+        if photos:
+            photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+
+            if len(photo_list) > 1:
+                media = []
+
+                for i, url in enumerate(photo_list[:8]):
+                    if i == 0:
+                        media.append(
+                            telebot.types.InputMediaPhoto(url, caption=text)
+                        )
+                    else:
+                        media.append(
+                            telebot.types.InputMediaPhoto(url)
+                        )
+
+                bot.send_media_group(chat_id, media)
+                bot.send_message(chat_id, "⬇️ Действия:", reply_markup=kb)
+            else:
+                bot.send_photo(chat_id, photo_list[0], caption=text, reply_markup=kb)
         else:
             bot.send_message(chat_id, text, reply_markup=kb)
-    except:
+
+    except Exception as e:
+        print("Ошибка фото:", e)
         bot.send_message(chat_id, text, reply_markup=kb)
+
+# ===== ИЗБРАННОЕ =====
+@bot.message_handler(func=lambda m: m.text and "Избранное" in m.text)
+def show_favorites(message):
+
+    chat_id = message.chat.id
+    user_id = str(chat_id)
+
+    fav_ids = favorites.get(user_id, [])
+
+    if not fav_ids:
+        bot.send_message(chat_id, "❌ Избранное пусто")
+        return
+
+    results = user_results.get(chat_id, [])
+
+    for part in results:
+        item_id = part.get("Артикул") or str(part)
+
+        if item_id not in fav_ids:
+            continue
+
+        name = part.get(name_key) or part.get("Наименование") or "Без названия"
+        article = part.get("Артикул", "Нет артикула")
+        number = part.get("Номер", "Нет номера")
+        price = part.get("Цена", "0")
+        photo = part.get(photo_key) or part.get("Фото")
+
+        if photo:
+            photo = photo.split(",")[0].strip()
+
+        text = (
+            f"❤️ {name}\n"
+            f"🧾 Артикул: {article}\n"
+            f"🆔 Номер: {number}\n"
+            f"💰 Цена: {price} ₽"
+        )
+
+        kb = telebot.types.InlineKeyboardMarkup()
+        kb.add(
+            telebot.types.InlineKeyboardButton(
+                "💔 Убрать",
+                callback_data=f"removefav_{item_id}"
+            )
+        )
+
+        if photo:
+            bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
+        else:
+            bot.send_message(chat_id, text, reply_markup=kb)
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("removefav_"))
+def remove_favorite(call):
+        user_id = str(call.from_user.id)
+
+        _, item_id = call.data.split("_")
+
+        if user_id in favorites and item_id in favorites[user_id]:
+            favorites[user_id].remove(item_id)
+            save_favorites(favorites)
+
+        bot.answer_callback_query(call.id, "❌ Удалено")
+        bot.delete_message(call.message.chat.id, call.message.message_id)
+
+# ===== КОРЗИНА =====
+@bot.message_handler(func=lambda m: m.text == "🛒 Корзина")
+def show_cart(message):
+
+    items = user_cart.get(message.chat.id, [])
+
+    if not items:
+        bot.send_message(message.chat.id, "❌ Корзина пустая")
+        return
+
+    total = 0
+
+    for i, part in enumerate(items):
+        try:
+            price = int(part.get("Цена", 0))
+        except:
+            price = 0
+
+        total += price
+
+        kb = telebot.types.InlineKeyboardMarkup()
+        kb.add(
+            telebot.types.InlineKeyboardButton(
+                "❌ Удалить",
+                callback_data=f"remove_{i}"
+            )
+        )
+
+        bot.send_message(
+            message.chat.id,
+            f"{part.get(name_key)}\n💰 {price} ₽",
+            reply_markup=kb
+        )
+
+        bot.send_message(
+            message.chat.id,
+            f"{part.get(name_key) or 'Без названия'}\n💰 {part.get('Цена')} ₽"
+        )
+
 
 # ===== CALLBACK =====
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
 
+    data = call.data
     chat_id = call.message.chat.id
     results = user_results.get(chat_id, [])
 
+    # защита
     if not results:
+        bot.answer_callback_query(call.id, "Нет данных")
         return
 
-    i = user_index.get(chat_id, 0)
+    try:
+        i = int(data.split("_")[1])
+    except:
+        return
 
-    if call.data == "next":
-        i += 1
-    elif call.data == "prev":
-        i -= 1
-
-    if i < 0:
-        i = len(results) - 1
     if i >= len(results):
-        i = 0
+        bot.answer_callback_query(call.id, "Ошибка индекса")
+        return
 
-    user_index[chat_id] = i
+    item = results[i]
 
-    bot.delete_message(chat_id, call.message.message_id)
-    send_card(chat_id, i)
+    # =======================
+    # ❤️ ИЗБРАННОЕ
+    # =======================
+    if data.startswith("fav_"):
+        user_id = str(chat_id)
 
+        item_id = item.get("Артикул") or str(i)
+
+        if user_id not in favorites:
+            favorites[user_id] = []
+
+        if item_id in favorites[user_id]:
+            bot.answer_callback_query(call.id, "Уже в избранном")
+        else:
+            favorites[user_id].append(item_id)
+            save_favorites(favorites)
+            bot.answer_callback_query(call.id, "❤️ Добавлено")
+
+
+    # =======================
+    # ❌ УДАЛЕНИЕ
+    # =======================
+    if data.startswith("remove_"):
+        i = int(data.split("_")[1])
+
+        if chat_id in user_cart and len(user_cart[chat_id]) > i:
+            user_cart[chat_id].pop(i)
+            bot.answer_callback_query(call.id, "❌ Удалено")
+        else:
+            bot.answer_callback_query(call.id, "Ошибка удаления")
+
+        return
+
+    # =======================
+    # ⬅️ ➡️ ПЕРЕКЛЮЧЕНИЕ
+    # =======================
+    if data.startswith("next_") or data.startswith("prev_"):
+
+        current = user_index.get(chat_id, 0)
+
+        if "next" in data:
+            current += 1
+        else:
+            current -= 1
+
+        if current < 0:
+            current = len(results) - 1
+        if current >= len(results):
+            current = 0
+
+        user_index[chat_id] = current
+
+        bot.delete_message(chat_id, call.message.message_id)
+        send_card(chat_id, current)
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
+    print("START BOT")
     load_database()
     bot.infinity_polling()

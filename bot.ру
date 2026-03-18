@@ -11,6 +11,7 @@ def split_words(text):
 
 # ===== НАСТРОЙКИ =====
 TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
+DONORS_CSV = "https://baz-on.ru/export/c592/5c6ca/stuttgart-site-carsrc.csv"
 PARTS_CSV = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 WHEELS_CSV = "https://baz-on.ru/export/c592/77023/drom-wheels.csv"
 FAV_FILE = "favorites.json"
@@ -26,6 +27,7 @@ user_index = {}
 user_cart = {}
 user_last_msg = {}
 
+donors_db = []
 parts_db = []
 wheels_db = []
 
@@ -53,6 +55,7 @@ def main_menu():
     kb.row("🚗 Найти запчасть")
     kb.row("🛞 Шины и диски")
     kb.row("❤️ Избранное")
+    kb.row("🚘 В разборе")
     return kb
 
 # ===== ЗАГРУЗКА CSV =====
@@ -68,7 +71,10 @@ def load_csv(url):
 
 def load_database():
     global parts_db, wheels_db, number_key, name_key, photo_key
-
+    
+    donors_db, _ = load_csv(DONORS_CSV)
+    donors_db.reverse()  # свежие сверху
+    
     parts_db, headers = load_csv(PARTS_CSV)
     wheels_db, headers2 = load_csv(WHEELS_CSV)
 
@@ -132,6 +138,37 @@ def start(message):
     bot.send_message(message.chat.id, "Выберите действие:", reply_markup=main_menu())
 
 # ===== РЕЖИМЫ =====
+@bot.message_handler(func=lambda m: m.text == "🚘 В разборе")
+def donors_mode(msg):
+    chat_id = msg.chat.id
+    current_mode[chat_id] = "donors"
+
+    results = donors_db[:20]
+
+    if not results:
+        bot.send_message(chat_id, "❌ Нет доноров")
+        return
+
+    user_results[chat_id] = results
+    user_index[chat_id] = 0
+
+    # превью как wheels
+    media = []
+    for i, d in enumerate(results[:10]):
+        photo = str(d.get("Фото","")).split(",")[0].strip()
+        if not photo:
+            continue
+
+        if i == 0:
+            media.append(telebot.types.InputMediaPhoto(photo, caption="🚘 Последние доноры"))
+        else:
+            media.append(telebot.types.InputMediaPhoto(photo))
+
+    if media:
+        bot.send_media_group(chat_id, media)
+
+    send_card(chat_id, 0)
+
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
 def parts_mode(msg):
     chat_id = msg.chat.id
@@ -227,9 +264,12 @@ def send_card(chat_id, index):
     mode = current_mode.get(chat_id, "parts")
 
     if mode == "wheels":
-        send_wheel_card(chat_id, index)
-    else:
-        send_part_card(chat_id, index)
+    send_wheel_card(chat_id, index)
+elif mode == "donors":
+    send_donor_card(chat_id, index)
+else:
+    send_part_card(chat_id, index)
+
 def send_part_card(chat_id, index):
 
     results = user_results.get(chat_id, [])
@@ -291,6 +331,36 @@ def send_wheel_card(chat_id, index):
     )
 
     send_with_photo(chat_id, text, photos, index)
+def send_donor_card(chat_id, index):
+    results = user_results.get(chat_id, [])
+    if not results or index >= len(results):
+        return
+
+    d = results[index]
+
+    text = (
+        f"🚘 Донор №{d.get('Номер','')}\n\n"
+        f"{d.get('Марка','')} {d.get('Модель','')}\n"
+        f"Кузов: {d.get('Кузов','')}\n"
+        f"Двигатель: {d.get('Двигатель','')}\n"
+        f"Год: {d.get('Год','')}\n"
+        f"Цвет: {d.get('Цвет','')}\n"
+        f"VIN: {d.get('VIN','')}\n\n"
+        f"({index+1}/{len(results)})"
+    )
+
+    photo = str(d.get("Фото","")).split(",")[0].strip()
+
+    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+    kb.add(
+        telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{index}"),
+        telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{index}")
+    )
+
+    if photo:
+        bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
+    else:
+        bot.send_message(chat_id, text, reply_markup=kb)
 
 def send_with_photo(chat_id, text, photos, index):
 
@@ -361,6 +431,8 @@ def send_with_photo(chat_id, text, photos, index):
 
     except Exception as e:
         print("Ошибка отправки:", e)
+
+    
 
 # ===== ИЗБРАННОЕ =====
 @bot.message_handler(func=lambda m: m.text and "Избранное" in m.text)

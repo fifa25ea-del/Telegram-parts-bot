@@ -70,7 +70,7 @@ def load_csv(url):
     return list(reader), reader.fieldnames
 
 def load_database():
-    global parts_db, wheels_db, number_key, name_key, photo_key
+    global parts_db, wheels_db, donors_db, number_key, name_key, photo_key
     
     donors_db, _ = load_csv(DONORS_CSV)
     donors_db.reverse()  # свежие сверху

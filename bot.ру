@@ -264,11 +264,11 @@ def send_card(chat_id, index):
     mode = current_mode.get(chat_id, "parts")
 
     if mode == "wheels":
-    send_wheel_card(chat_id, index)
-elif mode == "donors":
-    send_donor_card(chat_id, index)
-else:
-    send_part_card(chat_id, index)
+        send_wheel_card(chat_id, index)
+    elif mode == "donors":
+        send_donor_card(chat_id, index)
+    else:
+        send_part_card(chat_id, index)
 
 def send_part_card(chat_id, index):
 

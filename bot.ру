@@ -468,8 +468,6 @@ def callback(call):
             save_favorites(favorites)
             bot.answer_callback_query(call.id, "❤️ Добавлено")
 
-    return
-
 
     # =======================
     # ❌ УДАЛЕНИЕ

@@ -209,7 +209,7 @@ def search(msg):
     mode = current_mode.get(msg.chat.id, "parts")
 
     if mode == "wheels":
-    results = find_wheels(msg.text, wheels_db)
+        results = find_wheels(msg.text, wheels_db)
 
     if not results:
         bot.send_message(chat_id, "❌ Ничего не найдено")

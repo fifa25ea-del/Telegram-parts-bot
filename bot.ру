@@ -317,20 +317,34 @@ def send_with_photo(chat_id, text, photos, index):
     try:
         photo_list = [x.strip() for x in str(photos).split(",") if x.strip()]
 
-        # ===== 🛞 ТОЛЬКО ДЛЯ ДИСКОВ =====
+        # ===== 🛞 ДИСКИ =====
         if mode == "wheels":
-            main_photo = photo_list[0] if photo_list else None
 
-            # добавляем ссылку если есть ещё фото
-            if len(photo_list) > 1:
-                text += f"\n\n📸 Все фото: {photo_list[1]}"
-
-            if main_photo:
-                bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
-            else:
+            if not photo_list:
                 bot.send_message(chat_id, text, reply_markup=kb)
+                return
 
-        # ===== 🚗 ДЛЯ ЗАПЧАСТЕЙ (КАК БЫЛО) =====
+            # берем максимум 10 фото
+            photo_list = photo_list[:10]
+
+            media = []
+
+            for i, url in enumerate(photo_list):
+                if i == 0:
+                    media.append(
+                        telebot.types.InputMediaPhoto(url, caption=text)
+                    )
+                else:
+                    media.append(
+                        telebot.types.InputMediaPhoto(url)
+                    )
+
+            bot.send_media_group(chat_id, media)
+
+            # кнопки отдельным сообщением
+            bot.send_message(chat_id, "⬇️ Действия:", reply_markup=kb)
+
+        # ===== 🚗 ЗАПЧАСТИ (КАК БЫЛО) =====
         else:
             if len(photo_list) > 1:
                 media = []
@@ -347,8 +361,10 @@ def send_with_photo(chat_id, text, photos, index):
 
                 bot.send_media_group(chat_id, media)
                 bot.send_message(chat_id, "⬇️ Действия:", reply_markup=kb)
+
             elif photo_list:
                 bot.send_photo(chat_id, photo_list[0], caption=text, reply_markup=kb)
+
             else:
                 bot.send_message(chat_id, text, reply_markup=kb)
 

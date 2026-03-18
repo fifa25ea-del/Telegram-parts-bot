@@ -321,41 +321,41 @@ def send_with_photo(chat_id, text, photos, index):
             bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
 
       # ===== 🚗 ЗАПЧАСТИ =====
-elif mode == "parts":
-
-    sent_ids = []  # 👈 список всех сообщений
-
-    if not photo_list:
-        sent = bot.send_message(chat_id, text, reply_markup=kb)
-        sent_ids.append(sent.message_id)
+    elif mode == "parts":
+    
+        sent_ids = []  # 👈 список всех сообщений
+    
+        if not photo_list:
+            sent = bot.send_message(chat_id, text, reply_markup=kb)
+            sent_ids.append(sent.message_id)
+            user_last_msg[chat_id] = sent_ids
+            return
+    
+        # до 10 фото
+        media = []
+    
+        for i, url in enumerate(photo_list[:10]):
+            if i == 0:
+                media.append(
+                    telebot.types.InputMediaPhoto(url, caption=text)
+                )
+            else:
+                media.append(
+                    telebot.types.InputMediaPhoto(url)
+                )
+    
+        sent_msgs = bot.send_media_group(chat_id, media)
+    
+        # сохраняем ВСЕ id фото
+        for msg in sent_msgs:
+            sent_ids.append(msg.message_id)
+    
+        # кнопки отдельным сообщением
+        sent_kb = bot.send_message(chat_id, "⬇️ Действия:", reply_markup=kb)
+        sent_ids.append(sent_kb.message_id)
+    
+        # сохраняем список
         user_last_msg[chat_id] = sent_ids
-        return
-
-    # до 10 фото
-    media = []
-
-    for i, url in enumerate(photo_list[:10]):
-        if i == 0:
-            media.append(
-                telebot.types.InputMediaPhoto(url, caption=text)
-            )
-        else:
-            media.append(
-                telebot.types.InputMediaPhoto(url)
-            )
-
-    sent_msgs = bot.send_media_group(chat_id, media)
-
-    # сохраняем ВСЕ id фото
-    for msg in sent_msgs:
-        sent_ids.append(msg.message_id)
-
-    # кнопки отдельным сообщением
-    sent_kb = bot.send_message(chat_id, "⬇️ Действия:", reply_markup=kb)
-    sent_ids.append(sent_kb.message_id)
-
-    # сохраняем список
-    user_last_msg[chat_id] = sent_ids
 # ===== ИЗБРАННОЕ =====
 @bot.message_handler(func=lambda m: m.text and "Избранное" in m.text)
 def show_favorites(message):
@@ -526,18 +526,22 @@ def callback(call):
                 print("Ошибка редактирования:", e)
     
             return
-    
-        # ===== 🚗 PARTS (удаляем и отправляем новую) =====
-        else:
-            try:
-                old_msg_id = user_last_msg.get(chat_id)
-                if old_msg_id:
-                    bot.delete_message(chat_id, old_msg_id)
-            except Exception as e:
-                print("Ошибка удаления:", e)
-    
-            send_card(chat_id, current)
-            return
+            
+               # ===== 🚗 PARTS =====
+            else:
+            
+                # 🧹 удаляем ВСЕ старые сообщения
+                old_msgs = user_last_msg.get(chat_id, [])
+            
+                for msg_id in old_msgs:
+                    try:
+                        bot.delete_message(chat_id, msg_id)
+                    except:
+                        pass
+            
+                # 🚀 отправляем новую карточку
+                send_card(chat_id, current)
+                return
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     print("START BOT")

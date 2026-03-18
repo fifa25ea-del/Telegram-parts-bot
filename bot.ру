@@ -22,6 +22,8 @@ favorites = {}
 user_results = {}
 current_mode = {}
 ai_mode = {}
+user_index = {}
+user_cart = {}
 
 parts_db = []
 wheels_db = []
@@ -237,6 +239,8 @@ def send_card(chat_id, index):
 def send_part_card(chat_id, index):
 
     results = user_results.get(chat_id, [])
+    if not results or index >= len(results):
+        return
     part = results[index]
     user_id = str(chat_id)
     user_fav = favorites.get(user_id, [])
@@ -265,7 +269,7 @@ def send_part_card(chat_id, index):
 def send_wheel_card(chat_id, index):
 
     results = user_results.get(chat_id, [])
-    if not results:
+    if not results or index >= len(results):
         return
 
     part = results[index]
@@ -399,47 +403,8 @@ def remove_favorite(call):
         bot.answer_callback_query(call.id, "❌ Удалено")
         bot.delete_message(call.message.chat.id, call.message.message_id)
 
-# ===== КОРЗИНА =====
-@bot.message_handler(func=lambda m: m.text == "🛒 Корзина")
-def show_cart(message):
-
-    items = user_cart.get(message.chat.id, [])
-
-    if not items:
-        bot.send_message(message.chat.id, "❌ Корзина пустая")
-        return
-
-    total = 0
-
-    for i, part in enumerate(items):
-        try:
-            price = int(part.get("Цена", 0))
-        except:
-            price = 0
-
-        total += price
-
-        kb = telebot.types.InlineKeyboardMarkup()
-        kb.add(
-            telebot.types.InlineKeyboardButton(
-                "❌ Удалить",
-                callback_data=f"remove_{i}"
-            )
-        )
-
-        bot.send_message(
-            message.chat.id,
-            f"{part.get(name_key)}\n💰 {price} ₽",
-            reply_markup=kb
-        )
-
-        bot.send_message(
-            message.chat.id,
-            f"{part.get(name_key) or 'Без названия'}\n💰 {part.get('Цена')} ₽"
-        )
 
 
-# ===== CALLBACK =====
 @bot.callback_query_handler(func=lambda call: True)
 def callback(call):
 
@@ -447,26 +412,20 @@ def callback(call):
     chat_id = call.message.chat.id
     results = user_results.get(chat_id, [])
 
-    # защита
     if not results:
         bot.answer_callback_query(call.id, "Нет данных")
         return
-
-    try:
-        i = int(data.split("_")[1])
-    except:
-        return
-
-    if i >= len(results):
-        bot.answer_callback_query(call.id, "Ошибка индекса")
-        return
-
-    item = results[i]
 
     # =======================
     # ❤️ ИЗБРАННОЕ
     # =======================
     if data.startswith("fav_"):
+        i = int(data.split("_")[1])
+
+        if i >= len(results):
+            return
+
+        item = results[i]
         user_id = str(chat_id)
 
         item_id = item.get("Артикул") or str(i)
@@ -480,19 +439,6 @@ def callback(call):
             favorites[user_id].append(item_id)
             save_favorites(favorites)
             bot.answer_callback_query(call.id, "❤️ Добавлено")
-
-
-    # =======================
-    # ❌ УДАЛЕНИЕ
-    # =======================
-    if data.startswith("remove_"):
-        i = int(data.split("_")[1])
-
-        if chat_id in user_cart and len(user_cart[chat_id]) > i:
-            user_cart[chat_id].pop(i)
-            bot.answer_callback_query(call.id, "❌ Удалено")
-        else:
-            bot.answer_callback_query(call.id, "Ошибка удаления")
 
         return
 
@@ -517,6 +463,7 @@ def callback(call):
 
         bot.delete_message(chat_id, call.message.message_id)
         send_card(chat_id, current)
+
 # ===== ЗАПУСК =====
 if __name__ == "__main__":
     print("START BOT")

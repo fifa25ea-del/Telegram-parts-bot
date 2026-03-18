@@ -351,9 +351,11 @@ def send_donor_card(chat_id, index):
         f"({index+1}/{len(results)})"
     )
 
-    photos = str(d.get("Фото") or d.get("photo") or "")
-
-        photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+        photos = str(d.get("Фото") or d.get("photo") or "")
+        
+        photo_list = [
+            x.strip() for x in photos.split(",") if x.strip().startswith("http")
+        ]
         
         photo_index = user_photo_index.get(chat_id, 0)
         
@@ -361,7 +363,7 @@ def send_donor_card(chat_id, index):
             photo_index = 0
         
         current_photo = photo_list[photo_index] if photo_list else None
-
+        
         kb = telebot.types.InlineKeyboardMarkup(row_width=2)
         
         kb.add(
@@ -370,15 +372,20 @@ def send_donor_card(chat_id, index):
         )
         
         kb.add(
-            telebot.types.InlineKeyboardButton("📸 ⬅️", callback_data=f"photo_prev"),
-            telebot.types.InlineKeyboardButton("📸 ➡️", callback_data=f"photo_next")
+            telebot.types.InlineKeyboardButton("📸 ⬅️", callback_data="photo_prev"),
+            telebot.types.InlineKeyboardButton("📸 ➡️", callback_data="photo_next")
         )
-        if current_photo:
-            sent = bot.send_photo(chat_id, current_photo, caption=text, reply_markup=kb)
-        else:
-            sent = bot.send_message(chat_id, text, reply_markup=kb)
-
-user_last_msg[chat_id] = sent.message_id
+        
+        try:
+            if current_photo:
+                sent = bot.send_photo(chat_id, current_photo, caption=text, reply_markup=kb)
+            else:
+                sent = bot.send_message(chat_id, text, reply_markup=kb)
+        
+            user_last_msg[chat_id] = sent.message_id
+        
+        except Exception as e:
+            print("Ошибка отправки донора:", e)
 
 def send_with_photo(chat_id, text, photos, index):
 
@@ -643,6 +650,7 @@ def callback(call):
             current = 0
     
         user_index[chat_id] = current
+        user_photo_index[chat_id] = 0
         mode = current_mode.get(chat_id, "parts")
     
         # ===== 🛞 WHEELS (через edit) =====

@@ -10,18 +10,6 @@ def split_words(text):
 
 import re
 
-PART_TYPES = set()
-
-for part in parts_db:
-    name = str(part.get(name_key, "")).lower()
-    
-    first_word = re.split(r"[ ,\-()]", name)[0]
-    
-    if len(first_word) > 2:
-        PART_TYPES.add(first_word)
-
-PART_TYPES = list(PART_TYPES)
-
 PART_TYPES = [
 "бампер",
  "амортизатор",

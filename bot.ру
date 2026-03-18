@@ -213,7 +213,11 @@ def send_wheels_preview(chat_id, results):
     if media:
         bot.send_media_group(chat_id, media)
 
-        bot.send_message(chat_id, "👇 Листай или выбери номер")
+        # 👇 ДОБАВЛЯЕМ КАРТОЧКУ
+        user_photo_index[chat_id] = 0
+        user_index[chat_id] = 0
+        
+        send_wheel_card(chat_id, 0)
 
 # ===== ОБЫЧНЫЙ ПОИСК =====
 @bot.message_handler(func=lambda m: (
@@ -332,7 +336,13 @@ def send_wheel_card(chat_id, index):
         f"({index+1}/{len(results)})"
     )
 
-    send_with_photo(chat_id, text, photos, index)
+    if main_photo:
+        sent = bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
+    else:
+        sent = bot.send_message(chat_id, text, reply_markup=kb)
+    
+    # 👇 ВАЖНО
+    user_last_msg[chat_id] = sent.message_id
 def send_donor_card(chat_id, index):
     results = user_results.get(chat_id, [])
     if not results or index >= len(results):

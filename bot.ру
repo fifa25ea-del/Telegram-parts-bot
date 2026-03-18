@@ -9,25 +9,21 @@ def find_part(query, db):
     query = query.lower()
     words = query.split()
 
-    main = words[0]
+    main_word = words[0]
 
     results = []
 
     for part in db:
         name = str(part.get(name_key, "")).lower()
 
-        # 🔥 РАЗБИВАЕМ СТРОКУ В СЛОВА
-        name_words = re.findall(r"\w+", name)
+        # 🔥 берём первое слово товара
+        first_word = re.split(r"[ ,\-()]", name)[0]
 
-        # 💣 "бампер" должен быть ОТДЕЛЬНЫМ словом
-        if main not in name_words:
+        # 💣 ТОЛЬКО СОВПАДЕНИЕ ТИПА
+        if first_word != main_word:
             continue
 
-        # 💣 И ГЛАВНОЕ: он должен быть БЛИЖЕ К НАЧАЛУ
-        if name_words.index(main) > 1:
-            continue
-
-        # 🔍 остальные слова (w212 и т.д.)
+        # 🔍 остальные слова (например 212)
         if all(word in name for word in words[1:]):
             results.append(part)
 

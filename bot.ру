@@ -326,6 +326,9 @@ def send_with_photo(chat_id, text, photos, index):
 
     try:
         photo_list = [x.strip() for x in str(photos).split(",") if x.strip()]
+    except Exception as e:
+        print("Ошибка фото:", e)
+        photo_list = []
 
 def send_wheel_card(chat_id, index):
 

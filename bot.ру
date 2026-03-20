@@ -7,6 +7,8 @@ import re
 
 def split_words(text):
     return re.findall(r'\w+', text.lower())
+def fix_a(text):
+    return text.lower().replace("а", "a")
 
 
 # ===== НАСТРОЙКИ =====
@@ -153,13 +155,13 @@ def normalize(text):
 
 def find_part(query, db):
 
-    query = normalize(query)
+    query = normalize(fix_a(query))
     results = []
 
     for part in db:
 
         raw_number = part.get(number_key, "")
-        number = normalize(raw_number)
+        number = normalize(fix_a(raw_number))
 
         if not number:
             continue

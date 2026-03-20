@@ -265,9 +265,8 @@ def send_wheels_preview(chat_id, results):
     and not m.text.startswith(("🚗","🛞","❤️"))
 ))
 def search(msg):
-    track(chat_id, "searches")
-
     chat_id = msg.chat.id
+    track(chat_id, "searches")
     mode = current_mode.get(chat_id, "parts")
 
     results = []  # ✅ ВСЕГДА создаём

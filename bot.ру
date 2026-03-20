@@ -30,6 +30,7 @@ user_index = {}
 user_cart = {}
 user_last_msg = {}
 user_photo_index = {}
+user_album_msgs = {}
 
 
 donors_db = []

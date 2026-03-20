@@ -364,18 +364,18 @@ def send_with_photo(chat_id, text, photos, index):
     if photo_list:
         photo_url = photo_list[0]
 
-    try:
-        sent = bot.send_photo(
-            chat_id,
-            photo_url,
-            caption=text,
-            reply_markup=kb
-        )
-    except Exception as e:
-        print("Ошибка фото:", photo_url, e)
+        try:
+            sent = bot.send_photo(
+                chat_id,
+                photo_url,
+                caption=text,
+                reply_markup=kb
+            )
+        except Exception as e:
+            print("Ошибка фото:", photo_url, e)
+            sent = bot.send_message(chat_id, text, reply_markup=kb)
+    else:
         sent = bot.send_message(chat_id, text, reply_markup=kb)
-else:
-    sent = bot.send_message(chat_id, text, reply_markup=kb)
 
 def send_wheel_card(chat_id, index):
     track(chat_id, "views")

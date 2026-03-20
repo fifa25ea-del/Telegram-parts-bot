@@ -216,7 +216,7 @@ def parts_mode(msg):
     ai_mode[chat_id] = False
     current_mode[chat_id] = "parts"
 
-    bot.send_message(chat_id, "🔎 Введите название или номер детали")
+    bot.send_message(chat_id, "🔎 Введите номер детали")
 
 @bot.message_handler(func=lambda m: m.text == "🛞 Шины и диски")
 def wheels_mode(msg):

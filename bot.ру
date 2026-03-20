@@ -362,7 +362,7 @@ def send_with_photo(chat_id, text, photos, index):
     photo_list = [x.strip() for x in str(photos).split(",") if x.strip()]
 
     if photo_list:
-    photo_url = photo_list[0]
+        photo_url = photo_list[0]
 
     try:
         sent = bot.send_photo(

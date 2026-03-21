@@ -1028,7 +1028,8 @@ def handle_text(message):
     mode = current_mode.get(chat_id)
 
     if mode == "parts":
-        log_search(chat_id, text, "parts")
+        print("CALL LOG")  # 👈 добавь
+        log_search(chat_id, text, "parts")  # 👈 добавь
         results = find_part(text, parts_db)
 
         if not results:

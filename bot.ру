@@ -9,6 +9,7 @@ def split_words(text):
     return re.findall(r'\w+', text.lower())
 def fix_a(text):
     return text.lower().replace("а", "a")
+LOG_FILE = "search_log.txt"
 
 
 # ===== НАСТРОЙКИ =====
@@ -174,6 +175,16 @@ def find_part(query, db):
             break
 
     return results
+
+from datetime import datetime
+
+def log_search(chat_id, query, mode):
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            f.write(f"{time} | {chat_id} | {mode} | {query}\n")
+    except Exception as e:
+        print("Ошибка логирования:", e)
 
 # ===== СТАРТ =====
 @bot.message_handler(commands=["start"])
@@ -980,6 +991,16 @@ def handle_text(message):
     chat_id = message.chat.id
     text = message.text
 
+      # 🔥 АДМИН ЛОГИ
+    if text == "/logs" and chat_id == ADMIN_ID:
+        try:
+            with open(LOG_FILE, "rb") as f:
+                bot.send_document(chat_id, f)
+        except:
+            bot.send_message(chat_id, "Логов пока нет")
+        return
+
+
     # ❗️ НЕ ЛОМАЕМ КОМАНДЫ
     if text.startswith("/"):
         return
@@ -1010,6 +1031,7 @@ def handle_text(message):
     mode = current_mode.get(chat_id)
 
     if mode == "parts":
+        log_search(chat_id, text, "parts")
         results = find_part(text, parts_db)
 
         if not results:
@@ -1024,6 +1046,7 @@ def handle_text(message):
         return
 
     elif mode == "wheels":
+        log_search(chat_id, text, "wheels")
         results = find_wheels(text, wheels_db)
 
         if not results:

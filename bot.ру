@@ -1088,14 +1088,6 @@ def handle_text(message):
         bot.send_message(chat_id, "🔎 Введите параметры (например R18)")
         return
 
-    if text == "🚘 В разборе":
-        current_mode[chat_id] = "donors"
-        user_results[chat_id] = donors_db[:20]
-        user_index[chat_id] = 0
-        user_photo_index[chat_id] = 0
-
-        send_donor_card(chat_id, 0)
-        return
 
     print("MODE CHECK:", mode)
     # ===== ПОИСК =====

@@ -324,7 +324,7 @@ def send_wheels_preview(chat_id, results):
     not ai_mode.get(m.chat.id)
     and m.text
     and len(m.text) > 2
-    and not m.text.startswith(("🚗","🛞","❤️","/"))
+    and not m.text.startswith(("🚗","🛞","🚘","❤️","/"))
 ))
 def search(msg):
     chat_id = msg.chat.id

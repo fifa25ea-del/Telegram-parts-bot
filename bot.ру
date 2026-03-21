@@ -2,24 +2,6 @@ import json
 import telebot
 import csv
 import requests
-for i, d in enumerate(results[:10]):
-    photo = str(d.get("Фото","")).split(",")[0].strip()
-
-    # ❌ пропускаем мусор
-    if not photo or not photo.startswith("http"):
-        continue
-
-    try:
-        r = requests.get(photo, timeout=3)
-        if r.status_code != 200:
-            continue
-    except:
-        continue
-
-    if i == 0:
-        media.append(telebot.types.InputMediaPhoto(photo, caption="🚘 Последние доноры"))
-    else:
-        media.append(telebot.types.InputMediaPhoto(photo))
 import io
 import re
 
@@ -262,20 +244,32 @@ def donors_mode(msg):
 
     # превью как wheels
     media = []
+
     for i, d in enumerate(results[:10]):
         photo = str(d.get("Фото","")).split(",")[0].strip()
-        if not photo:
+    
+        # ❌ пропускаем мусор
+        if not photo or not photo.startswith("http"):
             continue
-
-        if i == 0:
+    
+        try:
+            r = requests.get(photo, timeout=3)
+            if r.status_code != 200:
+                continue
+        except:
+            continue
+    
+        if len(media) == 0:
             media.append(telebot.types.InputMediaPhoto(photo, caption="🚘 Последние доноры"))
         else:
             media.append(telebot.types.InputMediaPhoto(photo))
 
-    if media:
-        bot.send_media_group(chat_id, media)
-
-    send_card(chat_id, 0)
+        if not media:
+            bot.send_message(chat_id, "⚠️ Нет доступных фото")
+        else:
+            bot.send_media_group(chat_id, media)
+        
+        send_card(chat_id, 0)
 
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
 def parts_mode(msg):

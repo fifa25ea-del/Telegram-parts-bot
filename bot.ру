@@ -268,7 +268,7 @@ def donors_mode(msg):
             bot.send_message(chat_id, "⚠️ Нет доступных фото")
         else:
             bot.send_media_group(chat_id, media)
-             markup = telebot.types.InlineKeyboardMarkup()
+            markup = telebot.types.InlineKeyboardMarkup()
             markup.add(
             telebot.types.InlineKeyboardButton("📄 Открыть первый донор", callback_data="card_0")
             )

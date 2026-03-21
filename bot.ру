@@ -991,21 +991,24 @@ def handle_text(message):
     chat_id = message.chat.id
     text = message.text
 
-      # 🔥 АДМИН ЛОГИ
-    if text == "/logs" and chat_id == ADMIN_ID:
-        try:
-            with open(LOG_FILE, "rb") as f:
-                bot.send_document(chat_id, f)
-        except:
-            bot.send_message(chat_id, "Логов пока нет")
+    print("TEXT:", text)
+
+    mode = current_mode.get(chat_id)
+    print("MODE:", mode)
+
+    # 🔥 ЛОГ ТОЛЬКО ДЛЯ PARTS
+    if mode == "parts":
+        log_search(chat_id, text, "parts")
+
+        results = find_part(text, parts_db)
+
+        if not results:
+            bot.send_message(chat_id, "❌ Ничего не найдено")
+            return
+
+        user_results[chat_id] = results
+        send_part_card(chat_id, 0)
         return
-
-
-    # ❗️ НЕ ЛОМАЕМ КОМАНДЫ
-    if text.startswith("/"):
-        return
-
-    track(chat_id, "searches")
 
     # ===== КНОПКИ =====
     if text == "🚗 Найти запчасть":

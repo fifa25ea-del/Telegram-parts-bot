@@ -580,6 +580,17 @@ def send_donor_card(chat_id, index):
     except Exception as e:
         print("Ошибка отправки донора:", e)
 
+    
+        # ===== 🛞 ДИСКИ =====
+        if mode == "wheels":
+
+            if not photo_list:
+                bot.send_message(chat_id, text, reply_markup=kb)
+                return
+
+            main_photo = photo_list[0]
+
+            bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
 
         # ===== 🚗 ЗАПЧАСТИ =====
         elif mode == "parts":

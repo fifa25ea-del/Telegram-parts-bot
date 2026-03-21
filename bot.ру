@@ -247,42 +247,37 @@ def donors_mode(msg):
 
     media = []
 
-    for d in results:
-        photo = str(d.get("Фото", "")).split(",")[0].strip()
+for i, d in enumerate(results[:10]):
+    photo = str(d.get("Фото", "")).split(",")[0].strip()
 
-        if not photo or not photo.startswith("http"):
+    if not photo or not photo.startswith("http"):
+        continue
+
+    try:
+        r = requests.get(photo, timeout=3)
+        if r.status_code != 200:
             continue
+    except:
+        continue
 
-        if len(media) == 0:
-            media.append(
-                telebot.types.InputMediaPhoto(
-                    photo,
-                    caption="🚘 Последние доноры"
-                )
-            )
-        else:
-            media.append(
-                telebot.types.InputMediaPhoto(photo)
-            )
+    if len(media) == 0:
+        media.append(
+            telebot.types.InputMediaPhoto(photo, caption="🚘 Последние доноры")
+        )
+    else:
+        media.append(
+            telebot.types.InputMediaPhoto(photo)
+        )
 
-        if len(media) == 10:
-            break
-
-    if not media:
-        bot.send_message(chat_id, "⚠️ Нет фото")
-        return
-
+# 👇 ВНЕ цикла
+if not media:
+    bot.send_message(chat_id, "⚠️ Нет доступных фото")
+else:
     bot.send_media_group(chat_id, media)
 
-    markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(
-        telebot.types.InlineKeyboardButton(
-            "📄 Открыть первого донора",
-            callback_data="card_0"
-        )
-    )
-
-    bot.send_message(chat_id, "👇 Открыть карточку:", reply_markup=markup)
+    # 🔥 СРАЗУ открываем первый донор
+    current_mode[chat_id] = "donors"
+    send_donor_card(chat_id, 0)
 
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
 def parts_mode(msg):

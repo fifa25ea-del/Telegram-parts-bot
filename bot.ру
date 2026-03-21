@@ -1021,6 +1021,7 @@ def handle_text(message):
         send_donor_card(chat_id, 0)
         return
 
+    print("MODE CHECK:", mode)
     # ===== ПОИСК =====
     mode = current_mode.get(chat_id)
 

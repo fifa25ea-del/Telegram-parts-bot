@@ -11,28 +11,36 @@ def fix_a(text):
     return text.lower().replace("а", "a")
 LOG_FILE = "logs.txt"
 
-from collections import Counter
+from collections import defaultdict
 
 def get_not_found():
     try:
         with open(LOG_FILE, "r", encoding="utf-8") as f:
             lines = f.readlines()
 
-        queries = []
+        data = defaultdict(list)
 
         for line in lines:
             if "NOT_FOUND" in line:
-                query = line.split("|")[-1].strip()
-                queries.append(query)
+                parts = line.strip().split("|")
 
-        top = Counter(queries).most_common(20)
+                if len(parts) >= 4:
+                    chat_id = parts[1].strip()
+                    query = parts[3].strip()
 
-        if not top:
+                    data[query].append(chat_id)
+
+        if not data:
             return "Нет пустых запросов 👍"
 
-        text = "❌ Нет в наличии:\n\n"
-        for q, c in top:
-            text += f"{q} — {c}\n"
+        text = "❌ Ничего не найдено:\n\n"
+
+        for query, users in data.items():
+            unique_users = list(set(users))
+
+            text += f"🔍 {query}\n"
+            text += f"👤 ID: {', '.join(unique_users)}\n"
+            text += f"📊 Запросов: {len(users)}\n\n"
 
         return text
 

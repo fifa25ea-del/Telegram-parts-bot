@@ -264,16 +264,16 @@ def donors_mode(msg):
             media.append(
                 telebot.types.InputMediaPhoto(photo)
             )
-
-# 👇 ВНЕ цикла
-if not media:
-    bot.send_message(chat_id, "⚠️ Нет доступных фото")
-else:
-    bot.send_media_group(chat_id, media)
-
-    # 🔥 СРАЗУ открываем первый донор
-    current_mode[chat_id] = "donors"
-    send_donor_card(chat_id, 0)
+    
+    # 👇 ВНЕ цикла
+    if not media:
+        bot.send_message(chat_id, "⚠️ Нет доступных фото")
+    else:
+        bot.send_media_group(chat_id, media)
+    
+        # 🔥 СРАЗУ открываем первый донор
+        current_mode[chat_id] = "donors"
+        send_donor_card(chat_id, 0)
 
 @bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
 def parts_mode(msg):

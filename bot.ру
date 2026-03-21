@@ -264,10 +264,6 @@ def donors_mode(msg):
             media.append(
                 telebot.types.InputMediaPhoto(photo)
             )
-        else:
-            media.append(
-                telebot.types.InputMediaPhoto(photo)
-            )
 
 # 👇 ВНЕ цикла
 if not media:

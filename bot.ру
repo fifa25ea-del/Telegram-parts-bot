@@ -11,6 +11,34 @@ def fix_a(text):
     return text.lower().replace("а", "a")
 LOG_FILE = "logs.txt"
 
+from collections import Counter
+
+def get_not_found():
+    try:
+        with open(LOG_FILE, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+        queries = []
+
+        for line in lines:
+            if "NOT_FOUND" in line:
+                query = line.split("|")[-1].strip()
+                queries.append(query)
+
+        top = Counter(queries).most_common(20)
+
+        if not top:
+            return "Нет пустых запросов 👍"
+
+        text = "❌ Нет в наличии:\n\n"
+        for q, c in top:
+            text += f"{q} — {c}\n"
+
+        return text
+
+    except Exception as e:
+        return f"Ошибка: {e}"
+
 
 # ===== НАСТРОЙКИ =====
 TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
@@ -575,8 +603,14 @@ def send_donor_card(chat_id, index):
     except Exception as e:
         print("Ошибка отправки:", e)
 
-    
+@bot.message_handler(commands=["notfound"])
+def not_found_cmd(msg):
+    if msg.chat.id != ADMIN_ID:
+        return
 
+    bot.send_message(msg.chat.id, get_not_found())
+
+    
 # ===== ИЗБРАННОЕ =====
 @bot.message_handler(func=lambda m: m.text and "Избранное" in m.text)
 def show_favorites(message):

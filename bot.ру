@@ -239,35 +239,35 @@ def donors_mode(msg):
     user_index[chat_id] = 0
     user_photo_index[chat_id] = 0
 
-    results = user_results[chat_id]
-
-    if not results:
-        bot.send_message(chat_id, "❌ Нет доноров")
-        return
+    results = user_results.get(chat_id, [])
 
     media = []
-
-for i, d in enumerate(results[:10]):
-    photo = str(d.get("Фото", "")).split(",")[0].strip()
-
-    if not photo or not photo.startswith("http"):
-        continue
-
-    try:
-        r = requests.get(photo, timeout=3)
-        if r.status_code != 200:
+    
+    for i, d in enumerate(results[:10]):
+        photo = str(d.get("Фото", "")).split(",")[0].strip()
+    
+        if not photo or not photo.startswith("http"):
             continue
-    except:
-        continue
-
-    if len(media) == 0:
-        media.append(
-            telebot.types.InputMediaPhoto(photo, caption="🚘 Последние доноры")
-        )
-    else:
-        media.append(
-            telebot.types.InputMediaPhoto(photo)
-        )
+    
+        try:
+            r = requests.get(photo, timeout=3)
+            if r.status_code != 200:
+                continue
+        except:
+            continue
+    
+        if len(media) == 0:
+            media.append(
+                telebot.types.InputMediaPhoto(photo, caption="🚘 Последние доноры")
+            )
+        else:
+            media.append(
+                telebot.types.InputMediaPhoto(photo)
+            )
+        else:
+            media.append(
+                telebot.types.InputMediaPhoto(photo)
+            )
 
 # 👇 ВНЕ цикла
 if not media:

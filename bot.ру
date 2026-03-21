@@ -997,7 +997,7 @@ def handle_text(message):
     print("MODE:", mode)
 
     # 🔥 ЛОГ ТОЛЬКО ДЛЯ PARTS
-    if mode == "parts":
+    if mode == "parts" and not text.startswith("/") and len(text) > 3:
         log_search(chat_id, text, "parts")
 
         results = find_part(text, parts_db)

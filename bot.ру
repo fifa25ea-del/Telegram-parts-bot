@@ -312,6 +312,10 @@ def search(msg):
         results = find_part(msg.text, parts_db)
 
         if not results:
+            print("❌ NOT FOUND:", msg.text)
+        
+            log_search(chat_id, msg.text, "NOT_FOUND")  # 👈 ВОТ ЭТО ГЛАВНОЕ
+        
             bot.send_message(chat_id, "❌ Ничего не найдено")
             return
 

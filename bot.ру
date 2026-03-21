@@ -232,7 +232,7 @@ def start(message):
 def donors_mode(msg):
     chat_id = msg.chat.id
     if current_mode.get(chat_id) == "donors":
-    return
+        return
     current_mode[chat_id] = "donors"
 
     results = donors_db[:20]

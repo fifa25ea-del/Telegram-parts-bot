@@ -599,44 +599,50 @@ def send_donor_card(chat_id, index):
 
     user_last_msg[chat_id] = sent.message_id
         # ===== 🚗 ЗАПЧАСТИ =====
-        elif mode == "parts":
-        
-            sent_ids = []  # 👈 список всех сообщений
-        
-            if not photo_list:
-                sent = bot.send_message(chat_id, text, reply_markup=kb)
-                sent_ids.append(sent.message_id)
-                user_last_msg[chat_id] = sent_ids
-                return
-        
-            # до 10 фото
-            media = []
-        
-            for i, url in enumerate(photo_list[:10]):
-                if i == 0:
-                    media.append(
-                        telebot.types.InputMediaPhoto(url, caption=text)
-                    )
-                else:
-                    media.append(
-                        telebot.types.InputMediaPhoto(url)
-                    )
-        
-            sent_msgs = bot.send_media_group(chat_id, media)
-        
-            # сохраняем ВСЕ id фото
-            for msg in sent_msgs:
-                sent_ids.append(msg.message_id)
-        
-            # кнопки отдельным сообщением
-            sent_kb = bot.send_message(chat_id, "⬇️ Действия:", reply_markup=kb)
-            sent_ids.append(sent_kb.message_id)
-        
-            # сохраняем список
+    if mode == "wheels":
+    
+        if not photo_list:
+            sent = bot.send_message(chat_id, text, reply_markup=kb)
+            user_last_msg[chat_id] = sent.message_id
+            return
+    
+        main_photo = photo_list[0]
+    
+        sent = bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
+        user_last_msg[chat_id] = sent.message_id
+    
+    
+    elif mode == "parts":
+    
+        sent_ids = []
+    
+        if not photo_list:
+            sent = bot.send_message(chat_id, text, reply_markup=kb)
+            sent_ids.append(sent.message_id)
             user_last_msg[chat_id] = sent_ids
-
-    except Exception as e:
-        print("Ошибка отправки:", e)
+            return
+    
+        media = []
+    
+        for i, url in enumerate(photo_list[:10]):
+            if i == 0:
+                media.append(
+                    telebot.types.InputMediaPhoto(url, caption=text)
+                )
+            else:
+                media.append(
+                    telebot.types.InputMediaPhoto(url)
+                )
+    
+        sent_msgs = bot.send_media_group(chat_id, media)
+    
+        for msg in sent_msgs:
+            sent_ids.append(msg.message_id)
+    
+        sent_kb = bot.send_message(chat_id, "⬇️ Действия:", reply_markup=kb)
+        sent_ids.append(sent_kb.message_id)
+    
+        user_last_msg[chat_id] = sent_ids
 
 @bot.message_handler(commands=["notfound"])
 def not_found_cmd(msg):

@@ -287,6 +287,9 @@ def search(msg):
 
     # ===== ДИСКИ =====
     if mode == "wheels":
+        print("🔥 SEARCH WHEELS:", msg.text)
+        log_search(chat_id, msg.text, "wheels")
+
         results = find_wheels(msg.text, wheels_db)
 
         if not results:
@@ -303,7 +306,10 @@ def search(msg):
 
     # ===== ЗАПЧАСТИ =====
     else:
-        results = find_part(msg.text, parts_db)
+        print("🔥 SEARCH PARTS:", msg.text)   # проверка
+        log_search(chat_id, msg.text, "parts")  # ← ВОТ СЮДА
+
+    results = find_part(msg.text, parts_db)
 
         if not results:
             bot.send_message(chat_id, "❌ Ничего не найдено")

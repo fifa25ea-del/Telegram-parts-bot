@@ -2,6 +2,24 @@ import json
 import telebot
 import csv
 import requests
+for i, d in enumerate(results[:10]):
+    photo = str(d.get("Фото","")).split(",")[0].strip()
+
+    # ❌ пропускаем мусор
+    if not photo or not photo.startswith("http"):
+        continue
+
+    try:
+        r = requests.get(photo, timeout=3)
+        if r.status_code != 200:
+            continue
+    except:
+        continue
+
+    if i == 0:
+        media.append(telebot.types.InputMediaPhoto(photo, caption="🚘 Последние доноры"))
+    else:
+        media.append(telebot.types.InputMediaPhoto(photo))
 import io
 import re
 

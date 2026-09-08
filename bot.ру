@@ -5,6 +5,44 @@ import requests
 import io
 import re
 
+def download_photo(url, timeout=5):
+    """Скачивает фото и возвращает байты, или None."""
+    try:
+        r = requests.get(url, timeout=timeout)
+        if r.status_code == 200 and "image" in r.headers.get("Content-Type", ""):
+            return r.content
+    except Exception as e:
+        print(f"Ошибка загрузки фото {url}: {e}")
+    return None
+
+
+def send_photo_safe(chat_id, photo_url, caption, kb):
+    """Отправляет фото байтами. Если не получилось — текст."""
+    photo_data = download_photo(photo_url)
+    if photo_data:
+        return bot.send_photo(chat_id, photo_data, caption=caption, reply_markup=kb)
+    else:
+        return bot.send_message(chat_id, caption, reply_markup=kb)
+
+
+def edit_photo_safe(chat_id, message_id, photo_url, caption, kb):
+    """Редактирует медиа байтами. Если не картинка — редактирует только caption."""
+    photo_data = download_photo(photo_url)
+    try:
+        if photo_data:
+            media = telebot.types.InputMediaPhoto(photo_data, caption=caption)
+            bot.edit_message_media(
+                media=media, chat_id=chat_id,
+                message_id=message_id, reply_markup=kb
+            )
+        else:
+            bot.edit_message_caption(
+                caption=caption, chat_id=chat_id,
+                message_id=message_id, reply_markup=kb
+            )
+    except Exception as e:
+        print(f"Ошибка редактирования: {e}")
+
 def split_words(text):
     return re.findall(r'\w+', text.lower())
 def fix_a(text):
@@ -242,28 +280,31 @@ def donors_mode(msg):
     results = user_results.get(chat_id, [])
 
     media = []
-    
+
     for i, d in enumerate(results[:10]):
         photo = str(d.get("Фото", "")).split(",")[0].strip()
-    
+
         if not photo or not photo.startswith("http"):
             continue
-    
-        try:
-            r = requests.get(photo, timeout=3)
-            if r.status_code != 200:
-                continue
-        except:
+
+        photo_data = download_photo(photo, timeout=3)
+        if not photo_data:
             continue
-    
+
         if len(media) == 0:
             media.append(
-                telebot.types.InputMediaPhoto(photo, caption="🚘 Последние доноры")
+                telebot.types.InputMediaPhoto(photo_data, caption="🚘 Последние доноры")
             )
         else:
             media.append(
-                telebot.types.InputMediaPhoto(photo)
+                telebot.types.InputMediaPhoto(photo_data)
             )
+
+    if not media:
+        bot.send_message(chat_id, "⚠️ Нет доступных фото")
+    else:
+        bot.send_media_group(chat_id, media)
+        send_donor_card(chat_id, 0)
     
     # 👇 ВНЕ цикла
     if not media:
@@ -294,28 +335,34 @@ def wheels_mode(msg):
     bot.send_message(chat_id, "🔎 Введите размер (например r18)")
 
 def send_wheels_preview(chat_id, results):
-
     media = []
 
     for i, part in enumerate(results[:10]):
         photos = str(part.get("Фото", "")).split(",")
+        photo_url = photos[0].strip() if photos else ""
 
-        if not photos or not photos[0]:
+        if not photo_url:
             continue
 
-        caption = "📦 В наличии несколько комплектов\nСмотрите по отдельности ниже 👇"
+        photo_data = download_photo(photo_url)
+        if not photo_data:
+            continue
 
         if i == 0:
             media.append(
-                telebot.types.InputMediaPhoto(photos[0], caption=caption)
+                telebot.types.InputMediaPhoto(photo_data, caption="📦 В наличии несколько комплектов\nСмотрите по отдельности ниже 👇")
             )
         else:
             media.append(
-                telebot.types.InputMediaPhoto(photos[0])
+                telebot.types.InputMediaPhoto(photo_data)
             )
 
     if media:
         bot.send_media_group(chat_id, media)
+
+        user_photo_index[chat_id] = 0
+        user_index[chat_id] = 0
+        send_wheel_card(chat_id, 0)
 
         # 👇 ДОБАВЛЯЕМ КАРТОЧКУ
         user_photo_index[chat_id] = 0

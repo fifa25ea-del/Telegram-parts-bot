@@ -519,15 +519,12 @@ def send_wheel_card(chat_id, index):
 
     photos = str(part.get("Фото", ""))
     photo_list = [x.strip() for x in photos.split(",") if x.strip().startswith("http")]
-
     main_photo = photo_list[0] if photo_list else None
 
     brand = part.get("Производитель диска", "")
     model = part.get("Модель диска", "")
     article = part.get("Артикул", "")
     price = part.get("Цена", "")
-    photos = str(part.get("Фото", "")).strip()
-
     radius = part.get("Диаметр диска", "")
     width = part.get("Ширина диска", "")
     et = part.get("Вылет диска", "")
@@ -544,26 +541,23 @@ def send_wheel_card(chat_id, index):
         f"({index+1}/{len(results)})"
     )
 
-    # ===== КНОПКИ =====
     kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-
     kb.add(
         telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{index}"),
         telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{index}")
     )
-
     kb.add(
         telebot.types.InlineKeyboardButton("❤️ Сохранить", callback_data=f"fav_{index}"),
         telebot.types.InlineKeyboardButton("💬 Связаться", url="https://t.me/Stuttgart_mercedes")
     )
 
     if main_photo:
-        sent = bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
+        sent = send_photo_safe(chat_id, main_photo, text, kb)
     else:
         sent = bot.send_message(chat_id, text, reply_markup=kb)
-    
-    # 👇 ВАЖНО
+
     user_last_msg[chat_id] = sent.message_id
+
 def send_donor_card(chat_id, index):
     track(chat_id, "views")
 
@@ -587,7 +581,6 @@ def send_donor_card(chat_id, index):
 
     photos = str(d.get("Фото") or "").split(",")
     photo_list = [x.strip() for x in photos if x.strip().startswith("http")]
-
     photo = photo_list[0] if photo_list else None
 
     kb = telebot.types.InlineKeyboardMarkup(row_width=2)
@@ -599,46 +592,10 @@ def send_donor_card(chat_id, index):
         telebot.types.InlineKeyboardButton("📸 Все фото", callback_data=f"donor_photos_{index}")
     )
 
-    if photo and photo.startswith("http"):
-        photo_data = download_photo(photo, timeout=5)
-        if photo_data:
-            sent = bot.send_photo(chat_id, photo_data, caption=text, reply_markup=kb)
-    else:
-            sent = bot.send_message(chat_id, text, reply_markup=kb)
-else:
-    sent = bot.send_message(chat_id, text, reply_markup=kb)
-    user_last_msg[chat_id] = sent.message_id
-    if mode == "wheels":
-        old_msg = user_last_msg.get(chat_id)
-
-    if old_msg:
-        try:
-            bot.delete_message(chat_id, old_msg)
-        except:
-            pass
-
-    if not photo_list:
-        sent = bot.send_message(chat_id, text, reply_markup=kb)
-        user_last_msg[chat_id] = sent.message_id
-        return
-
-    main_photo = photo_list[0]
-
-    try:
-        sent = bot.send_photo(
-            chat_id,
-            main_photo,
-            caption=text,
-            reply_markup=kb
-        )
-    except:
-        sent = bot.send_message(
-            chat_id,
-            text,
-            reply_markup=kb
-        )
+    sent = send_photo_safe(chat_id, photo, text, kb) if photo else bot.send_message(chat_id, text, reply_markup=kb)
 
     user_last_msg[chat_id] = sent.message_id
+
         # ===== 🚗 ЗАПЧАСТИ =====
     if mode == "wheels":
     

@@ -2,6 +2,9 @@ import json
 import telebot
 import csv
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import time
 import io
 import re
 
@@ -171,20 +174,39 @@ def main_menu():
 
 # ===== ЗАГРУЗКА CSV =====
 def load_csv(url):
-    headers = {"User-Agent": "Mozilla/5.0"}
+    session = requests.Session()
+    
+    # Настраиваем стратегию повторных попыток
+    retry_strategy = Retry(
+        total=3,                # максимум 3 попытки
+        backoff_factor=1,       # задержка: 1, 2, 4 секунды
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"]
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
     try:
-        r = requests.get(url, headers=headers, timeout=10)
-        r.raise_for_status()  # сразу выбросит ошибку, если 4xx/5xx
-        # Пробуем cp1251, но fallback на utf-8, если не сработает
-        r.encoding = "cp1251"
-        if not r.ok:
-            return [], []
-        csv_file = io.StringIO(r.text)
-        reader = csv.DictReader(csv_file, delimiter=";")
+        # Увеличиваем таймаут: (connect_timeout, read_timeout)
+        response = session.get(url, timeout=(10, 30))
+        response.raise_for_status()
+        
+        # Дальше твой существующий парсинг CSV (например, через csv.reader или pandas)
+        # Пример для csv.reader:
+        import csv
+        from io import StringIO
+        reader = csv.DictReader(StringIO(response.text, encoding='utf-8'))
         data = list(reader)
+        
+        print(f"✅ CSV загружен: {len(data)} строк из {url}")
         return data, reader.fieldnames
-    except Exception as e:
-        print(f"Ошибка загрузки CSV {url}: {e}")
+
+    except requests.exceptions.ReadTimeout:
+        print("❌ Ошибка: превышено время ожидания при чтении CSV (ReadTimeout).")
+        return [], []
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Ошибка запроса к CSV: {e}")
         return [], []
 
 def load_database():

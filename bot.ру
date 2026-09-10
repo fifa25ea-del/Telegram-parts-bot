@@ -239,14 +239,21 @@ def normalize(text):
 
 
 def find_part(query, db):
-
     query = normalize(fix_a(query))
     results = []
 
-    for part in db:
+    print(f"🔍 Ищем: '{query}'")
+    print(f"🔑 number_key: '{number_key}'")
+    print(f"📦 Всего записей в базе: {len(db)}")
 
+    if db:
+        for i, part in enumerate(db[:5]):
+            raw = part.get(number_key, "???")
+            print(f"  Пример {i}: raw='{raw}' → norm='{normalize(fix_a(str(raw)))}'")
+
+    for part in db:
         raw_number = part.get(number_key, "")
-        number = normalize(fix_a(raw_number))
+        number = normalize(fix_a(str(raw_number)))
 
         if not number:
             continue
@@ -257,6 +264,7 @@ def find_part(query, db):
         if len(results) >= 20:
             break
 
+    print(f"  Найдено: {len(results)}")
     return results
 
 from datetime import datetime

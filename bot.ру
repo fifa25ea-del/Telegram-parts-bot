@@ -663,23 +663,26 @@ def not_found_cmd(msg):
 # ===== ИЗБРАННОЕ =====
 @bot.message_handler(func=lambda m: m.text and "Избранное" in m.text)
 def show_favorites(message):
-
     chat_id = message.chat.id
     user_id = str(chat_id)
 
     fav_ids = favorites.get(user_id, [])
 
     if not fav_ids:
-        bot.send_message(chat_id, "❌ Избранное пусто")
+        bot.send_message(chat_id, "❌ Избранное пусто", reply_markup=main_menu())
         return
 
     results = user_results.get(chat_id, [])
+
+    found = False
 
     for part in results:
         item_id = part.get("Артикул") or str(part)
 
         if item_id not in fav_ids:
             continue
+
+        found = True
 
         name = part.get(name_key) or part.get("Наименование") or "Без названия"
         article = part.get("Артикул", "Нет артикула")
@@ -705,10 +708,13 @@ def show_favorites(message):
             )
         )
 
-        if photo:
-            bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
+        if photo and photo.startswith("http"):
+            send_photo_safe(chat_id, photo, text, kb)
         else:
             bot.send_message(chat_id, text, reply_markup=kb)
+
+    if not found:
+        bot.send_message(chat_id, "❌ Сохранённые позиции не найдены в текущих результатах поиска", reply_markup=main_menu())
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("allphoto_"))
 def show_all_photos(call):
@@ -1177,4 +1183,11 @@ def handle_text(message):
 if __name__ == "__main__":
     print("START BOT")
     load_database()
-    bot.infinity_polling()
+
+    while True:
+        try:
+            bot.infinity_polling(timeout=60, long_polling_timeout=30)
+        except Exception as e:
+            print(f"⚠️ Polling упал, перезапуск через 5 сек: {e}")
+            import time
+            time.sleep(5)

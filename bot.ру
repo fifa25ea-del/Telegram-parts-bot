@@ -242,31 +242,33 @@ def find_part(query, db):
     query = normalize(fix_a(query))
     results = []
 
-    print(f"🔍 Ищем: '{query}'")
-    print(f"🔑 number_key: '{number_key}'")
-    print(f"📦 Всего записей в базе: {len(db)}")
-
-    if db:
-        for i, part in enumerate(db[:5]):
-            raw = part.get(number_key, "???")
-            print(f"  Пример {i}: raw='{raw}' → norm='{normalize(fix_a(str(raw)))}'")
+    # Защита от пустой базы
+    if not db:
+        return []
 
     for part in db:
+        # 1. Проверяем основной номер
         raw_number = part.get(number_key, "")
         number = normalize(fix_a(str(raw_number)))
-
-        if not number:
-            continue
-
+        
         if query in number:
             results.append(part)
+            continue  # Если нашли по основному номеру, дальше проверять эту строку не надо
+
+        # 2. Если не нашли, проверяем кросс-номера
+        raw_cross = part.get(cross_key, "")
+        if raw_cross:
+            # Разбиваем строку "A1, A2, A3" на список и чистим каждый элемент
+            cross_list = [normalize(fix_a(x.strip())) for x in str(raw_cross).split(",") if x.strip()]
+            
+            # Ищем запрос внутри списка кросс-номеров
+            if any(query in cross for cross in cross_list):
+                results.append(part)
 
         if len(results) >= 20:
             break
 
-    print(f"  Найдено: {len(results)}")
     return results
-
 from datetime import datetime
 
 def log_search(chat_id, query, mode):
@@ -1196,6 +1198,6 @@ if __name__ == "__main__":
         try:
             bot.infinity_polling(timeout=60, long_polling_timeout=30)
         except Exception as e:
-            print(f"⚠️ Polling упал, перезапуск через 5 сек: {e}")
+            print(f"⚠️ Polling упал: {e}")
             import time
             time.sleep(5)

@@ -4,7 +4,8 @@ import csv
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-import time
+import csv
+from io import StringIO
 import io
 import re
 
@@ -176,10 +177,9 @@ def main_menu():
 def load_csv(url):
     session = requests.Session()
     
-    # Настраиваем стратегию повторных попыток
     retry_strategy = Retry(
-        total=3,                # максимум 3 попытки
-        backoff_factor=1,       # задержка: 1, 2, 4 секунды
+        total=3,
+        backoff_factor=1,
         status_forcelist=[429, 500, 502, 503, 504],
         allowed_methods=["GET"]
     )
@@ -188,15 +188,11 @@ def load_csv(url):
     session.mount("https://", adapter)
 
     try:
-        # Увеличиваем таймаут: (connect_timeout, read_timeout)
         response = session.get(url, timeout=(10, 30))
         response.raise_for_status()
         
-        # Дальше твой существующий парсинг CSV (например, через csv.reader или pandas)
-        # Пример для csv.reader:
-        import csv
-        from io import StringIO
-        reader = csv.DictReader(StringIO(response.text, encoding='utf-8'))
+        # ИСПРАВЛЕНИЕ: убираем encoding, так как response.text уже str
+        reader = csv.DictReader(StringIO(response.text))
         data = list(reader)
         
         print(f"✅ CSV загружен: {len(data)} строк из {url}")
@@ -208,7 +204,6 @@ def load_csv(url):
     except requests.exceptions.RequestException as e:
         print(f"❌ Ошибка запроса к CSV: {e}")
         return [], []
-
 def load_database():
     global parts_db, wheels_db, donors_db, number_key, name_key, photo_key
     

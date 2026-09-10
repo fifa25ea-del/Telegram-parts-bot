@@ -7,6 +7,8 @@ import re
 
 def download_photo(url, timeout=5):
     """Скачивает фото и возвращает байты, или None."""
+    if not url:
+        return None
     try:
         r = requests.get(url, timeout=timeout)
         if r.status_code == 200 and "image" in r.headers.get("Content-Type", ""):
@@ -170,13 +172,20 @@ def main_menu():
 # ===== ЗАГРУЗКА CSV =====
 def load_csv(url):
     headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers, timeout=30)
-    r.encoding = "cp1251"
-
-    csv_file = io.StringIO(r.text)
-    reader = csv.DictReader(csv_file, delimiter=";")
-
-    return list(reader), reader.fieldnames
+    try:
+        r = requests.get(url, headers=headers, timeout=10)
+        r.raise_for_status()  # сразу выбросит ошибку, если 4xx/5xx
+        # Пробуем cp1251, но fallback на utf-8, если не сработает
+        r.encoding = "cp1251"
+        if not r.ok:
+            return [], []
+        csv_file = io.StringIO(r.text)
+        reader = csv.DictReader(csv_file, delimiter=";")
+        data = list(reader)
+        return data, reader.fieldnames
+    except Exception as e:
+        print(f"Ошибка загрузки CSV {url}: {e}")
+        return [], []
 
 def load_database():
     global parts_db, wheels_db, donors_db, number_key, name_key, photo_key
@@ -258,6 +267,7 @@ def log_search(chat_id, query, mode):
             time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             f.write(f"{time} | {chat_id} | {mode} | {query}\n")
     except Exception as e:
+        # Не ломаем бота из-за лога
         print("Ошибка логирования:", e)
 
 # ===== СТАРТ =====

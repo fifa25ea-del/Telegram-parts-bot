@@ -1051,7 +1051,7 @@ def load_database():
             "донор"
         ]
     )
-
+    
     print("=" * 60)
     print("БАЗЫ ЗАГРУЖЕНЫ")
     print(f"Доноров: {len(donors_db)}")
@@ -1061,7 +1061,9 @@ def load_database():
     print(f"name_key: {name_key}")
     print(f"photo_key: {photo_key}")
     print("=" * 60)
-
+    print(
+    f"[DONOR] donor_key = {donor_key}"
+    )
    
 
 
@@ -2144,6 +2146,12 @@ def send_part_card(
         else ""
     )
 
+    print(
+        f"[PART DONOR] "
+        f"part={article} "
+        f"donor={donor_number}"
+    )
+
     donor = None
 
     if donor_number:
@@ -2167,6 +2175,19 @@ def send_part_card(
                 )
             )
 
+            print(
+                f"[PART DONOR] FOUND "
+                f"number={donor_number} "
+                f"mileage={donor_mileage}"
+            )
+
+        else:
+
+            print(
+                f"[PART DONOR] NOT FOUND "
+                f"number={donor_number}"
+            )
+
         donor_info = (
             f"🚘 № донора: {donor_number}\n"
             f"📏 Пробег донора: "
@@ -2182,10 +2203,10 @@ def send_part_card(
         f"Номер: {number or '-'}\n"
         f"{brand} {model}\n"
         f"💰 {price or '-'} ₽\n"
-        f"{donor_info}"
-        f"\n"
+        f"{donor_info}\n"
         f"({index + 1}/{len(results)})"
     )
+
 
     photos_value = (
         part.get(

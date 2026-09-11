@@ -2,52 +2,8 @@ import json
 import telebot
 import csv
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-import csv
-from io import StringIO
 import io
 import re
-
-def download_photo(url, timeout=5):
-    """Скачивает фото и возвращает байты, или None."""
-    if not url:
-        return None
-    try:
-        r = requests.get(url, timeout=timeout)
-        if r.status_code == 200 and "image" in r.headers.get("Content-Type", ""):
-            return r.content
-    except Exception as e:
-        print(f"Ошибка загрузки фото {url}: {e}")
-    return None
-
-
-def send_photo_safe(chat_id, photo_url, caption, kb):
-    """Отправляет фото байтами. Если не получилось — текст."""
-    photo_data = download_photo(photo_url)
-    if photo_data:
-        return bot.send_photo(chat_id, photo_data, caption=caption, reply_markup=kb)
-    else:
-        return bot.send_message(chat_id, caption, reply_markup=kb)
-
-
-def edit_photo_safe(chat_id, message_id, photo_url, caption, kb):
-    """Редактирует медиа байтами. Если не картинка — редактирует только caption."""
-    photo_data = download_photo(photo_url)
-    try:
-        if photo_data:
-            media = telebot.types.InputMediaPhoto(photo_data, caption=caption)
-            bot.edit_message_media(
-                media=media, chat_id=chat_id,
-                message_id=message_id, reply_markup=kb
-            )
-        else:
-            bot.edit_message_caption(
-                caption=caption, chat_id=chat_id,
-                message_id=message_id, reply_markup=kb
-            )
-    except Exception as e:
-        print(f"Ошибка редактирования: {e}")
 
 def split_words(text):
     return re.findall(r'\w+', text.lower())
@@ -175,35 +131,15 @@ def main_menu():
 
 # ===== ЗАГРУЗКА CSV =====
 def load_csv(url):
-    session = requests.Session()
-    
-    retry_strategy = Retry(
-        total=3,
-        backoff_factor=1,
-        status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["GET"]
-    )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
-    session.mount("http://", adapter)
-    session.mount("https://", adapter)
+    headers = {"User-Agent": "Mozilla/5.0"}
+    r = requests.get(url, headers=headers, timeout=30)
+    r.encoding = "cp1251"
 
-    try:
-        response = session.get(url, timeout=(10, 30))
-        response.raise_for_status()
-        
-        # ИСПРАВЛЕНИЕ: убираем encoding, так как response.text уже str
-        reader = csv.DictReader(StringIO(response.text))
-        data = list(reader)
-        
-        print(f"✅ CSV загружен: {len(data)} строк из {url}")
-        return data, reader.fieldnames
+    csv_file = io.StringIO(r.text)
+    reader = csv.DictReader(csv_file, delimiter=";")
 
-    except requests.exceptions.ReadTimeout:
-        print("❌ Ошибка: превышено время ожидания при чтении CSV (ReadTimeout).")
-        return [], []
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Ошибка запроса к CSV: {e}")
-        return [], []
+    return list(reader), reader.fieldnames
+
 def load_database():
     global parts_db, wheels_db, donors_db, number_key, name_key, photo_key
     
@@ -256,36 +192,26 @@ def normalize(text):
 
 
 def find_part(query, db):
+
     query = normalize(fix_a(query))
     results = []
 
-    # Защита от пустой базы
-    if not db:
-        return []
-
     for part in db:
-        # 1. Проверяем основной номер
+
         raw_number = part.get(number_key, "")
-        number = normalize(fix_a(str(raw_number)))
-        
+        number = normalize(fix_a(raw_number))
+
+        if not number:
+            continue
+
         if query in number:
             results.append(part)
-            continue  # Если нашли по основному номеру, дальше проверять эту строку не надо
-
-        # 2. Если не нашли, проверяем кросс-номера
-        raw_cross = part.get(cross_key, "")
-        if raw_cross:
-            # Разбиваем строку "A1, A2, A3" на список и чистим каждый элемент
-            cross_list = [normalize(fix_a(x.strip())) for x in str(raw_cross).split(",") if x.strip()]
-            
-            # Ищем запрос внутри списка кросс-номеров
-            if any(query in cross for cross in cross_list):
-                results.append(part)
 
         if len(results) >= 20:
             break
 
     return results
+
 from datetime import datetime
 
 def log_search(chat_id, query, mode):
@@ -294,7 +220,6 @@ def log_search(chat_id, query, mode):
             time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             f.write(f"{time} | {chat_id} | {mode} | {query}\n")
     except Exception as e:
-        # Не ломаем бота из-за лога
         print("Ошибка логирования:", e)
 
 # ===== СТАРТ =====
@@ -317,31 +242,28 @@ def donors_mode(msg):
     results = user_results.get(chat_id, [])
 
     media = []
-
+    
     for i, d in enumerate(results[:10]):
         photo = str(d.get("Фото", "")).split(",")[0].strip()
-
+    
         if not photo or not photo.startswith("http"):
             continue
-
-        photo_data = download_photo(photo, timeout=3)
-        if not photo_data:
+    
+        try:
+            r = requests.get(photo, timeout=3)
+            if r.status_code != 200:
+                continue
+        except:
             continue
-
+    
         if len(media) == 0:
             media.append(
-                telebot.types.InputMediaPhoto(photo_data, caption="🚘 Последние доноры")
+                telebot.types.InputMediaPhoto(photo, caption="🚘 Последние доноры")
             )
         else:
             media.append(
-                telebot.types.InputMediaPhoto(photo_data)
+                telebot.types.InputMediaPhoto(photo)
             )
-
-    if not media:
-        bot.send_message(chat_id, "⚠️ Нет доступных фото")
-    else:
-        bot.send_media_group(chat_id, media)
-        send_donor_card(chat_id, 0)
     
     # 👇 ВНЕ цикла
     if not media:
@@ -372,34 +294,28 @@ def wheels_mode(msg):
     bot.send_message(chat_id, "🔎 Введите размер (например r18)")
 
 def send_wheels_preview(chat_id, results):
+
     media = []
 
     for i, part in enumerate(results[:10]):
         photos = str(part.get("Фото", "")).split(",")
-        photo_url = photos[0].strip() if photos else ""
 
-        if not photo_url:
+        if not photos or not photos[0]:
             continue
 
-        photo_data = download_photo(photo_url)
-        if not photo_data:
-            continue
+        caption = "📦 В наличии несколько комплектов\nСмотрите по отдельности ниже 👇"
 
         if i == 0:
             media.append(
-                telebot.types.InputMediaPhoto(photo_data, caption="📦 В наличии несколько комплектов\nСмотрите по отдельности ниже 👇")
+                telebot.types.InputMediaPhoto(photos[0], caption=caption)
             )
         else:
             media.append(
-                telebot.types.InputMediaPhoto(photo_data)
+                telebot.types.InputMediaPhoto(photos[0])
             )
 
     if media:
         bot.send_media_group(chat_id, media)
-
-        user_photo_index[chat_id] = 0
-        user_index[chat_id] = 0
-        send_wheel_card(chat_id, 0)
 
         # 👇 ДОБАВЛЯЕМ КАРТОЧКУ
         user_photo_index[chat_id] = 0
@@ -556,12 +472,15 @@ def send_wheel_card(chat_id, index):
 
     photos = str(part.get("Фото", ""))
     photo_list = [x.strip() for x in photos.split(",") if x.strip().startswith("http")]
+
     main_photo = photo_list[0] if photo_list else None
 
     brand = part.get("Производитель диска", "")
     model = part.get("Модель диска", "")
     article = part.get("Артикул", "")
     price = part.get("Цена", "")
+    photos = str(part.get("Фото", "")).strip()
+
     radius = part.get("Диаметр диска", "")
     width = part.get("Ширина диска", "")
     et = part.get("Вылет диска", "")
@@ -578,23 +497,26 @@ def send_wheel_card(chat_id, index):
         f"({index+1}/{len(results)})"
     )
 
+    # ===== КНОПКИ =====
     kb = telebot.types.InlineKeyboardMarkup(row_width=2)
+
     kb.add(
         telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{index}"),
         telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{index}")
     )
+
     kb.add(
         telebot.types.InlineKeyboardButton("❤️ Сохранить", callback_data=f"fav_{index}"),
         telebot.types.InlineKeyboardButton("💬 Связаться", url="https://t.me/Stuttgart_mercedes")
     )
 
     if main_photo:
-        sent = send_photo_safe(chat_id, main_photo, text, kb)
+        sent = bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
     else:
         sent = bot.send_message(chat_id, text, reply_markup=kb)
-
+    
+    # 👇 ВАЖНО
     user_last_msg[chat_id] = sent.message_id
-
 def send_donor_card(chat_id, index):
     track(chat_id, "views")
 
@@ -616,9 +538,9 @@ def send_donor_card(chat_id, index):
         f"({index+1}/{len(results)})"
     )
 
-    # Получаем фото через download_photo_safe
     photos = str(d.get("Фото") or "").split(",")
     photo_list = [x.strip() for x in photos if x.strip().startswith("http")]
+
     photo = photo_list[0] if photo_list else None
 
     kb = telebot.types.InlineKeyboardMarkup(row_width=2)
@@ -630,19 +552,41 @@ def send_donor_card(chat_id, index):
         telebot.types.InlineKeyboardButton("📸 Все фото", callback_data=f"donor_photos_{index}")
     )
 
-    # Используем безопасную отправку фото
     if photo:
-        try:
-            photo_data = download_photo(photo, timeout=5)
-            if photo_data:
-                sent = bot.send_photo(chat_id, photo_data, caption=text, reply_markup=kb)
-            else:
-                sent = bot.send_message(chat_id, text, reply_markup=kb)
-        except Exception as e:
-            print(f"Ошибка отправки фото: {e}")
-            sent = bot.send_message(chat_id, text, reply_markup=kb)
+        sent = bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
     else:
         sent = bot.send_message(chat_id, text, reply_markup=kb)
+
+    user_last_msg[chat_id] = sent.message_id
+    if mode == "wheels":
+        old_msg = user_last_msg.get(chat_id)
+
+    if old_msg:
+        try:
+            bot.delete_message(chat_id, old_msg)
+        except:
+            pass
+
+    if not photo_list:
+        sent = bot.send_message(chat_id, text, reply_markup=kb)
+        user_last_msg[chat_id] = sent.message_id
+        return
+
+    main_photo = photo_list[0]
+
+    try:
+        sent = bot.send_photo(
+            chat_id,
+            main_photo,
+            caption=text,
+            reply_markup=kb
+        )
+    except:
+        sent = bot.send_message(
+            chat_id,
+            text,
+            reply_markup=kb
+        )
 
     user_last_msg[chat_id] = sent.message_id
         # ===== 🚗 ЗАПЧАСТИ =====
@@ -702,26 +646,23 @@ def not_found_cmd(msg):
 # ===== ИЗБРАННОЕ =====
 @bot.message_handler(func=lambda m: m.text and "Избранное" in m.text)
 def show_favorites(message):
+
     chat_id = message.chat.id
     user_id = str(chat_id)
 
     fav_ids = favorites.get(user_id, [])
 
     if not fav_ids:
-        bot.send_message(chat_id, "❌ Избранное пусто", reply_markup=main_menu())
+        bot.send_message(chat_id, "❌ Избранное пусто")
         return
 
     results = user_results.get(chat_id, [])
-
-    found = False
 
     for part in results:
         item_id = part.get("Артикул") or str(part)
 
         if item_id not in fav_ids:
             continue
-
-        found = True
 
         name = part.get(name_key) or part.get("Наименование") or "Без названия"
         article = part.get("Артикул", "Нет артикула")
@@ -747,13 +688,10 @@ def show_favorites(message):
             )
         )
 
-        if photo and photo.startswith("http"):
-            send_photo_safe(chat_id, photo, text, kb)
+        if photo:
+            bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
         else:
             bot.send_message(chat_id, text, reply_markup=kb)
-
-    if not found:
-        bot.send_message(chat_id, "❌ Сохранённые позиции не найдены в текущих результатах поиска", reply_markup=main_menu())
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith("allphoto_"))
 def show_all_photos(call):
@@ -959,30 +897,31 @@ def callback(call):
     # ⬅️ ➡️ ПЕРЕКЛЮЧЕНИЕ
     # =======================
     if data.startswith("next_") or data.startswith("prev_"):
+    
         current = user_index.get(chat_id, 0)
-
+    
         if "next" in data:
             current += 1
         else:
             current -= 1
-
+    
         if current < 0:
             current = len(results) - 1
         if current >= len(results):
             current = 0
-
+    
         user_index[chat_id] = current
         user_photo_index[chat_id] = 0
         mode = current_mode.get(chat_id, "parts")
-
+    
         # ===== 🛞 WHEELS (через edit) =====
         if mode == "wheels":
             part = results[current]
-
-            photos = str(part.get("Фото", "")).split(",")
-            photo_url = photos[0].strip() if photos else ""
-            main_photo = photo_url if photo_url.startswith("http") else None
-
+    
+            photos = str(part.get("Фото", ""))
+            photo_list = [x.strip() for x in photos.split(",") if x.strip()]
+            main_photo = photo_list[0] if photo_list else None
+    
             text = (
                 f"🛞 {part.get('Производитель диска','')} {part.get('Модель диска','')}\n\n"
                 f"Артикул: {part.get('Артикул','')}\n"
@@ -992,7 +931,7 @@ def callback(call):
                 f"🕳 DIA: {part.get('Диаметр осевого отверстия диска','-')}\n\n"
                 f"({current+1}/{len(results)})"
             )
-
+    
             kb = telebot.types.InlineKeyboardMarkup(row_width=2)
             kb.add(
                 telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{current}"),
@@ -1002,44 +941,26 @@ def callback(call):
                 telebot.types.InlineKeyboardButton("❤️ Сохранить", callback_data=f"fav_{current}"),
                 telebot.types.InlineKeyboardButton("💬 Связаться", url="https://t.me/Stuttgart_mercedes")
             )
-
-            # ✅ ГЛАВНОЕ ИСПРАВЛЕНИЕ: скачиваем байты, а не передаём URL
-            if main_photo:
-                photo_data = download_photo(main_photo, timeout=5)
-                if photo_data:
-                    media = telebot.types.InputMediaPhoto(photo_data, caption=text)
-                    try:
-                        bot.edit_message_media(
-                            media=media,
-                            chat_id=chat_id,
-                            message_id=call.message.message_id,
-                            reply_markup=kb
-                        )
-                    except Exception as e:
-                        print("Ошибка редактирования фото:", e)
+    
+            try:
+                if main_photo:
+                    media = telebot.types.InputMediaPhoto(main_photo, caption=text)
+                    bot.edit_message_media(
+                        media=media,
+                        chat_id=chat_id,
+                        message_id=call.message.message_id,
+                        reply_markup=kb
+                    )
                 else:
-                    # Если фото не удалось скачать — редактируем только подпись
-                    try:
-                        bot.edit_message_caption(
-                            caption=text,
-                            chat_id=chat_id,
-                            message_id=call.message.message_id,
-                            reply_markup=kb
-                        )
-                    except Exception as e:
-                        print("Ошибка редактирования подписи:", e)
-            else:
-                # Нет фото — только подпись
-                try:
                     bot.edit_message_caption(
                         caption=text,
                         chat_id=chat_id,
                         message_id=call.message.message_id,
                         reply_markup=kb
                     )
-                except Exception as e:
-                    print("Ошибка редактирования без фото:", e)
-
+            except Exception as e:
+                print("Ошибка редактирования:", e)
+    
             return
 
         elif mode == "donors":
@@ -1222,11 +1143,4 @@ def handle_text(message):
 if __name__ == "__main__":
     print("START BOT")
     load_database()
-
-    while True:
-        try:
-            bot.infinity_polling(timeout=60, long_polling_timeout=30)
-        except Exception as e:
-            print(f"⚠️ Polling упал: {e}")
-            import time
-            time.sleep(5)
+    bot.infinity_polling()

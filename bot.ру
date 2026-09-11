@@ -19,7 +19,6 @@
 #   • Railway / BOT_TOKEN
 # ============================================================
 
-import os
 import io
 import csv
 import json
@@ -28,7 +27,13 @@ import time
 import hashlib
 import threading
 import requests
+import os
 
+CACHE_DIR = "cache"
+PHOTO_CACHE_DIR = "cache/photos"
+
+os.makedirs(CACHE_DIR, exist_ok=True)
+os.makedirs(PHOTO_CACHE_DIR, exist_ok=True)
 from datetime import datetime
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed

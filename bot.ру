@@ -1,72 +1,69 @@
-import json
-import telebot
-import csv
-import requests
+import os
 import io
+import csv
+import json
 import re
+import requests
 
-def split_words(text):
-    return re.findall(r'\w+', text.lower())
-def fix_a(text):
-    return text.lower().replace("а", "a")
-LOG_FILE = "logs.txt"
-
+from datetime import datetime
 from collections import defaultdict
 
-def get_not_found():
-    try:
-        with open(LOG_FILE, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-
-        data = defaultdict(list)
-
-        for line in lines:
-            if "NOT_FOUND" in line:
-                parts = line.strip().split("|")
-
-                if len(parts) >= 4:
-                    chat_id = parts[1].strip()
-                    query = parts[3].strip()
-
-                    data[query].append(chat_id)
-
-        if not data:
-            return "Нет пустых запросов 👍"
-
-        text = "❌ Ничего не найдено:\n\n"
-
-        for query, users in data.items():
-            unique_users = list(set(users))
-
-            text += f"🔍 {query}\n"
-            text += f"👤 ID: {', '.join(unique_users)}\n"
-            text += f"📊 Запросов: {len(users)}\n\n"
-
-        return text
-
-    except Exception as e:
-        return f"Ошибка: {e}"
+import telebot
+from telebot import types
 
 
-# ===== НАСТРОЙКИ =====
-TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
+# ============================================================
+# НАСТРОЙКИ
+# ============================================================
+
+TOKEN = os.getenv("8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY")
+
+if not TOKEN:
+    raise RuntimeError(
+        "Не задан BOT_TOKEN. "
+        "Создай переменную окружения BOT_TOKEN с новым токеном бота."
+    )
+
 DONORS_CSV = "https://baz-on.ru/export/c592/5c6ca/stuttgart-site-carsrc.csv"
 PARTS_CSV = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"
 WHEELS_CSV = "https://baz-on.ru/export/c592/77023/drom-wheels.csv"
+
 FAV_FILE = "favorites.json"
+LOG_FILE = "logs.txt"
+STATS_FILE = "stats.json"
+
+ADMIN_ID = 5053130650
+
+CONTACT_URL = "https://t.me/Stuttgart_mercedes"
+
+REQUEST_TIMEOUT = 30
+PHOTO_TIMEOUT = 10
+
+MAX_RESULTS = 20
+MAX_ALBUM_PHOTOS = 10
+
+
+# ============================================================
+# BOT
+# ============================================================
 
 bot = telebot.TeleBot(TOKEN)
 
-ADMIN_ID = 5053130650
-# ===== ДАННЫЕ =====
+
+# ============================================================
+# ДАННЫЕ В ПАМЯТИ
+# ============================================================
+
 favorites = {}
+
 user_results = {}
 current_mode = {}
 ai_mode = {}
+
 user_index = {}
-user_cart = {}
-user_last_msg = {}
 user_photo_index = {}
+
+user_last_msg = {}
 user_album_msgs = {}
 
 
@@ -74,26 +71,133 @@ donors_db = []
 parts_db = []
 wheels_db = []
 
+
+# Ключи CSV
 number_key = None
 name_key = None
 photo_key = None
 
-STATS_FILE = "stats.json"
+
+# ============================================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ============================================================
+
+def split_words(text):
+    return re.findall(r"\w+", str(text).lower())
+
+
+def fix_a(text):
+    """
+    Исправляет кириллическую 'а' на латинскую 'a'.
+    Это полезно для артикулов, где пользователь может
+    случайно ввести кириллическую букву.
+    """
+    return str(text).lower().replace("а", "a")
+
+
+def normalize(text):
+    """
+    Нормализация поискового текста.
+    Убираем пробелы и дефисы.
+    """
+    return (
+        str(text)
+        .lower()
+        .replace(" ", "")
+        .replace("-", "")
+        .strip()
+    )
+
+
+def safe_int(value, default=0):
+    try:
+        return int(value)
+    except Exception:
+        return default
+
+
+def clean_url(value):
+    """
+    Берёт первую валидную ссылку из строки CSV.
+    """
+    if not value:
+        return None
+
+    value = str(value).strip()
+
+    if not value:
+        return None
+
+    parts = value.split(",")
+
+    for item in parts:
+        url = item.strip()
+
+        if url.startswith("http://") or url.startswith("https://"):
+            return url
+
+    return None
+
+
+def get_photo_list(value):
+    """
+    Получает список URL фотографий из CSV.
+    """
+    if not value:
+        return []
+
+    result = []
+
+    for item in str(value).split(","):
+        url = item.strip()
+
+        if url.startswith("http://") or url.startswith("https://"):
+            result.append(url)
+
+    return result
+
+
+# ============================================================
+# СТАТИСТИКА
+# ============================================================
 
 def load_stats():
     try:
         with open(STATS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
+            data = json.load(f)
+
+        if isinstance(data, dict):
+            return data
+
+    except Exception as e:
+        print("Не удалось загрузить статистику:", e)
+
+    return {}
+
 
 def save_stats(data):
-    with open(STATS_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    try:
+        with open(STATS_FILE, "w", encoding="utf-8") as f:
+            json.dump(
+                data,
+                f,
+                ensure_ascii=False,
+                indent=2
+            )
+    except Exception as e:
+        print("Ошибка сохранения статистики:", e)
+
 
 stats = load_stats()
 
+
 def track(user_id, action):
+    """
+    action:
+    searches
+    views
+    favorites
+    """
     user_id = str(user_id)
 
     if user_id not in stats:
@@ -103,575 +207,1736 @@ def track(user_id, action):
             "favorites": 0
         }
 
+    if action not in stats[user_id]:
+        stats[user_id][action] = 0
+
     stats[user_id][action] += 1
+
     save_stats(stats)
 
-# ===== ИЗБРАННОЕ =====
+
+# ============================================================
+# ИЗБРАННОЕ
+# ============================================================
+
 def load_favorites():
     try:
         with open(FAV_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except:
-        return {}
+            data = json.load(f)
+
+        if isinstance(data, dict):
+            return data
+
+    except Exception as e:
+        print("Не удалось загрузить избранное:", e)
+
+    return {}
+
 
 def save_favorites(data):
-    with open(FAV_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    try:
+        with open(FAV_FILE, "w", encoding="utf-8") as f:
+            json.dump(
+                data,
+                f,
+                ensure_ascii=False,
+                indent=2
+            )
+
+    except Exception as e:
+        print("Ошибка сохранения избранного:", e)
+
 
 favorites = load_favorites()
 
-# ===== МЕНЮ =====
+
+# ============================================================
+# МЕНЮ
+# ============================================================
+
 def main_menu():
-    kb = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb = types.ReplyKeyboardMarkup(
+        resize_keyboard=True
+    )
+
     kb.row("🚗 Найти запчасть")
     kb.row("🛞 Шины и диски")
     kb.row("❤️ Избранное")
     kb.row("🚘 В разборе")
+
     return kb
 
-# ===== ЗАГРУЗКА CSV =====
+
+# ============================================================
+# CSV
+# ============================================================
+
 def load_csv(url):
-    headers = {"User-Agent": "Mozilla/5.0"}
-    r = requests.get(url, headers=headers, timeout=30)
-    r.encoding = "cp1251"
+    """
+    Загружает CSV.
+    По твоему исходному коду используется:
+    delimiter=';'
+    encoding='cp1251'
+    """
 
-    csv_file = io.StringIO(r.text)
-    reader = csv.DictReader(csv_file, delimiter=";")
+    headers = {
+        "User-Agent": "Mozilla/5.0"
+    }
 
-    return list(reader), reader.fieldnames
+    print("Загрузка CSV:", url)
+
+    response = requests.get(
+        url,
+        headers=headers,
+        timeout=REQUEST_TIMEOUT
+    )
+
+    response.raise_for_status()
+
+    # Пробуем cp1251, как в исходном боте
+    response.encoding = "cp1251"
+
+    csv_file = io.StringIO(
+        response.text
+    )
+
+    reader = csv.DictReader(
+        csv_file,
+        delimiter=";"
+    )
+
+    rows = list(reader)
+
+    print(
+        f"Загружено строк: {len(rows)}"
+    )
+
+    return rows, reader.fieldnames or []
+
 
 def load_database():
-    global parts_db, wheels_db, donors_db, number_key, name_key, photo_key
-    
-    donors_db, _ = load_csv(DONORS_CSV)
-    donors_db.reverse()  # свежие сверху
-    
-    parts_db, headers = load_csv(PARTS_CSV)
-    wheels_db, headers2 = load_csv(WHEELS_CSV)
+    global parts_db
+    global wheels_db
+    global donors_db
 
-    parts_db.reverse()
+    global number_key
+    global name_key
+    global photo_key
 
-    for h in headers:
-        h_low = h.lower()
+    print("================================")
+    print("ЗАГРУЗКА БАЗ")
+    print("================================")
 
-        if "артикул" in h_low or "номер" in h_low:
+    try:
+        donors_db, donors_headers = load_csv(
+            DONORS_CSV
+        )
+
+        # Свежие сверху
+        donors_db.reverse()
+
+    except Exception as e:
+        print("❌ Ошибка загрузки доноров:", e)
+        donors_db = []
+        donors_headers = []
+
+    try:
+        parts_db, parts_headers = load_csv(
+            PARTS_CSV
+        )
+
+        # Свежие сверху
+        parts_db.reverse()
+
+    except Exception as e:
+        print("❌ Ошибка загрузки запчастей:", e)
+        parts_db = []
+        parts_headers = []
+
+    try:
+        wheels_db, wheels_headers = load_csv(
+            WHEELS_CSV
+        )
+
+    except Exception as e:
+        print("❌ Ошибка загрузки дисков:", e)
+        wheels_db = []
+        wheels_headers = []
+
+    # --------------------------------------------------------
+    # Определяем ключи CSV запчастей
+    # --------------------------------------------------------
+
+    number_key = None
+    name_key = None
+    photo_key = None
+
+    for h in parts_headers:
+
+        if not h:
+            continue
+
+        h_low = h.lower().strip()
+
+        if (
+            number_key is None
+            and (
+                "артикул" in h_low
+                or "номер" in h_low
+            )
+        ):
             number_key = h
 
-        if "наимен" in h_low or "название" in h_low:
+        if (
+            name_key is None
+            and (
+                "наимен" in h_low
+                or "название" in h_low
+            )
+        ):
             name_key = h
 
-        if "фото" in h_low or "image" in h_low:
+        if (
+            photo_key is None
+            and (
+                "фото" in h_low
+                or "image" in h_low
+            )
+        ):
             photo_key = h
+
+    # Резервные ключи
+    if number_key is None:
+        if "Артикул" in parts_headers:
+            number_key = "Артикул"
+        elif "Номер" in parts_headers:
+            number_key = "Номер"
+
+    if name_key is None:
+        if "Наименование" in parts_headers:
+            name_key = "Наименование"
+        elif "Название" in parts_headers:
+            name_key = "Название"
+
+    if photo_key is None:
+        if "Фото" in parts_headers:
+            photo_key = "Фото"
+
+    print("================================")
+    print("БАЗЫ ЗАГРУЖЕНЫ")
+    print(
+        "Доноров:",
+        len(donors_db)
+    )
+    print(
+        "Запчастей:",
+        len(parts_db)
+    )
+    print(
+        "Дисков:",
+        len(wheels_db)
+    )
+
+    print(
+        "number_key:",
+        number_key
+    )
+
+    print(
+        "name_key:",
+        name_key
+    )
+
+    print(
+        "photo_key:",
+        photo_key
+    )
+
+    print("================================")
+
+
+# ============================================================
+# ПОИСК ЗАПЧАСТЕЙ
+# ============================================================
+
+def find_part(query, db):
+    """
+    Поиск по артикулу / номеру.
+
+    Например:
+    A000123
+    A 000-123
+    а000123
+    """
+
+    query = normalize(
+        fix_a(query)
+    )
+
+    if not query:
+        return []
+
+    results = []
+
+    for part in db:
+
+        # Основной ключ
+        values = []
+
+        if number_key:
+            values.append(
+                part.get(number_key, "")
+            )
+
+        # Резервные поля
+        values.append(
+            part.get("Артикул", "")
+        )
+
+        values.append(
+            part.get("Номер", "")
+        )
+
+        found = False
+
+        for raw_value in values:
+
+            value = normalize(
+                fix_a(raw_value)
+            )
+
+            if not value:
+                continue
+
+            if query in value:
+                found = True
+                break
+
+        if found:
+            results.append(part)
+
+        if len(results) >= MAX_RESULTS:
+            break
+
+    return results
+
+
+def find_part_by_id(item_id):
+    """
+    Ищет конкретную деталь для избранного.
+    """
+
+    target = normalize(
+        fix_a(item_id)
+    )
+
+    if not target:
+        return None
+
+    for part in parts_db:
+
+        values = [
+            part.get("Артикул", "")
+        ]
+
+        if number_key:
+            values.append(
+                part.get(number_key, "")
+            )
+
+        for value in values:
+
+            current = normalize(
+                fix_a(value)
+            )
+
+            if current == target:
+                return part
+
+    return None
+
+
+# ============================================================
+# ПОИСК ДИСКОВ
+# ============================================================
 
 def find_wheels(query, db):
 
-    query = query.lower().replace(" ", "").replace("-", "")
+    query_normalized = (
+        str(query)
+        .lower()
+        .replace(" ", "")
+        .replace("-", "")
+        .strip()
+    )
+
+    if not query_normalized:
+        return []
+
     results = []
 
     for part in db:
 
-        radius = str(part.get("Диаметр диска", "")).lower().replace(" ", "")
-        brand = str(part.get("Производитель диска", "")).lower()
-        model = str(part.get("Модель диска", "")).lower()
+        radius = (
+            str(
+                part.get(
+                    "Диаметр диска",
+                    ""
+                )
+            )
+            .lower()
+            .replace(" ", "")
+            .replace("-", "")
+        )
 
-        # 🔥 поиск по радиусу
-        if query in radius or query in f"r{radius}":
+        brand = (
+            str(
+                part.get(
+                    "Производитель диска",
+                    ""
+                )
+            )
+            .lower()
+        )
+
+        model = (
+            str(
+                part.get(
+                    "Модель диска",
+                    ""
+                )
+            )
+            .lower()
+        )
+
+        # Убираем R для поиска
+        query_without_r = query_normalized
+
+        if query_without_r.startswith("r"):
+            query_without_r = query_without_r[1:]
+
+        # Поиск по радиусу
+        radius_match = (
+            query_without_r in radius
+            or query_normalized in radius
+            or query_without_r in f"r{radius}"
+        )
+
+        # Поиск по бренду
+        brand_match = (
+            query_normalized in brand
+        )
+
+        # Поиск по модели
+        model_match = (
+            query_normalized in model
+        )
+
+        if (
+            radius_match
+            or brand_match
+            or model_match
+        ):
             results.append(part)
 
-        # 🔥 поиск по бренду/модели
-        elif query in brand or query in model:
-            results.append(part)
-
-        if len(results) >= 20:
+        if len(results) >= MAX_RESULTS:
             break
 
     return results
 
-def normalize(text):
-    return str(text).lower().replace(" ", "").replace("-", "")
 
-
-def find_part(query, db):
-
-    query = normalize(fix_a(query))
-    results = []
-
-    for part in db:
-
-        raw_number = part.get(number_key, "")
-        number = normalize(fix_a(raw_number))
-
-        if not number:
-            continue
-
-        if query in number:
-            results.append(part)
-
-        if len(results) >= 20:
-            break
-
-    return results
-
-from datetime import datetime
+# ============================================================
+# ЛОГИ
+# ============================================================
 
 def log_search(chat_id, query, mode):
     try:
-        with open(LOG_FILE, "a", encoding="utf-8") as f:
-            time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            f.write(f"{time} | {chat_id} | {mode} | {query}\n")
+        with open(
+            LOG_FILE,
+            "a",
+            encoding="utf-8"
+        ) as f:
+
+            time = datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
+            f.write(
+                f"{time} | "
+                f"{chat_id} | "
+                f"{mode} | "
+                f"{query}\n"
+            )
+
     except Exception as e:
-        print("Ошибка логирования:", e)
+        print(
+            "Ошибка логирования:",
+            e
+        )
 
-# ===== СТАРТ =====
-@bot.message_handler(commands=["start"])
-def start(message):
-    bot.send_message(message.chat.id, "Выберите действие:", reply_markup=main_menu())
 
-# ===== РЕЖИМЫ =====
-@bot.message_handler(func=lambda m: m.text == "🚘 В разборе")
+def get_not_found():
+    try:
 
-@bot.message_handler(func=lambda m: m.text == "🚘 В разборе")
-def donors_mode(msg):
-    chat_id = msg.chat.id
+        with open(
+            LOG_FILE,
+            "r",
+            encoding="utf-8"
+        ) as f:
 
-    current_mode[chat_id] = "donors"
-    user_results[chat_id] = donors_db[:20]
-    user_index[chat_id] = 0
-    user_photo_index[chat_id] = 0
+            lines = f.readlines()
 
-    results = user_results.get(chat_id, [])
+        data = defaultdict(list)
 
-    media = []
-    
-    for i, d in enumerate(results[:10]):
-        photo = str(d.get("Фото", "")).split(",")[0].strip()
-    
-        if not photo or not photo.startswith("http"):
-            continue
-    
-        try:
-            r = requests.get(photo, timeout=3)
-            if r.status_code != 200:
+        for line in lines:
+
+            parts = line.strip().split("|")
+
+            if len(parts) < 4:
                 continue
-        except:
-            continue
-    
-        if len(media) == 0:
-            media.append(
-                telebot.types.InputMediaPhoto(photo, caption="🚘 Последние доноры")
-            )
-        else:
-            media.append(
-                telebot.types.InputMediaPhoto(photo)
-            )
-    
-    # 👇 ВНЕ цикла
-    if not media:
-        bot.send_message(chat_id, "⚠️ Нет доступных фото")
-    else:
-        bot.send_media_group(chat_id, media)
-    
-        # 🔥 СРАЗУ открываем первый донор
-        current_mode[chat_id] = "donors"
-        send_donor_card(chat_id, 0)
 
-@bot.message_handler(func=lambda m: m.text == "🚗 Найти запчасть")
-def parts_mode(msg):
-    chat_id = msg.chat.id
+            mode = parts[2].strip()
+
+            if mode != "NOT_FOUND":
+                continue
+
+            chat_id = parts[1].strip()
+            query = parts[3].strip()
+
+            if query:
+                data[query].append(
+                    chat_id
+                )
+
+        if not data:
+            return "Нет ненайденных запросов 👍"
+
+        text = (
+            "❌ Ничего не найдено:\n\n"
+        )
+
+        for query, users in data.items():
+
+            unique_users = list(
+                dict.fromkeys(users)
+            )
+
+            text += (
+                f"🔍 {query}\n"
+            )
+
+            text += (
+                f"👤 ID: "
+                f"{', '.join(unique_users)}\n"
+            )
+
+            text += (
+                f"📊 Запросов: "
+                f"{len(users)}\n\n"
+            )
+
+        return text
+
+    except FileNotFoundError:
+        return "Логов пока нет."
+
+    except Exception as e:
+        return f"Ошибка: {e}"
+
+
+# ============================================================
+# УДАЛЕНИЕ СТАРЫХ СООБЩЕНИЙ
+# ============================================================
+
+def delete_message_safe(
+    chat_id,
+    message_id
+):
+    try:
+        bot.delete_message(
+            chat_id,
+            message_id
+        )
+    except Exception:
+        pass
+
+
+def delete_last_messages(chat_id):
+    """
+    Удаляет сообщения предыдущей карточки.
+    """
+
+    old_messages = (
+        user_last_msg.get(
+            chat_id,
+            []
+        )
+    )
+
+    if isinstance(
+        old_messages,
+        int
+    ):
+        old_messages = [
+            old_messages
+        ]
+
+    for message_id in old_messages:
+
+        delete_message_safe(
+            chat_id,
+            message_id
+        )
+
+    user_last_msg[chat_id] = []
+
+
+def delete_album_messages(chat_id):
+    """
+    Удаляет ранее отправленный альбом.
+    """
+
+    message_ids = (
+        user_album_msgs.get(
+            chat_id,
+            []
+        )
+    )
+
+    for message_id in message_ids:
+
+        delete_message_safe(
+            chat_id,
+            message_id
+        )
+
+    user_album_msgs[chat_id] = []
+
+
+# ============================================================
+# START
+# ============================================================
+
+@bot.message_handler(
+    commands=["start"]
+)
+def start(message):
+
+    chat_id = message.chat.id
+
+    current_mode[chat_id] = None
+    ai_mode[chat_id] = False
+
+    bot.send_message(
+        chat_id,
+        "Выберите действие:",
+        reply_markup=main_menu()
+    )
+
+
+# ============================================================
+# РЕЖИМ ЗАПЧАСТЕЙ
+# ============================================================
+
+@bot.message_handler(
+    func=lambda m:
+        m.text == "🚗 Найти запчасть"
+)
+def parts_mode(message):
+
+    chat_id = message.chat.id
 
     ai_mode[chat_id] = False
     current_mode[chat_id] = "parts"
 
-    bot.send_message(chat_id, "🔎 Введите номер детали")
+    bot.send_message(
+        chat_id,
+        "🔎 Введите номер детали\n\n"
+        "Например:\n"
+        "A000123456"
+    )
 
-@bot.message_handler(func=lambda m: m.text == "🛞 Шины и диски")
-def wheels_mode(msg):
-    chat_id = msg.chat.id
+
+# ============================================================
+# РЕЖИМ ДИСКОВ
+# ============================================================
+
+@bot.message_handler(
+    func=lambda m:
+        m.text == "🛞 Шины и диски"
+)
+def wheels_mode(message):
+
+    chat_id = message.chat.id
 
     ai_mode[chat_id] = False
     current_mode[chat_id] = "wheels"
 
-    bot.send_message(chat_id, "🔎 Введите размер (например r18)")
+    bot.send_message(
+        chat_id,
+        "🔎 Введите размер, бренд или модель\n\n"
+        "Например:\n"
+        "R18\n"
+        "AMG\n"
+        "Monoblock"
+    )
 
-def send_wheels_preview(chat_id, results):
 
+# ============================================================
+# РЕЖИМ ДОНОРОВ
+# ============================================================
+
+@bot.message_handler(
+    func=lambda m:
+        m.text == "🚘 В разборе"
+)
+def donors_mode(message):
+
+    chat_id = message.chat.id
+
+    current_mode[chat_id] = "donors"
+    ai_mode[chat_id] = False
+
+    results = donors_db[:MAX_RESULTS]
+
+    user_results[chat_id] = results
+    user_index[chat_id] = 0
+    user_photo_index[chat_id] = 0
+
+    if not results:
+
+        bot.send_message(
+            chat_id,
+            "❌ Доноров пока нет."
+        )
+
+        return
+
+    # Небольшой альбом последних доноров
     media = []
 
-    for i, part in enumerate(results[:10]):
-        photos = str(part.get("Фото", "")).split(",")
+    for i, donor in enumerate(
+        results[:10]
+    ):
 
-        if not photos or not photos[0]:
+        photo = clean_url(
+            donor.get("Фото")
+            or donor.get("photo")
+            or ""
+        )
+
+        if not photo:
             continue
 
-        caption = "📦 В наличии несколько комплектов\nСмотрите по отдельности ниже 👇"
+        try:
 
-        if i == 0:
-            media.append(
-                telebot.types.InputMediaPhoto(photos[0], caption=caption)
+            response = requests.get(
+                photo,
+                timeout=5
             )
-        else:
-            media.append(
-                telebot.types.InputMediaPhoto(photos[0])
+
+            if response.status_code != 200:
+                continue
+
+            if i == 0:
+
+                media.append(
+                    types.InputMediaPhoto(
+                        response.content,
+                        caption="🚘 Последние доноры"
+                    )
+                )
+
+            else:
+
+                media.append(
+                    types.InputMediaPhoto(
+                        response.content
+                    )
+                )
+
+        except Exception as e:
+
+            print(
+                "Ошибка загрузки фото донора:",
+                e
             )
 
     if media:
-        bot.send_media_group(chat_id, media)
 
-        # 👇 ДОБАВЛЯЕМ КАРТОЧКУ
-        user_photo_index[chat_id] = 0
-        user_index[chat_id] = 0
-        
-        send_wheel_card(chat_id, 0)
+        try:
 
-# ===== ОБЫЧНЫЙ ПОИСК =====
-@bot.message_handler(func=lambda m: (
-    not ai_mode.get(m.chat.id)
-    and m.text
-    and len(m.text) > 2
-    and not m.text.startswith(("🚗","🛞","🚘","❤️","/"))
-))
-def search(msg):
-    chat_id = msg.chat.id
-    track(chat_id, "searches")
-    mode = current_mode.get(chat_id, "parts")
+            sent = bot.send_media_group(
+                chat_id,
+                media
+            )
 
-    results = []  # ✅ ВСЕГДА создаём
+            user_album_msgs[chat_id] = [
+                msg.message_id
+                for msg in sent
+            ]
 
-    # ===== ДИСКИ =====
-    if mode == "wheels":
-        print("🔥 SEARCH WHEELS:", msg.text)
-        log_search(chat_id, msg.text, "wheels")
+        except Exception as e:
 
-        results = find_wheels(msg.text, wheels_db)
+            print(
+                "Ошибка альбома доноров:",
+                e
+            )
 
-        if not results:
-            bot.send_message(chat_id, "❌ Ничего не найдено")
-            return
-
-        user_results[chat_id] = results
-        user_index[chat_id] = 0
-
-        # 🔥 ПРЕВЬЮ АЛЬБОМ
-        send_wheels_preview(chat_id, results)
+    # Открываем первую карточку
+    send_donor_card(
+        chat_id,
+        0
+    )
 
 
+# ============================================================
+# ПОИСК
+# ============================================================
 
-    # ===== ЗАПЧАСТИ =====
-    else:
-        print("🔥 SEARCH PARTS:", msg.text)   # проверка
-        log_search(chat_id, msg.text, "parts")  # ← ВОТ СЮДА
+@bot.message_handler(
+    func=lambda m: (
+        m.text
+        and len(m.text.strip()) > 2
+        and not m.text.startswith(
+            (
+                "🚗",
+                "🛞",
+                "🚘",
+                "❤️",
+                "/"
+            )
+        )
+    )
+)
+def search(message):
 
-        results = find_part(msg.text, parts_db)
+    chat_id = message.chat.id
+    query = message.text.strip()
 
-        if not results:
-            print("❌ NOT FOUND:", msg.text)
-        
-            log_search(chat_id, msg.text, "NOT_FOUND")  # 👈 ВОТ ЭТО ГЛАВНОЕ
-        
-            bot.send_message(chat_id, "❌ Ничего не найдено")
-            return
+    mode = current_mode.get(
+        chat_id,
+        "parts"
+    )
 
-        user_results[chat_id] = results
-        user_index[chat_id] = 0
+    # --------------------------------------------------------
+    # Если неизвестный режим
+    # --------------------------------------------------------
 
-        send_card(chat_id, 0)
+    if mode not in (
+        "parts",
+        "wheels"
+    ):
 
-# ===== КАРТОЧКА =====
-def send_card(chat_id, index):
+        bot.send_message(
+            chat_id,
+            "Выберите действие из меню:",
+            reply_markup=main_menu()
+        )
 
-    mode = current_mode.get(chat_id, "parts")
-
-    if mode == "wheels":
-        send_wheel_card(chat_id, index)
-    elif mode == "donors":
-        send_donor_card(chat_id, index)
-    else:
-        send_part_card(chat_id, index)
-
-def send_part_card(chat_id, index):
-    track(chat_id, "views")
-
-    results = user_results.get(chat_id, [])
-    if not results or index >= len(results):
         return
+
+    # --------------------------------------------------------
+    # Статистика
+    # --------------------------------------------------------
+
+    track(
+        chat_id,
+        "searches"
+    )
+
+    # --------------------------------------------------------
+    # ДИСКИ
+    # --------------------------------------------------------
+
+    if mode == "wheels":
+
+        print(
+            "🔥 SEARCH WHEELS:",
+            query
+        )
+
+        log_search(
+            chat_id,
+            query,
+            "wheels"
+        )
+
+        results = find_wheels(
+            query,
+            wheels_db
+        )
+
+        if not results:
+
+            print(
+                "❌ WHEELS NOT FOUND:",
+                query
+            )
+
+            log_search(
+                chat_id,
+                query,
+                "NOT_FOUND"
+            )
+
+            bot.send_message(
+                chat_id,
+                "❌ Ничего не найдено"
+            )
+
+            return
+
+        user_results[chat_id] = results
+        user_index[chat_id] = 0
+        user_photo_index[chat_id] = 0
+
+        delete_last_messages(
+            chat_id
+        )
+
+        send_wheels_preview(
+            chat_id,
+            results
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # ЗАПЧАСТИ
+    # --------------------------------------------------------
+
+    if mode == "parts":
+
+        print(
+            "🔥 SEARCH PARTS:",
+            query
+        )
+
+        log_search(
+            chat_id,
+            query,
+            "parts"
+        )
+
+        results = find_part(
+            query,
+            parts_db
+        )
+
+        if not results:
+
+            print(
+                "❌ PART NOT FOUND:",
+                query
+            )
+
+            log_search(
+                chat_id,
+                query,
+                "NOT_FOUND"
+            )
+
+            bot.send_message(
+                chat_id,
+                "❌ Ничего не найдено"
+            )
+
+            return
+
+        user_results[chat_id] = results
+        user_index[chat_id] = 0
+        user_photo_index[chat_id] = 0
+
+        delete_last_messages(
+            chat_id
+        )
+
+        send_part_card(
+            chat_id,
+            0
+        )
+
+        return
+
+
+# ============================================================
+# ПРЕВЬЮ ДИСКОВ
+# ============================================================
+
+def send_wheels_preview(
+    chat_id,
+    results
+):
+
+    media = []
+
+    for i, part in enumerate(
+        results[:10]
+    ):
+
+        photo_list = get_photo_list(
+            part.get("Фото", "")
+        )
+
+        if not photo_list:
+            continue
+
+        photo = photo_list[0]
+
+        caption = (
+            "📦 Найдено несколько вариантов.\n"
+            "Смотрите товары по отдельности ниже 👇"
+        )
+
+        try:
+
+            response = requests.get(
+                photo,
+                timeout=PHOTO_TIMEOUT
+            )
+
+            if response.status_code != 200:
+                continue
+
+            if i == 0:
+
+                media.append(
+                    types.InputMediaPhoto(
+                        response.content,
+                        caption=caption
+                    )
+                )
+
+            else:
+
+                media.append(
+                    types.InputMediaPhoto(
+                        response.content
+                    )
+                )
+
+        except Exception as e:
+
+            print(
+                "Ошибка загрузки превью диска:",
+                e
+            )
+
+    if media:
+
+        try:
+
+            sent = bot.send_media_group(
+                chat_id,
+                media
+            )
+
+            user_album_msgs[chat_id] = [
+                msg.message_id
+                for msg in sent
+            ]
+
+        except Exception as e:
+
+            print(
+                "Ошибка отправки превью дисков:",
+                e
+            )
+
+    user_photo_index[chat_id] = 0
+    user_index[chat_id] = 0
+
+    send_wheel_card(
+        chat_id,
+        0
+    )
+
+
+# ============================================================
+# КАРТОЧКА
+# ============================================================
+
+def send_card(
+    chat_id,
+    index
+):
+
+    mode = current_mode.get(
+        chat_id,
+        "parts"
+    )
+
+    if mode == "wheels":
+
+        send_wheel_card(
+            chat_id,
+            index
+        )
+
+    elif mode == "donors":
+
+        send_donor_card(
+            chat_id,
+            index
+        )
+
+    else:
+
+        send_part_card(
+            chat_id,
+            index
+        )
+
+
+# ============================================================
+# КАРТОЧКА ЗАПЧАСТИ
+# ============================================================
+
+def send_part_card(
+    chat_id,
+    index
+):
+
+    results = user_results.get(
+        chat_id,
+        []
+    )
+
+    if not results:
+        return
+
+    if index < 0 or index >= len(results):
+        return
+
+    track(
+        chat_id,
+        "views"
+    )
+
     part = results[index]
-    user_id = str(chat_id)
-    user_fav = favorites.get(user_id, [])
 
-    item_id = part.get("Артикул") or str(index)
+    name = (
+        part.get(name_key, "")
+        if name_key
+        else ""
+    )
 
-    name = part.get(name_key, "")
-    article = part.get("Артикул", "")
-    number = part.get("Номер", "")
-    brand = part.get("Марка", "")
-    model = part.get("Модель", "")
-    price = part.get("Цена", "")
-    photos = str(part.get(photo_key, "")).strip()
+    if not name:
+        name = (
+            part.get("Наименование")
+            or part.get("Название")
+            or "Запчасть"
+        )
+
+    article = part.get(
+        "Артикул",
+        ""
+    )
+
+    number = part.get(
+        "Номер",
+        ""
+    )
+
+    brand = part.get(
+        "Марка",
+        ""
+    )
+
+    model = part.get(
+        "Модель",
+        ""
+    )
+
+    price = part.get(
+        "Цена",
+        ""
+    )
+
+    if not price:
+        price = "Уточняйте"
+
+    photo_value = (
+        part.get(photo_key, "")
+        if photo_key
+        else ""
+    )
+
+    if not photo_value:
+        photo_value = part.get(
+            "Фото",
+            ""
+        )
 
     text = (
         f"🔧 {name}\n"
-        f"Артикул: {article}\n"
-        f"Номер: {number}\n"
+        f"Артикул: {article or '-'}\n"
+        f"Номер: {number or '-'}\n"
         f"{brand} {model}\n"
         f"💰 {price} ₽\n\n"
-        f"({index+1}/{len(results)})"
+        f"({index + 1}/{len(results)})"
     )
 
-    send_with_photo(chat_id, text, photos, index)
-
-def send_with_photo(chat_id, text, photos, index):
-
-    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-
-    kb.add(
-        telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{index}"),
-        telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{index}")
+    send_with_photo(
+        chat_id,
+        text,
+        photo_value,
+        index
     )
 
-    kb.add(
-        telebot.types.InlineKeyboardButton("❤️ Сохранить", callback_data=f"fav_{index}"),
-        telebot.types.InlineKeyboardButton("💬 Связаться", url="https://t.me/Stuttgart_mercedes")
+
+# ============================================================
+# КАРТОЧКА ДИСКА
+# ============================================================
+
+def send_wheel_card(
+    chat_id,
+    index
+):
+
+    results = user_results.get(
+        chat_id,
+        []
     )
-    kb.add(
-        telebot.types.InlineKeyboardButton("📸 Показать все фото", callback_data=f"allphoto_{index}")
-    )
 
-    photo_list = [x.strip() for x in str(photos).split(",") if x.strip()]
-
-    if photo_list:
-        photo_url = photo_list[0]
-    
-        try:
-            r = requests.get(photo_url, timeout=5)
-    
-            if r.status_code == 200:
-                sent = bot.send_photo(
-                    chat_id,
-                    r.content,
-                    caption=text,
-                    reply_markup=kb
-                )
-            else:
-                print("Плохой ответ:", r.status_code)
-                sent = bot.send_message(chat_id, text, reply_markup=kb)
-    
-        except Exception as e:
-            print("Ошибка загрузки фото:", e)
-            sent = bot.send_message(chat_id, text, reply_markup=kb)
-    
-    else:
-        sent = bot.send_message(chat_id, text, reply_markup=kb)
-
-def send_wheel_card(chat_id, index):
-    track(chat_id, "views")
-    results = user_results.get(chat_id, [])
-    if not results or index >= len(results):
+    if not results:
         return
+
+    if index < 0 or index >= len(results):
+        return
+
+    track(
+        chat_id,
+        "views"
+    )
 
     part = results[index]
 
-    photos = str(part.get("Фото", ""))
-    photo_list = [x.strip() for x in photos.split(",") if x.strip().startswith("http")]
+    photos = get_photo_list(
+        part.get("Фото", "")
+    )
 
-    main_photo = photo_list[0] if photo_list else None
+    main_photo = (
+        photos[0]
+        if photos
+        else None
+    )
 
-    brand = part.get("Производитель диска", "")
-    model = part.get("Модель диска", "")
-    article = part.get("Артикул", "")
-    price = part.get("Цена", "")
-    photos = str(part.get("Фото", "")).strip()
+    brand = part.get(
+        "Производитель диска",
+        ""
+    )
 
-    radius = part.get("Диаметр диска", "")
-    width = part.get("Ширина диска", "")
-    et = part.get("Вылет диска", "")
-    pcd = part.get("PCD диска", "")
-    dia = part.get("Диаметр осевого отверстия диска", "")
+    model = part.get(
+        "Модель диска",
+        ""
+    )
+
+    article = part.get(
+        "Артикул",
+        ""
+    )
+
+    price = part.get(
+        "Цена",
+        ""
+    )
+
+    radius = part.get(
+        "Диаметр диска",
+        ""
+    )
+
+    width = part.get(
+        "Ширина диска",
+        ""
+    )
+
+    et = part.get(
+        "Вылет диска",
+        ""
+    )
+
+    pcd = part.get(
+        "PCD диска",
+        ""
+    )
+
+    dia = part.get(
+        "Диаметр осевого отверстия диска",
+        ""
+    )
 
     text = (
         f"🛞 {brand} {model}\n\n"
-        f"Артикул: {article}\n"
-        f"💰 {price} ₽\n\n"
-        f"📏 R{radius or '-'} | {width or '-'}J | ET{et or '-'}\n"
+        f"Артикул: {article or '-'}\n"
+        f"💰 {price or 'Уточняйте'} ₽\n\n"
+        f"📏 R{radius or '-'} | "
+        f"{width or '-'}J | "
+        f"ET{et or '-'}\n"
         f"🔩 PCD: {pcd or '-'}\n"
         f"🕳 DIA: {dia or '-'}\n\n"
-        f"({index+1}/{len(results)})"
+        f"({index + 1}/{len(results)})"
     )
 
-    # ===== КНОПКИ =====
-    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-
-    kb.add(
-        telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{index}"),
-        telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{index}")
-    )
-
-    kb.add(
-        telebot.types.InlineKeyboardButton("❤️ Сохранить", callback_data=f"fav_{index}"),
-        telebot.types.InlineKeyboardButton("💬 Связаться", url="https://t.me/Stuttgart_mercedes")
+    kb = build_wheel_keyboard(
+        index
     )
 
     if main_photo:
-        sent = bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
-    else:
-        sent = bot.send_message(chat_id, text, reply_markup=kb)
-    
-    # 👇 ВАЖНО
-    user_last_msg[chat_id] = sent.message_id
-def send_donor_card(chat_id, index):
-    track(chat_id, "views")
 
-    results = user_results.get(chat_id, [])
-    if not results or index >= len(results):
-        return
-
-    d = results[index]
-
-    text = (
-        f"🚘 Донор №{d.get('Номер','')}\n\n"
-        f"{d.get('Марка','')} {d.get('Модель','')}\n"
-        f"Кузов: {d.get('Кузов','')}\n"
-        f"Двигатель: {d.get('Двигатель','')}\n"
-        f"Год: {d.get('Год','')}\n"
-        f"Пробег: {d.get('Пробег','')}\n"
-        f"Цвет: {d.get('Цвет','')}\n"
-        f"VIN: {d.get('VIN','')}\n\n"
-        f"({index+1}/{len(results)})"
-    )
-
-    photos = str(d.get("Фото") or "").split(",")
-    photo_list = [x.strip() for x in photos if x.strip().startswith("http")]
-
-    photo = photo_list[0] if photo_list else None
-
-    kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-    kb.add(
-        telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{index}"),
-        telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{index}")
-    )
-    kb.add(
-        telebot.types.InlineKeyboardButton("📸 Все фото", callback_data=f"donor_photos_{index}")
-    )
-
-    if photo:
-        sent = bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
-    else:
-        sent = bot.send_message(chat_id, text, reply_markup=kb)
-
-    user_last_msg[chat_id] = sent.message_id
-    if mode == "wheels":
-        old_msg = user_last_msg.get(chat_id)
-
-    if old_msg:
         try:
-            bot.delete_message(chat_id, old_msg)
-        except:
-            pass
 
-    if not photo_list:
-        sent = bot.send_message(chat_id, text, reply_markup=kb)
-        user_last_msg[chat_id] = sent.message_id
-        return
+            sent = bot.send_photo(
+                chat_id,
+                main_photo,
+                caption=text,
+                reply_markup=kb
+            )
 
-    main_photo = photo_list[0]
+        except Exception as e:
 
-    try:
-        sent = bot.send_photo(
-            chat_id,
-            main_photo,
-            caption=text,
-            reply_markup=kb
-        )
-    except:
+            print(
+                "Ошибка отправки фото диска:",
+                e
+            )
+
+            sent = bot.send_message(
+                chat_id,
+                text,
+                reply_markup=kb
+            )
+
+    else:
+
         sent = bot.send_message(
             chat_id,
             text,
             reply_markup=kb
         )
 
-    user_last_msg[chat_id] = sent.message_id
-        # ===== 🚗 ЗАПЧАСТИ =====
-    if mode == "wheels":
-    
-        if not photo_list:
-            sent = bot.send_message(chat_id, text, reply_markup=kb)
-            user_last_msg[chat_id] = sent.message_id
-            return
-    
-        main_photo = photo_list[0]
-    
-        sent = bot.send_photo(chat_id, main_photo, caption=text, reply_markup=kb)
-        user_last_msg[chat_id] = sent.message_id
-    
-    
-    elif mode == "parts":
-    
-        sent_ids = []
-    
-        if not photo_list:
-            sent = bot.send_message(chat_id, text, reply_markup=kb)
-            sent_ids.append(sent.message_id)
-            user_last_msg[chat_id] = sent_ids
-            return
-    
-        media = []
-    
-        for i, url in enumerate(photo_list[:10]):
-            if i == 0:
-                media.append(
-                    telebot.types.InputMediaPhoto(url, caption=text)
-                )
-            else:
-                media.append(
-                    telebot.types.InputMediaPhoto(url)
-                )
-    
-        sent_msgs = bot.send_media_group(chat_id, media)
-    
-        for msg in sent_msgs:
-            sent_ids.append(msg.message_id)
-    
-        sent_kb = bot.send_message(chat_id, "⬇️ Действия:", reply_markup=kb)
-        sent_ids.append(sent_kb.message_id)
-    
-        user_last_msg[chat_id] = sent_ids
+    user_last_msg[chat_id] = [
+        sent.message_id
+    ]
 
-@bot.message_handler(commands=["notfound"])
-def not_found_cmd(msg):
-    if msg.chat.id != ADMIN_ID:
+
+# ============================================================
+# КАРТОЧКА ДОНОРА
+# ============================================================
+
+def send_donor_card(
+    chat_id,
+    index
+):
+
+    results = user_results.get(
+        chat_id,
+        []
+    )
+
+    if not results:
         return
 
-    bot.send_message(msg.chat.id, get_not_found())
+    if index < 0 or index >= len(results):
+        return
 
-    
-# ===== ИЗБРАННОЕ =====
-@bot.message_handler(func=lambda m: m.text and "Избранное" in m.text)
+    track(
+        chat_id,
+        "views"
+    )
+
+    donor = results[index]
+
+    number = donor.get(
+        "Номер",
+        ""
+    )
+
+    brand = donor.get(
+        "Марка",
+        ""
+    )
+
+    model = donor.get(
+        "Модель",
+        ""
+    )
+
+    body = donor.get(
+        "Кузов",
+        ""
+    )
+
+    engine = donor.get(
+        "Двигатель",
+        ""
+    )
+
+    year = donor.get(
+        "Год",
+        ""
+    )
+
+    mileage = donor.get(
+        "Пробег",
+        ""
+    )
+
+    color = donor.get(
+        "Цвет",
+        ""
+    )
+
+    vin = donor.get(
+        "VIN",
+        ""
+    )
+
+    text = (
+        f"🚘 Донор №{number or '-'}\n\n"
+        f"{brand} {model}\n"
+        f"Кузов: {body or '-'}\n"
+        f"Двигатель: {engine or '-'}\n"
+        f"Год: {year or '-'}\n"
+        f"Пробег: {mileage or '-'}\n"
+        f"Цвет: {color or '-'}\n"
+        f"VIN: {vin or '-'}\n\n"
+        f"({index + 1}/{len(results)})"
+    )
+
+    kb = build_donor_keyboard(
+        index
+    )
+
+    photo_list = get_photo_list(
+        donor.get("Фото")
+        or donor.get("photo")
+        or ""
+    )
+
+    if photo_list:
+
+        try:
+
+            sent = bot.send_photo(
+                chat_id,
+                photo_list[0],
+                caption=text,
+                reply_markup=kb
+            )
+
+        except Exception as e:
+
+            print(
+                "Ошибка отправки фото донора:",
+                e
+            )
+
+            sent = bot.send_message(
+                chat_id,
+                text,
+                reply_markup=kb
+            )
+
+    else:
+
+        sent = bot.send_message(
+            chat_id,
+            text,
+            reply_markup=kb
+        )
+
+    user_last_msg[chat_id] = [
+        sent.message_id
+    ]
+
+
+# ============================================================
+# КЛАВИАТУРЫ
+# ============================================================
+
+def build_part_keyboard(
+    index
+):
+
+    kb = types.InlineKeyboardMarkup(
+        row_width=2
+    )
+
+    kb.add(
+        types.InlineKeyboardButton(
+            "⬅️ Назад",
+            callback_data=f"prev_{index}"
+        ),
+        types.InlineKeyboardButton(
+            "➡️ Вперед",
+            callback_data=f"next_{index}"
+        )
+    )
+
+    kb.add(
+        types.InlineKeyboardButton(
+            "❤️ Сохранить",
+            callback_data=f"fav_{index}"
+        ),
+        types.InlineKeyboardButton(
+            "💬 Связаться",
+            url=CONTACT_URL
+        )
+    )
+
+    kb.add(
+        types.InlineKeyboardButton(
+            "📸 Показать все фото",
+            callback_data=f"allphoto_{index}"
+        )
+    )
+
+    return kb
+
+
+def build_wheel_keyboard(
+    index
+):
+
+    kb = types.InlineKeyboardMarkup(
+        row_width=2
+    )
+
+    kb.add(
+        types.InlineKeyboardButton(
+            "⬅️ Назад",
+            callback_data=f"prev_{index}"
+        ),
+        types.InlineKeyboardButton(
+            "➡️ Вперед",
+            callback_data=f"next_{index}"
+        )
+    )
+
+    kb.add(
+        types.InlineKeyboardButton(
+            "❤️ Сохранить",
+            callback_data=f"fav_{index}"
+        ),
+        types.InlineKeyboardButton(
+            "💬 Связаться",
+            url=CONTACT_URL
+        )
+    )
+
+    kb.add(
+        types.InlineKeyboardButton(
+            "📸 Показать все фото",
+            callback_data=f"allphoto_{index}"
+        )
+    )
+
+    return kb
+
+
+def build_donor_keyboard(
+    index
+):
+
+    kb = types.InlineKeyboardMarkup(
+        row_width=2
+    )
+
+    kb.add(
+        types.InlineKeyboardButton(
+            "⬅️ Назад",
+            callback_data=f"prev_{index}"
+        ),
+        types.InlineKeyboardButton(
+            "➡️ Вперед",
+            callback_data=f"next_{index}"
+        )
+    )
+
+    kb.add(
+        types.InlineKeyboardButton(
+            "📸 Все фото",
+            callback_data=f"donor_photos_{index}"
+        )
+    )
+
+    kb.add(
+        types.InlineKeyboardButton(
+            "💬 Связаться",
+            url=CONTACT_URL
+        )
+    )
+
+    return kb
+
+
+# ============================================================
+# ОТПРАВКА КАРТОЧКИ ЗАПЧАСТИ
+# ============================================================
+
+def send_with_photo(
+    chat_id,
+    text,
+    photos,
+    index
+):
+
+    kb = build_part_keyboard(
+        index
+    )
+
+    photo_list = get_photo_list(
+        photos
+    )
+
+    if not photo_list:
+
+        sent = bot.send_message(
+            chat_id,
+            text,
+            reply_markup=kb
+        )
+
+        user_last_msg[chat_id] = [
+            sent.message_id
+        ]
+
+        return
+
+    main_photo = photo_list[0]
+
+    try:
+
+        response = requests.get(
+            main_photo,
+            timeout=PHOTO_TIMEOUT
+        )
+
+        if response.status_code == 200:
+
+            sent = bot.send_photo(
+                chat_id,
+                response.content,
+                caption=text,
+                reply_markup=kb
+            )
+
+        else:
+
+            print(
+                "Плохой ответ фото:",
+                response.status_code
+            )
+
+            sent = bot.send_message(
+                chat_id,
+                text,
+                reply_markup=kb
+            )
+
+    except Exception as e:
+
+        print(
+            "Ошибка загрузки фото:",
+            e
+        )
+
+        sent = bot.send_message(
+            chat_id,
+            text,
+            reply_markup=kb
+        )
+
+    user_last_msg[chat_id] = [
+        sent.message_id
+    ]
+
+
+# ============================================================
+# ИЗБРАННОЕ
+# ============================================================
+
+@bot.message_handler(
+    func=lambda m:
+        m.text == "❤️ Избранное"
+)
 def show_favorites(message):
 
     chat_id = message.chat.id
     user_id = str(chat_id)
 
-    fav_ids = favorites.get(user_id, [])
+    fav_ids = favorites.get(
+        user_id,
+        []
+    )
 
     if not fav_ids:
-        bot.send_message(chat_id, "❌ Избранное пусто")
+
+        bot.send_message(
+            chat_id,
+            "❌ Избранное пусто"
+        )
+
         return
 
-    results = user_results.get(chat_id, [])
+    found = 0
 
-    for part in results:
-        item_id = part.get("Артикул") or str(part)
+    for item_id in fav_ids:
 
-        if item_id not in fav_ids:
+        part = find_part_by_id(
+            item_id
+        )
+
+        if not part:
             continue
 
-        name = part.get(name_key) or part.get("Наименование") or "Без названия"
-        article = part.get("Артикул", "Нет артикула")
-        number = part.get("Номер", "Нет номера")
-        price = part.get("Цена", "0")
-        photo = part.get(photo_key) or part.get("Фото")
+        found += 1
 
-        if photo:
-            photo = photo.split(",")[0].strip()
+        name = (
+            part.get(name_key)
+            if name_key
+            else ""
+        )
+
+        if not name:
+            name = (
+                part.get("Наименование")
+                or part.get("Название")
+                or "Без названия"
+            )
+
+        article = part.get(
+            "Артикул",
+            "Нет артикула"
+        )
+
+        number = part.get(
+            "Номер",
+            "Нет номера"
+        )
+
+        price = part.get(
+            "Цена",
+            "0"
+        )
+
+        photo = (
+            part.get(photo_key, "")
+            if photo_key
+            else ""
+        )
+
+        if not photo:
+            photo = part.get(
+                "Фото",
+                ""
+            )
+
+        photo_url = clean_url(
+            photo
+        )
 
         text = (
             f"❤️ {name}\n"
@@ -680,467 +1945,1415 @@ def show_favorites(message):
             f"💰 Цена: {price} ₽"
         )
 
-        kb = telebot.types.InlineKeyboardMarkup()
+        kb = types.InlineKeyboardMarkup()
+
         kb.add(
-            telebot.types.InlineKeyboardButton(
+            types.InlineKeyboardButton(
                 "💔 Убрать",
-                callback_data=f"removefav_{item_id}"
+                callback_data=(
+                    f"removefav_{item_id}"
+                )
             )
         )
 
-        if photo:
-            bot.send_photo(chat_id, photo, caption=text, reply_markup=kb)
+        if photo_url:
+
+            try:
+
+                bot.send_photo(
+                    chat_id,
+                    photo_url,
+                    caption=text,
+                    reply_markup=kb
+                )
+
+            except Exception as e:
+
+                print(
+                    "Ошибка фото избранного:",
+                    e
+                )
+
+                bot.send_message(
+                    chat_id,
+                    text,
+                    reply_markup=kb
+                )
+
         else:
-            bot.send_message(chat_id, text, reply_markup=kb)
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("allphoto_"))
-def show_all_photos(call):
+            bot.send_message(
+                chat_id,
+                text,
+                reply_markup=kb
+            )
+
+    if found == 0:
+
+        bot.send_message(
+            chat_id,
+            "❌ Сохранённые товары "
+            "больше не найдены в базе."
+        )
+
+
+# ============================================================
+# УДАЛЕНИЕ ИЗ ИЗБРАННОГО
+# ============================================================
+
+@bot.callback_query_handler(
+    func=lambda call:
+        call.data.startswith(
+            "removefav_"
+        )
+)
+def remove_favorite(call):
+
+    user_id = str(
+        call.from_user.id
+    )
+
+    item_id = call.data[
+        len("removefav_"):
+    ]
+
+    if (
+        user_id in favorites
+        and item_id in favorites[user_id]
+    ):
+
+        favorites[user_id].remove(
+            item_id
+        )
+
+        save_favorites(
+            favorites
+        )
+
+    try:
+
+        bot.answer_callback_query(
+            call.id,
+            "❌ Удалено"
+        )
+
+    except Exception:
+        pass
+
+    delete_message_safe(
+        call.message.chat.id,
+        call.message.message_id
+    )
+
+
+# ============================================================
+# ДОБАВЛЕНИЕ В ИЗБРАННОЕ
+# ============================================================
+
+def add_to_favorites(
+    call,
+    index
+):
+
     chat_id = call.message.chat.id
-    index = int(call.data.split("_")[1])
+    user_id = str(chat_id)
 
-    results = user_results.get(chat_id, [])
-    if not results or index >= len(results):
+    results = user_results.get(
+        chat_id,
+        []
+    )
+
+    if not results:
+        bot.answer_callback_query(
+            call.id,
+            "Нет данных"
+        )
+        return
+
+    if index < 0 or index >= len(results):
+
+        bot.answer_callback_query(
+            call.id,
+            "Товар не найден"
+        )
+
+        return
+
+    item = results[index]
+
+    item_id = (
+        item.get("Артикул")
+        or item.get("Номер")
+        or str(index)
+    )
+
+    item_id = str(
+        item_id
+    )
+
+    if user_id not in favorites:
+
+        favorites[user_id] = []
+
+    if item_id in favorites[user_id]:
+
+        bot.answer_callback_query(
+            call.id,
+            "Уже в избранном"
+        )
+
+        return
+
+    favorites[user_id].append(
+        item_id
+    )
+
+    save_favorites(
+        favorites
+    )
+
+    track(
+        chat_id,
+        "favorites"
+    )
+
+    bot.answer_callback_query(
+        call.id,
+        "❤️ Добавлено"
+    )
+
+
+# ============================================================
+# ВСЕ ФОТО ТОВАРА
+# ============================================================
+
+@bot.callback_query_handler(
+    func=lambda call:
+        call.data.startswith(
+            "allphoto_"
+        )
+)
+def show_all_photos(call):
+
+    chat_id = call.message.chat.id
+
+    try:
+
+        index = int(
+            call.data.split("_")[1]
+        )
+
+    except Exception:
+
+        bot.answer_callback_query(
+            call.id,
+            "Ошибка"
+        )
+
+        return
+
+    results = user_results.get(
+        chat_id,
+        []
+    )
+
+    if not results:
+        bot.answer_callback_query(
+            call.id,
+            "Нет данных"
+        )
+        return
+
+    if index < 0 or index >= len(results):
+
+        bot.answer_callback_query(
+            call.id,
+            "Товар не найден"
+        )
+
         return
 
     part = results[index]
 
-    photos = str(part.get("Фото", ""))
-    photo_list = [x.strip() for x in photos.split(",") if x.strip().startswith("http")]
+    photos = get_photo_list(
+        part.get("Фото", "")
+    )
+
+    if not photos:
+
+        photo_value = (
+            part.get(photo_key, "")
+            if photo_key
+            else ""
+        )
+
+        photos = get_photo_list(
+            photo_value
+        )
+
+    if not photos:
+
+        bot.answer_callback_query(
+            call.id,
+            "❌ Фото не найдены"
+        )
+
+        return
+
+    # Удаляем старый альбом, если был
+    delete_album_messages(
+        chat_id
+    )
 
     media = []
 
-    for url in photo_list[:10]:
+    for url in photos[:MAX_ALBUM_PHOTOS]:
+
         try:
-            r = requests.get(url, timeout=5)
-            if r.status_code == 200:
-                media.append(telebot.types.InputMediaPhoto(r.content))
-        except:
-            pass
 
-    if media:
-        sent_msgs = bot.send_media_group(chat_id, media)
+            response = requests.get(
+                url,
+                timeout=PHOTO_TIMEOUT
+            )
 
-        # 🔥 СОХРАНЯЕМ ID сообщений
-        user_album_msgs[chat_id] = [m.message_id for m in sent_msgs]
+            if response.status_code != 200:
+                continue
 
-        # кнопка назад
-        kb = telebot.types.InlineKeyboardMarkup()
-        kb.add(
-            telebot.types.InlineKeyboardButton("⬅️ Назад к товару", callback_data=f"back_{index}")
+            media.append(
+                types.InputMediaPhoto(
+                    response.content
+                )
+            )
+
+        except Exception as e:
+
+            print(
+                "Ошибка загрузки фото:",
+                e
+            )
+
+    if not media:
+
+        bot.answer_callback_query(
+            call.id,
+            "❌ Не удалось загрузить фото"
         )
 
-        bot.send_message(chat_id, "⬅️ Вернуться к товару", reply_markup=kb)
+        return
 
-    else:
-        bot.send_message(chat_id, "❌ Фото не найдены")
-
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("back_"))
-def back_to_card(call):
-
-   
     try:
-        bot.answer_callback_query(call.id)
-    except:
-        pass
+
+        sent_messages = bot.send_media_group(
+            chat_id,
+            media
+        )
+
+        user_album_msgs[chat_id] = [
+            msg.message_id
+            for msg in sent_messages
+        ]
+
+    except Exception as e:
+
+        print(
+            "Ошибка отправки альбома:",
+            e
+        )
+
+        bot.answer_callback_query(
+            call.id,
+            "Ошибка отправки фото"
+        )
+
+        return
+
+    kb = types.InlineKeyboardMarkup()
+
+    kb.add(
+        types.InlineKeyboardButton(
+            "⬅️ Назад к товару",
+            callback_data=f"back_{index}"
+        )
+    )
+
+    back_message = bot.send_message(
+        chat_id,
+        "⬅️ Вернуться к товару",
+        reply_markup=kb
+    )
+
+    user_album_msgs[chat_id].append(
+        back_message.message_id
+    )
+
+    bot.answer_callback_query(
+        call.id
+    )
+
+
+# ============================================================
+# ФОТО ДОНОРА
+# ============================================================
+
+@bot.callback_query_handler(
+    func=lambda call:
+        call.data.startswith(
+            "donor_photos_"
+        )
+)
+def show_donor_photos(call):
 
     chat_id = call.message.chat.id
-    index = int(call.data.split("_")[1])
 
-    # 🔥 УДАЛЯЕМ ВСЕ ФОТО
-    for msg_id in user_album_msgs.get(chat_id, []):
-        try:
-            bot.delete_message(chat_id, msg_id)
-        except:
-            pass
-
-    # очищаем
-    user_album_msgs[chat_id] = []
-
-    # удаляем кнопку "назад"
     try:
-        bot.delete_message(chat_id, call.message.message_id)
-    except:
-        pass
 
-    # возвращаем карточку
-    send_card(chat_id, index)
+        index = int(
+            call.data.split("_")[-1]
+        )
 
-@bot.callback_query_handler(func=lambda call: call.data.startswith("removefav_"))
-def remove_favorite(call):
-        user_id = str(call.from_user.id)
+    except Exception:
 
-        _, item_id = call.data.split("_")
+        bot.answer_callback_query(
+            call.id,
+            "Ошибка"
+        )
 
-        if user_id in favorites and item_id in favorites[user_id]:
-            favorites[user_id].remove(item_id)
-            save_favorites(favorites)
+        return
 
-        bot.answer_callback_query(call.id, "❌ Удалено")
-        bot.delete_message(call.message.chat.id, call.message.message_id)
-
-
-
-@bot.callback_query_handler(func=lambda call: True)
-def callback(call):
-
-    data = call.data
-    chat_id = call.message.chat.id
-    results = user_results.get(chat_id, [])
+    results = user_results.get(
+        chat_id,
+        []
+    )
 
     if not results:
-        bot.answer_callback_query(call.id, "Нет данных")
-        return
 
-    # =======================
-    # ❤️ ИЗБРАННОЕ
-    # =======================
-    if data.startswith("fav_"):
-        i = int(data.split("_")[1])
-        track(chat_id, "searches")
-
-        if i >= len(results):
-            return
-
-        item = results[i]
-        user_id = str(chat_id)
-
-        item_id = item.get("Артикул") or str(i)
-
-        if user_id not in favorites:
-            favorites[user_id] = []
-
-        if item_id in favorites[user_id]:
-            bot.answer_callback_query(call.id, "Уже в избранном")
-        else:
-            favorites[user_id].append(item_id)
-            save_favorites(favorites)
-            bot.answer_callback_query(call.id, "❤️ Добавлено")
+        bot.answer_callback_query(
+            call.id,
+            "Нет данных"
+        )
 
         return
 
-    if data.startswith("donor_photos_"):
+    if index < 0 or index >= len(results):
 
-        idx = int(data.split("_")[-1])
-        part = results[idx]
-    
-        photos = str(part.get("Фото") or part.get("photo") or "")
-    
-        photo_list = [
-            x.strip() for x in photos.split(",") if x.strip().startswith("http")
-        ]
-    
-        if not photo_list:
-            bot.answer_callback_query(call.id, "❌ Нет фото")
-            return
-    
-        media = []
-    
-        for i, url in enumerate(photo_list[:10]):
-            if i == 0:
-                media.append(
-                    telebot.types.InputMediaPhoto(url, caption="📸 Фото донора")
-                )
-            else:
-                media.append(
-                    telebot.types.InputMediaPhoto(url)
-                )
-    
-        bot.send_media_group(chat_id, media)
+        bot.answer_callback_query(
+            call.id,
+            "Донор не найден"
+        )
+
         return
 
-    if data.startswith("photo_"):
+    donor = results[index]
 
-        current = user_index.get(chat_id, 0)
-        part = results[current]
-    
-        photos = str(part.get("Фото") or part.get("photo") or "")
-        photo_list = [x.strip() for x in photos.split(",") if x.strip()]
-    
-        if not photo_list:
-            return
-    
-        photo_index = user_photo_index.get(chat_id, 0)
-    
-        if "next" in data:
-            photo_index += 1
-        else:
-            photo_index -= 1
-    
-        if photo_index < 0:
-            photo_index = len(photo_list) - 1
-        if photo_index >= len(photo_list):
-            photo_index = 0
-    
-        user_photo_index[chat_id] = photo_index
-    
-        new_photo = photo_list[photo_index]
-    
+    photos = get_photo_list(
+        donor.get("Фото")
+        or donor.get("photo")
+        or ""
+    )
+
+    if not photos:
+
+        bot.answer_callback_query(
+            call.id,
+            "❌ Нет фото"
+        )
+
+        return
+
+    delete_album_messages(
+        chat_id
+    )
+
+    media = []
+
+    for i, url in enumerate(
+        photos[:MAX_ALBUM_PHOTOS]
+    ):
+
         try:
-            media = telebot.types.InputMediaPhoto(
-                new_photo,
-                caption=call.message.caption
+
+            response = requests.get(
+                url,
+                timeout=PHOTO_TIMEOUT
             )
-    
+
+            if response.status_code != 200:
+                continue
+
+            if i == 0:
+
+                media.append(
+                    types.InputMediaPhoto(
+                        response.content,
+                        caption="📸 Фото донора"
+                    )
+                )
+
+            else:
+
+                media.append(
+                    types.InputMediaPhoto(
+                        response.content
+                    )
+                )
+
+        except Exception as e:
+
+            print(
+                "Ошибка загрузки фото донора:",
+                e
+            )
+
+    if not media:
+
+        bot.answer_callback_query(
+            call.id,
+            "❌ Не удалось загрузить фото"
+        )
+
+        return
+
+    try:
+
+        sent_messages = bot.send_media_group(
+            chat_id,
+            media
+        )
+
+        user_album_msgs[chat_id] = [
+            msg.message_id
+            for msg in sent_messages
+        ]
+
+    except Exception as e:
+
+        print(
+            "Ошибка альбома донора:",
+            e
+        )
+
+        bot.answer_callback_query(
+            call.id,
+            "Ошибка отправки"
+        )
+
+        return
+
+    kb = types.InlineKeyboardMarkup()
+
+    kb.add(
+        types.InlineKeyboardButton(
+            "⬅️ Назад к донору",
+            callback_data=f"back_{index}"
+        )
+    )
+
+    back_message = bot.send_message(
+        chat_id,
+        "⬅️ Вернуться к донору",
+        reply_markup=kb
+    )
+
+    user_album_msgs[chat_id].append(
+        back_message.message_id
+    )
+
+    bot.answer_callback_query(
+        call.id
+    )
+
+
+# ============================================================
+# НАЗАД К КАРТОЧКЕ ПОСЛЕ ФОТО
+# ============================================================
+
+@bot.callback_query_handler(
+    func=lambda call:
+        call.data.startswith(
+            "back_"
+        )
+)
+def back_to_card(call):
+
+    chat_id = call.message.chat.id
+
+    try:
+
+        index = int(
+            call.data.split("_")[1]
+        )
+
+    except Exception:
+
+        bot.answer_callback_query(
+            call.id,
+            "Ошибка"
+        )
+
+        return
+
+    # Удаляем альбом
+    delete_album_messages(
+        chat_id
+    )
+
+    # Удаляем кнопку "Назад"
+    delete_message_safe(
+        chat_id,
+        call.message.message_id
+    )
+
+    # Возвращаем карточку
+    send_card(
+        chat_id,
+        index
+    )
+
+    bot.answer_callback_query(
+        call.id
+    )
+
+
+# ============================================================
+# НАВИГАЦИЯ
+# ============================================================
+
+def navigate_results(
+    call,
+    direction
+):
+
+    chat_id = call.message.chat.id
+
+    results = user_results.get(
+        chat_id,
+        []
+    )
+
+    if not results:
+
+        bot.answer_callback_query(
+            call.id,
+            "Нет данных"
+        )
+
+        return
+
+    current = user_index.get(
+        chat_id,
+        0
+    )
+
+    if direction == "next":
+
+        current += 1
+
+    else:
+
+        current -= 1
+
+    if current < 0:
+
+        current = len(results) - 1
+
+    if current >= len(results):
+
+        current = 0
+
+    user_index[chat_id] = current
+    user_photo_index[chat_id] = 0
+
+    mode = current_mode.get(
+        chat_id,
+        "parts"
+    )
+
+    # ========================================================
+    # ДИСКИ
+    # ========================================================
+
+    if mode == "wheels":
+
+        edit_wheel_card(
+            call,
+            current
+        )
+
+        return
+
+    # ========================================================
+    # ДОНОРЫ
+    # ========================================================
+
+    if mode == "donors":
+
+        edit_donor_card(
+            call,
+            current
+        )
+
+        return
+
+    # ========================================================
+    # ЗАПЧАСТИ
+    # ========================================================
+
+    # Для запчастей удаляем старую карточку
+    delete_last_messages(
+        chat_id
+    )
+
+    send_part_card(
+        chat_id,
+        current
+    )
+
+    try:
+        bot.answer_callback_query(
+            call.id
+        )
+    except Exception:
+        pass
+
+
+# ============================================================
+# РЕДАКТИРОВАНИЕ КАРТОЧКИ ДИСКА
+# ============================================================
+
+def edit_wheel_card(
+    call,
+    index
+):
+
+    chat_id = call.message.chat.id
+
+    results = user_results.get(
+        chat_id,
+        []
+    )
+
+    if not results:
+        return
+
+    part = results[index]
+
+    photos = get_photo_list(
+        part.get("Фото", "")
+    )
+
+    main_photo = (
+        photos[0]
+        if photos
+        else None
+    )
+
+    brand = part.get(
+        "Производитель диска",
+        ""
+    )
+
+    model = part.get(
+        "Модель диска",
+        ""
+    )
+
+    article = part.get(
+        "Артикул",
+        ""
+    )
+
+    price = part.get(
+        "Цена",
+        ""
+    )
+
+    radius = part.get(
+        "Диаметр диска",
+        ""
+    )
+
+    width = part.get(
+        "Ширина диска",
+        ""
+    )
+
+    et = part.get(
+        "Вылет диска",
+        ""
+    )
+
+    pcd = part.get(
+        "PCD диска",
+        ""
+    )
+
+    dia = part.get(
+        "Диаметр осевого отверстия диска",
+        ""
+    )
+
+    text = (
+        f"🛞 {brand} {model}\n\n"
+        f"Артикул: {article or '-'}\n"
+        f"💰 {price or 'Уточняйте'} ₽\n\n"
+        f"📏 R{radius or '-'} | "
+        f"{width or '-'}J | "
+        f"ET{et or '-'}\n"
+        f"🔩 PCD: {pcd or '-'}\n"
+        f"🕳 DIA: {dia or '-'}\n\n"
+        f"({index + 1}/{len(results)})"
+    )
+
+    kb = build_wheel_keyboard(
+        index
+    )
+
+    try:
+
+        if main_photo:
+
+            media = types.InputMediaPhoto(
+                main_photo,
+                caption=text
+            )
+
             bot.edit_message_media(
                 media=media,
                 chat_id=chat_id,
                 message_id=call.message.message_id,
-                reply_markup=call.message.reply_markup
+                reply_markup=kb
             )
-    
-        except Exception as e:
-            print("Ошибка фото:", e)
-    
-        return
-    # =======================
-    # ⬅️ ➡️ ПЕРЕКЛЮЧЕНИЕ
-    # =======================
-    if data.startswith("next_") or data.startswith("prev_"):
-    
-        current = user_index.get(chat_id, 0)
-    
-        if "next" in data:
-            current += 1
+
         else:
-            current -= 1
-    
-        if current < 0:
-            current = len(results) - 1
-        if current >= len(results):
-            current = 0
-    
-        user_index[chat_id] = current
-        user_photo_index[chat_id] = 0
-        mode = current_mode.get(chat_id, "parts")
-    
-        # ===== 🛞 WHEELS (через edit) =====
-        if mode == "wheels":
-            part = results[current]
-    
-            photos = str(part.get("Фото", ""))
-            photo_list = [x.strip() for x in photos.split(",") if x.strip()]
-            main_photo = photo_list[0] if photo_list else None
-    
-            text = (
-                f"🛞 {part.get('Производитель диска','')} {part.get('Модель диска','')}\n\n"
-                f"Артикул: {part.get('Артикул','')}\n"
-                f"💰 {part.get('Цена','')} ₽\n\n"
-                f"📏 R{part.get('Диаметр диска','-')} | {part.get('Ширина диска','-')}J | ET{part.get('Вылет диска','-')}\n"
-                f"🔩 PCD: {part.get('PCD диска','-')}\n"
-                f"🕳 DIA: {part.get('Диаметр осевого отверстия диска','-')}\n\n"
-                f"({current+1}/{len(results)})"
+
+            bot.edit_message_caption(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                caption=text,
+                reply_markup=kb
             )
-    
-            kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-            kb.add(
-                telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{current}"),
-                telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{current}")
+
+        user_last_msg[chat_id] = [
+            call.message.message_id
+        ]
+
+        bot.answer_callback_query(
+            call.id
+        )
+
+    except Exception as e:
+
+        print(
+            "Ошибка редактирования диска:",
+            e
+        )
+
+        # Если Telegram не может заменить media,
+        # удаляем старую карточку и отправляем новую.
+        delete_message_safe(
+            chat_id,
+            call.message.message_id
+        )
+
+        send_wheel_card(
+            chat_id,
+            index
+        )
+
+        try:
+            bot.answer_callback_query(
+                call.id
             )
-            kb.add(
-                telebot.types.InlineKeyboardButton("❤️ Сохранить", callback_data=f"fav_{current}"),
-                telebot.types.InlineKeyboardButton("💬 Связаться", url="https://t.me/Stuttgart_mercedes")
-            )
-    
-            try:
-                if main_photo:
-                    media = telebot.types.InputMediaPhoto(main_photo, caption=text)
-                    bot.edit_message_media(
-                        media=media,
-                        chat_id=chat_id,
-                        message_id=call.message.message_id,
-                        reply_markup=kb
-                    )
-                else:
-                    bot.edit_message_caption(
-                        caption=text,
-                        chat_id=chat_id,
-                        message_id=call.message.message_id,
-                        reply_markup=kb
-                    )
-            except Exception as e:
-                print("Ошибка редактирования:", e)
-    
-            return
+        except Exception:
+            pass
 
-        elif mode == "donors":
 
-            part = results[current]
-        
-            photo = str(part.get("Фото", "")).split(",")[0].strip()
-        
-            text = (
-                f"🚘 Донор №{part.get('Номер','')}\n\n"
-                f"{part.get('Марка','')} {part.get('Модель','')}\n"
-                f"Кузов: {part.get('Кузов','')}\n"
-                f"Двигатель: {part.get('Двигатель','')}\n"
-                f"Год: {part.get('Год','')}\n"
-                f"Пробег: {part.get('Пробег','')}\n"
-                f"Цвет: {part.get('Цвет','')}\n"
-                f"VIN: {part.get('VIN','')}\n\n"
-                f"({current+1}/{len(results)})"
-            )
-        
-            kb = telebot.types.InlineKeyboardMarkup(row_width=2)
-            kb.add(
-                telebot.types.InlineKeyboardButton("⬅️ Назад", callback_data=f"prev_{current}"),
-                telebot.types.InlineKeyboardButton("➡️ Вперед", callback_data=f"next_{current}")
-            )
-            kb.add(
-                telebot.types.InlineKeyboardButton("📸 Все фото", callback_data=f"donor_photos_{current}")
-            )
-        
-            try:
-                if photo:
-                    media = telebot.types.InputMediaPhoto(photo, caption=text)
-                    bot.edit_message_media(
-                        media=media,
-                        chat_id=chat_id,
-                        message_id=call.message.message_id,
-                        reply_markup=kb
-                    )
-                else:
-                    bot.edit_message_caption(
-                        caption=text,
-                        chat_id=chat_id,
-                        message_id=call.message.message_id,
-                        reply_markup=kb
-                    )
-            except Exception as e:
-                print("Ошибка donors edit:", e)
-        
-            return
+# ============================================================
+# РЕДАКТИРОВАНИЕ КАРТОЧКИ ДОНОРА
+# ============================================================
 
-        # ===== 🚗 PARTS =====
-        else:
-            
-                # 🧹 удаляем ВСЕ старые сообщения
-                old_msgs = user_last_msg.get(chat_id, [])
-            
-                for msg_id in old_msgs:
-                    try:
-                        bot.delete_message(chat_id, msg_id)
-                    except:
-                        pass
-            
-                # 🚀 отправляем новую карточку
-                send_card(chat_id, current)
-                return
-# ===== УНИВЕРСАЛЬНЫЙ ТЕКСТОВЫЙ ХЕНДЛЕР =====
-@bot.message_handler(commands=["admin"])
-def admin_panel(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-
-    total_users = len(stats)
-
-    total_searches = sum(u["searches"] for u in stats.values())
-    total_views = sum(u["views"] for u in stats.values())
-    total_fav = sum(u["favorites"] for u in stats.values())
-
-    text = (
-        f"📊 Статистика бота:\n\n"
-        f"👥 Пользователей: {total_users}\n"
-        f"🔍 Поисков: {total_searches}\n"
-        f"👁 Просмотров: {total_views}\n"
-        f"❤️ Добавлений в избранное: {total_fav}"
-    )
-
-    bot.send_message(message.chat.id, text)
-
-@bot.message_handler(commands=["top"])
-def top_users(message):
-    if message.from_user.id != ADMIN_ID:
-        return
-
-    top = sorted(stats.items(), key=lambda x: x[1]["views"], reverse=True)[:5]
-
-    text = "🏆 Топ пользователей:\n\n"
-
-    for user_id, data in top:
-        text += f"ID: {user_id}\n👁 {data['views']} просмотров\n\n"
-
-    bot.send_message(message.chat.id, text)
-
-@bot.callback_query_handler(func=lambda call: call.data.startswith("card_"))
-def handle_card(call):
-    try:
-        bot.answer_callback_query(call.id)
-    except:
-        pass
+def edit_donor_card(
+    call,
+    index
+):
 
     chat_id = call.message.chat.id
-    index = int(call.data.split("_")[1])
 
-    send_card(chat_id, index)
+    results = user_results.get(
+        chat_id,
+        []
+    )
 
-@bot.message_handler(func=lambda message: True)
-def handle_text(message):
-    chat_id = message.chat.id
-    text = message.text
-    mode = current_mode.get(chat_id)
-    print("MODE:", mode)  # для проверки
+    if not results:
+        return
 
-    # ===== ЛОГИ АДМИНА =====
-    if text == "/logs" and chat_id == ADMIN_ID:
+    donor = results[index]
+
+    text = (
+        f"🚘 Донор №"
+        f"{donor.get('Номер', '-')}\n\n"
+        f"{donor.get('Марка', '')} "
+        f"{donor.get('Модель', '')}\n"
+        f"Кузов: "
+        f"{donor.get('Кузов', '-')}\n"
+        f"Двигатель: "
+        f"{donor.get('Двигатель', '-')}\n"
+        f"Год: "
+        f"{donor.get('Год', '-')}\n"
+        f"Пробег: "
+        f"{donor.get('Пробег', '-')}\n"
+        f"Цвет: "
+        f"{donor.get('Цвет', '-')}\n"
+        f"VIN: "
+        f"{donor.get('VIN', '-')}\n\n"
+        f"({index + 1}/{len(results)})"
+    )
+
+    kb = build_donor_keyboard(
+        index
+    )
+
+    photos = get_photo_list(
+        donor.get("Фото")
+        or donor.get("photo")
+        or ""
+    )
+
+    main_photo = (
+        photos[0]
+        if photos
+        else None
+    )
+
+    try:
+
+        if main_photo:
+
+            media = types.InputMediaPhoto(
+                main_photo,
+                caption=text
+            )
+
+            bot.edit_message_media(
+                media=media,
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                reply_markup=kb
+            )
+
+        else:
+
+            bot.edit_message_caption(
+                chat_id=chat_id,
+                message_id=call.message.message_id,
+                caption=text,
+                reply_markup=kb
+            )
+
+        user_last_msg[chat_id] = [
+            call.message.message_id
+        ]
+
+        bot.answer_callback_query(
+            call.id
+        )
+
+    except Exception as e:
+
+        print(
+            "Ошибка редактирования донора:",
+            e
+        )
+
+        delete_message_safe(
+            chat_id,
+            call.message.message_id
+        )
+
+        send_donor_card(
+            chat_id,
+            index
+        )
+
         try:
-            with open(LOG_FILE, "rb") as f:
-                bot.send_document(chat_id, f)
-        except Exception as e:
-            print("Ошибка логов:", e)
-            bot.send_message(chat_id, "❌ Логов пока нет")
+            bot.answer_callback_query(
+                call.id
+            )
+        except Exception:
+            pass
+
+
+# ============================================================
+# CALLBACK: ИЗБРАННОЕ
+# ============================================================
+
+@bot.callback_query_handler(
+    func=lambda call:
+        call.data.startswith(
+            "fav_"
+        )
+)
+def favorite_callback(call):
+
+    try:
+
+        index = int(
+            call.data.split("_")[1]
+        )
+
+    except Exception:
+
+        bot.answer_callback_query(
+            call.id,
+            "Ошибка"
+        )
+
         return
 
-    # ===== КНОПКИ =====
-    if text == "🚗 Найти запчасть":
-        current_mode[chat_id] = "parts"
-        bot.send_message(chat_id, "🔎 Введите номер детали")
+    add_to_favorites(
+        call,
+        index
+    )
+
+
+# ============================================================
+# CALLBACK: ФОТО
+# ============================================================
+
+@bot.callback_query_handler(
+    func=lambda call:
+        call.data.startswith(
+            "photo_"
+        )
+)
+def photo_navigation(call):
+
+    chat_id = call.message.chat.id
+
+    results = user_results.get(
+        chat_id,
+        []
+    )
+
+    if not results:
+
+        bot.answer_callback_query(
+            call.id,
+            "Нет данных"
+        )
+
         return
 
-    if text == "🛞 Шины и диски":
-        current_mode[chat_id] = "wheels"
-        bot.send_message(chat_id, "🔎 Введите параметры (например R18)")
+    current = user_index.get(
+        chat_id,
+        0
+    )
+
+    if current >= len(results):
+        current = 0
+
+    part = results[current]
+
+    photos = get_photo_list(
+        part.get("Фото")
+        or part.get("photo")
+        or ""
+    )
+
+    if not photos:
+
+        bot.answer_callback_query(
+            call.id,
+            "Нет фото"
+        )
+
         return
 
+    photo_index = user_photo_index.get(
+        chat_id,
+        0
+    )
 
-    print("MODE CHECK:", mode)
-    # ===== ПОИСК =====
-    mode = current_mode.get(chat_id)
+    if "next" in call.data:
 
-    if mode == "parts":
-        print("CALL LOG")  # 👈 добавь
-        log_search(chat_id, text, "parts")  # 👈 добавь
-        results = find_part(text, parts_db)
+        photo_index += 1
 
-        if not results:
-            bot.send_message(chat_id, "❌ Ничего не найдено")
-            return
+    else:
 
-        user_results[chat_id] = results
-        user_index[chat_id] = 0
-        user_photo_index[chat_id] = 0
+        photo_index -= 1
 
-        send_part_card(chat_id, 0)
+    if photo_index < 0:
+
+        photo_index = len(photos) - 1
+
+    if photo_index >= len(photos):
+
+        photo_index = 0
+
+    user_photo_index[chat_id] = (
+        photo_index
+    )
+
+    new_photo = photos[
+        photo_index
+    ]
+
+    try:
+
+        caption = (
+            call.message.caption
+            or ""
+        )
+
+        media = types.InputMediaPhoto(
+            new_photo,
+            caption=caption
+        )
+
+        bot.edit_message_media(
+            media=media,
+            chat_id=chat_id,
+            message_id=call.message.message_id,
+            reply_markup=call.message.reply_markup
+        )
+
+        bot.answer_callback_query(
+            call.id
+        )
+
+    except Exception as e:
+
+        print(
+            "Ошибка переключения фото:",
+            e
+        )
+
+        bot.answer_callback_query(
+            call.id,
+            "Ошибка фото"
+        )
+
+
+# ============================================================
+# CALLBACK: НАЗАД / ВПЕРЕД
+# ============================================================
+
+@bot.callback_query_handler(
+    func=lambda call:
+        call.data.startswith(
+            "next_"
+        )
+        or call.data.startswith(
+            "prev_"
+        )
+)
+def navigation_callback(call):
+
+    if call.data.startswith(
+        "next_"
+    ):
+
+        navigate_results(
+            call,
+            "next"
+        )
+
+    else:
+
+        navigate_results(
+            call,
+            "prev"
+        )
+
+
+# ============================================================
+# АДМИН: NOT FOUND
+# ============================================================
+
+@bot.message_handler(
+    commands=["notfound"]
+)
+def not_found_cmd(message):
+
+    if message.from_user.id != ADMIN_ID:
         return
 
-    elif mode == "wheels":
-        log_search(chat_id, text, "wheels")
-        results = find_wheels(text, wheels_db)
+    text = get_not_found()
 
-        if not results:
-            bot.send_message(chat_id, "❌ Ничего не найдено")
-            return
+    # Telegram ограничивает сообщение примерно 4096 символами.
+    # Поэтому делим длинный отчёт.
+    chunks = []
 
-        user_results[chat_id] = results
-        user_index[chat_id] = 0
+    while len(text) > 4000:
 
-        send_wheel_card(chat_id, 0)
+        position = text.rfind(
+            "\n",
+            0,
+            4000
+        )
+
+        if position == -1:
+            position = 4000
+
+        chunks.append(
+            text[:position]
+        )
+
+        text = text[position:]
+
+    if text:
+        chunks.append(text)
+
+    for chunk in chunks:
+
+        bot.send_message(
+            message.chat.id,
+            chunk
+        )
+
+
+# ============================================================
+# АДМИН: ЛОГИ
+# ============================================================
+
+@bot.message_handler(
+    commands=["logs"]
+)
+def logs_cmd(message):
+
+    if message.from_user.id != ADMIN_ID:
         return
 
-    bot.send_message(chat_id, "Выберите действие из меню", reply_markup=main_menu())
+    try:
 
-# ===== ЗАПУСК =====
-if __name__ == "__main__":
-    print("START BOT")
+        with open(
+            LOG_FILE,
+            "rb"
+        ) as f:
+
+            bot.send_document(
+                message.chat.id,
+                f
+            )
+
+    except FileNotFoundError:
+
+        bot.send_message(
+            message.chat.id,
+            "❌ Логов пока нет"
+        )
+
+    except Exception as e:
+
+        print(
+            "Ошибка отправки логов:",
+            e
+        )
+
+        bot.send_message(
+            message.chat.id,
+            "❌ Не удалось отправить логи"
+        )
+
+
+# ============================================================
+# АДМИН: СТАТИСТИКА
+# ============================================================
+
+@bot.message_handler(
+    commands=["admin"]
+)
+def admin_panel(message):
+
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    total_users = len(
+        stats
+    )
+
+    total_searches = sum(
+        safe_int(
+            user.get("searches", 0)
+        )
+        for user in stats.values()
+    )
+
+    total_views = sum(
+        safe_int(
+            user.get("views", 0)
+        )
+        for user in stats.values()
+    )
+
+    total_favorites = sum(
+        safe_int(
+            user.get("favorites", 0)
+        )
+        for user in stats.values()
+    )
+
+    text = (
+        "📊 Статистика бота:\n\n"
+        f"👥 Пользователей: "
+        f"{total_users}\n"
+        f"🔍 Поисков: "
+        f"{total_searches}\n"
+        f"👁 Просмотров: "
+        f"{total_views}\n"
+        f"❤️ Добавлений в избранное: "
+        f"{total_favorites}"
+    )
+
+    bot.send_message(
+        message.chat.id,
+        text
+    )
+
+
+# ============================================================
+# АДМИН: ТОП
+# ============================================================
+
+@bot.message_handler(
+    commands=["top"]
+)
+def top_users(message):
+
+    if message.from_user.id != ADMIN_ID:
+        return
+
+    top = sorted(
+        stats.items(),
+        key=lambda item:
+            safe_int(
+                item[1].get(
+                    "views",
+                    0
+                )
+            ),
+        reverse=True
+    )[:5]
+
+    if not top:
+
+        bot.send_message(
+            message.chat.id,
+            "Пока статистики нет."
+        )
+
+        return
+
+    text = (
+        "🏆 Топ пользователей:\n\n"
+    )
+
+    for position, (
+        user_id,
+        data
+    ) in enumerate(
+        top,
+        start=1
+    ):
+
+        text += (
+            f"{position}. "
+            f"ID: {user_id}\n"
+            f"👁 "
+            f"{safe_int(data.get('views', 0))} "
+            f"просмотров\n"
+            f"🔍 "
+            f"{safe_int(data.get('searches', 0))} "
+            f"поисков\n"
+            f"❤️ "
+            f"{safe_int(data.get('favorites', 0))} "
+            f"избранных\n\n"
+        )
+
+    bot.send_message(
+        message.chat.id,
+        text
+    )
+
+
+# ============================================================
+# ОБРАБОТКА НЕПОНЯТНЫХ СООБЩЕНИЙ
+# ============================================================
+
+@bot.message_handler(
+    func=lambda message: True
+)
+def fallback_handler(message):
+
+    text = message.text or ""
+
+    # Не мешаем командам
+    if text.startswith("/"):
+        return
+
+    # Не мешаем основным кнопкам
+    if text in (
+        "🚗 Найти запчасть",
+        "🛞 Шины и диски",
+        "❤️ Избранное",
+        "🚘 В разборе"
+    ):
+        return
+
+    bot.send_message(
+        message.chat.id,
+        "Выберите действие из меню:",
+        reply_markup=main_menu()
+    )
+
+
+# ============================================================
+# ОБРАБОТЧИК ОШИБОК POLLING
+# ============================================================
+
+def run_bot():
+
+    print("================================")
+    print("ЗАПУСК TELEGRAM-БОТА")
+    print("================================")
+
+    # Загружаем базы
     load_database()
-    bot.infinity_polling()
+
+    print(
+        "Бот запущен. Ожидание сообщений..."
+    )
+
+    while True:
+
+        try:
+
+            bot.infinity_polling(
+                skip_pending=True,
+                timeout=30,
+                long_polling_timeout=30
+            )
+
+        except Exception as e:
+
+            print(
+                "❌ Ошибка polling:",
+                e
+            )
+
+            print(
+                "Перезапуск через 5 секунд..."
+            )
+
+            import time
+
+            time.sleep(5)
+
+
+# ============================================================
+# START
+# ============================================================
+
+if __name__ == "__main__":
+
+    run_bot()

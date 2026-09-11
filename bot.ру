@@ -2596,51 +2596,41 @@ def show_all_photos(
 # PREVIEW WHEELS
 # ============================================================
 
-def send_wheels_preview(
-    chat_id,
-    results
-):
+def send_wheels_preview(chat_id, results):
+    """
+    Сначала показываем до 10 фото найденных дисков,
+    затем открываем первый вариант отдельной карточкой.
+    """
+
+    delete_album(chat_id)
 
     photos = []
 
     for item in results[:10]:
-
         photo = first_photo(
-            item.get(
-                "Фото",
-                ""
-            )
+            item.get("Фото", "")
         )
 
         if photo:
-
-            photos.append(
-                photo
-            )
+            photos.append(photo)
 
     if photos:
-
         send_photo_album(
             chat_id,
             photos,
             caption=(
-                "🛞 Найденные варианты"
+                "🛞 Найденные варианты\n"
+                "Ниже можно просматривать каждый вариант отдельно 👇"
             )
         )
 
-    user_photo_index[
-        chat_id
-    ] = 0
-
-    user_index[
-        chat_id
-    ] = 0
+    user_index[chat_id] = 0
+    user_photo_index[chat_id] = 0
 
     send_wheel_card(
         chat_id,
         0
     )
-
 
 # ============================================================
 # PREVIEW DONORS

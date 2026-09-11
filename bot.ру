@@ -196,6 +196,10 @@ number_key = None
 name_key = None
 photo_key = None
 donor_key = None
+
+cross_numbers_key = None
+manufacturer_number_key = None
+
 donors_by_number = {}
 
 
@@ -810,64 +814,80 @@ def build_parts_index():
 
     new_index = defaultdict(list)
 
-    for position, part in enumerate(
-        parts_db
-    ):
+    for position, part in enumerate(parts_db):
 
         values = []
 
-        if number_key:
+        # ИЩЕМ ТОЛЬКО ЗДЕСЬ
+        if cross_numbers_key:
             values.append(
                 part.get(
-                    number_key,
+                    cross_numbers_key,
                     ""
                 )
             )
 
-        values.extend([
-            part.get(
-                "Артикул",
-                ""
-            ),
-            part.get(
-                "Номер",
-                ""
+        if manufacturer_number_key:
+            values.append(
+                part.get(
+                    manufacturer_number_key,
+                    ""
+                )
             )
-        ])
 
         for value in values:
 
-            value = normalize(
-                fix_a(value)
-            )
+            value = safe_text(value)
 
             if not value:
                 continue
 
-            # Индексируем полный номер.
-            new_index[
+            # В одной ячейке может быть несколько
+            # кросс-номеров.
+            #
+            # Например:
+            # A1633500514, A1633500614
+            # A1633500514 / A1633500714
+            #
+            # Разделяем их.
+
+            numbers = re.split(
+                r"[,;/|\n]+",
                 value
-            ].append(position)
+            )
 
-            # Также индексируем префиксы.
-            # Только для достаточно длинных строк.
-            if len(value) >= 4:
+            for number in numbers:
 
-                for length in (
-                    4,
-                    5,
-                    6,
-                    7,
-                    8
-                ):
+                number = normalize(
+                    fix_a(number)
+                )
 
-                    if len(value) >= length:
+                if not number:
+                    continue
 
-                        new_index[
-                            value[:length]
-                        ].append(
-                            position
-                        )
+                # Полный номер
+                new_index[
+                    number
+                ].append(position)
+
+                # Префиксы для ускорения поиска
+                if len(number) >= 4:
+
+                    for length in (
+                        4,
+                        5,
+                        6,
+                        7,
+                        8
+                    ):
+
+                        if len(number) >= length:
+
+                            new_index[
+                                number[:length]
+                            ].append(
+                                position
+                            )
 
     parts_index = new_index
 
@@ -875,7 +895,6 @@ def build_parts_index():
         f"[INDEX] Parts index: "
         f"{len(parts_index)} keys"
     )
-
 
 def build_wheels_index():
 
@@ -966,6 +985,9 @@ def load_database():
     print("ЗАГРУЗКА БАЗ")
     print("=" * 60)
 
+    build_parts_index()
+    build_wheels_index()
+
     # =========================
     # ДОНОРЫ
     # =========================
@@ -1017,16 +1039,37 @@ def load_database():
     # КОЛОНКИ ЗАПЧАСТЕЙ
     # =========================
 
-    number_key = find_column(
-        part_headers,
-        [
-            "артикул",
-            "номер",
-            "article",
-            "partnumber"
-        ]
-    )
+    cross_numbers_key = find_column(
+    part_headers,
+    [
+        "Кросс-номера",
+        "кросс номера",
+        "кросс-номер",
+        "cross numbers",
+        "crossnumbers"
+    ]
+)
 
+manufacturer_number_key = find_column(
+    part_headers,
+    [
+        "Номер производителя",
+        "номер производителя",
+        "manufacturer number",
+        "manufacturernumber",
+        "oem"
+    ]
+)
+
+print(
+    f"[SEARCH] cross_numbers_key = "
+    f"{cross_numbers_key!r}"
+)
+
+print(
+    f"[SEARCH] manufacturer_number_key = "
+    f"{manufacturer_number_key!r}"
+)
     name_key = find_column(
         part_headers,
         [
@@ -1082,7 +1125,15 @@ def load_database():
     print(
     f"[DONOR] donor_key = {donor_key}"
     )
-   
+    print(
+        f"cross_numbers_key: "
+        f"{cross_numbers_key}"
+    )
+    
+    print(
+        f"manufacturer_number_key: "
+        f"{manufacturer_number_key}"
+    )   
 
 
 # ============================================================
@@ -1696,7 +1747,7 @@ def find_part(
 ):
 
     query = normalize(
-        query
+        fix_a(query)
     )
 
     if not query:
@@ -1710,7 +1761,10 @@ def find_part(
             else db
         )
 
-        # Быстрый индекс.
+        # ====================================================
+        # Сначала используем индекс
+        # ====================================================
+
         positions = []
 
         if query in parts_index:
@@ -1728,8 +1782,10 @@ def find_part(
                 []
             )
 
-        # Если индекс ничего не дал,
-        # делаем ограниченный fallback.
+        # ====================================================
+        # Проверяем найденные позиции
+        # ====================================================
+
         if positions:
 
             unique_positions = []
@@ -1741,9 +1797,7 @@ def find_part(
                 if position in seen:
                     continue
 
-                seen.add(
-                    position
-                )
+                seen.add(position)
 
                 unique_positions.append(
                     position
@@ -1755,106 +1809,152 @@ def find_part(
                 ):
                     break
 
-            results = [
-                database[position]
-                for position
-                in unique_positions
-                if position < len(database)
-            ]
+            results = []
 
-            # Проверяем совпадение.
-            final = []
+            for position in unique_positions:
 
-            for part in results:
+                if position >= len(database):
+                    continue
+
+                part = database[position]
 
                 values = []
 
-                if number_key:
+                if cross_numbers_key:
 
                     values.append(
                         part.get(
-                            number_key,
+                            cross_numbers_key,
                             ""
                         )
                     )
 
-                values.extend([
-                    part.get(
-                        "Артикул",
-                        ""
-                    ),
-                    part.get(
-                        "Номер",
-                        ""
-                    )
-                ])
+                if manufacturer_number_key:
 
-                if any(
-                    query in normalize(
-                        fix_a(value)
+                    values.append(
+                        part.get(
+                            manufacturer_number_key,
+                            ""
+                        )
                     )
-                    for value in values
-                    if value
-                ):
 
-                    final.append(
+                found = False
+
+                for value in values:
+
+                    value = safe_text(
+                        value
+                    )
+
+                    if not value:
+                        continue
+
+                    numbers = re.split(
+                        r"[,;/|\n]+",
+                        value
+                    )
+
+                    for number in numbers:
+
+                        number = normalize(
+                            fix_a(number)
+                        )
+
+                        if (
+                            query
+                            in number
+                        ):
+
+                            found = True
+                            break
+
+                    if found:
+                        break
+
+                if found:
+
+                    results.append(
                         part
                     )
 
-            return final[
+            return results[
                 :MAX_RESULTS
             ]
 
-        # Fallback для старых/неожиданных
-        # форматов CSV.
+        # ====================================================
+        # Fallback — прямой поиск
+        # ====================================================
+
         results = []
 
         for part in database:
 
             values = []
 
-            if number_key:
+            if cross_numbers_key:
 
                 values.append(
                     part.get(
-                        number_key,
+                        cross_numbers_key,
                         ""
                     )
                 )
 
-            values.extend([
-                part.get(
-                    "Артикул",
-                    ""
-                ),
-                part.get(
-                    "Номер",
-                    ""
+            if manufacturer_number_key:
+
+                values.append(
+                    part.get(
+                        manufacturer_number_key,
+                        ""
+                    )
                 )
-            ])
+
+            found = False
 
             for value in values:
 
-                normalized = normalize(
-                    fix_a(value)
+                value = safe_text(
+                    value
                 )
 
-                if (
-                    query
-                    and query in normalized
-                ):
+                if not value:
+                    continue
 
-                    results.append(
-                        part
+                numbers = re.split(
+                    r"[,;/|\n]+",
+                    value
+                )
+
+                for number in numbers:
+
+                    number = normalize(
+                        fix_a(number)
                     )
 
+                    if (
+                        query
+                        in number
+                    ):
+
+                        found = True
+                        break
+
+                if found:
                     break
 
-            if len(results) >= MAX_RESULTS:
+            if found:
+
+                results.append(
+                    part
+                )
+
+            if (
+                len(results)
+                >= MAX_RESULTS
+            ):
                 break
 
         return results
-
 
 # ============================================================
 # ПОИСК ДИСКОВ

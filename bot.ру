@@ -975,24 +975,26 @@ def load_database():
     # Самые свежие записи → старые
     donors_db.reverse()
 
+    # Пересоздаём индекс доноров
+    donors_by_number = {}
+
     for donor in donors_db:
 
         donor_number = safe_text(
             donor.get("Номер", "")
         )
-    
+
         if not donor_number:
             continue
-    
+
         donors_by_number[
             normalize(donor_number)
         ] = donor
-    
+
     print(
         f"[INDEX] Donors index: "
         f"{len(donors_by_number)} keys"
-)
-
+    )
     # =========================
     # ЗАПЧАСТИ
     # =========================
@@ -1045,11 +1047,25 @@ def load_database():
             "photo"
         ]
     )
-    donor_key = find_column(
-        part_headers,
-        [
-            "донор"
-        ]
+    donor_key = None
+
+    for header in part_headers:
+
+        cleaned = safe_text(header).lower()
+
+        cleaned = (
+            cleaned
+            .replace("\\", "")
+            .replace("'", "")
+            .strip()
+        )
+
+        if cleaned == "донор":
+            donor_key = header
+            break
+
+    print(
+        f"[DONOR] donor_key = {donor_key!r}"
     )
     
     print("=" * 60)

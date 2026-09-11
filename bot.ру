@@ -1049,7 +1049,9 @@ def load_database():
     )
     donor_key = None
 
+    print("[DEBUG] part_headers:")
     for header in part_headers:
+        print(repr(header))
 
         cleaned = safe_text(header).lower()
 

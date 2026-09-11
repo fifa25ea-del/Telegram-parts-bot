@@ -195,7 +195,7 @@ donors_headers = []
 number_key = None
 name_key = None
 photo_key = None
-
+mileage_key = None
 
 # ============================================================
 # ИНДЕКСЫ
@@ -957,6 +957,7 @@ def load_database():
     global number_key
     global name_key
     global photo_key
+    global mileage_key
 
     print("=" * 60)
     print("ЗАГРУЗКА БАЗ")
@@ -1022,6 +1023,27 @@ def load_database():
             "images",
             "photo"
         ]
+    )
+
+    # =========================
+    # ПРОБЕГ ДОНОРА
+    # =========================
+    
+    mileage_key = find_column(
+        donor_headers,
+        [
+            "пробег",
+            "пробег км",
+            "пробег, км",
+            "пробег (км)",
+            "mileage",
+            "kilometrage",
+            "km"
+        ]
+    )
+    
+    print(
+        f"mileage_key: {mileage_key}"
     )
 
     print("=" * 60)
@@ -2367,6 +2389,18 @@ def send_donor_card(
 
     donor = results[index]
 
+    mileage = safe_text(
+        donor.get(
+            mileage_key,
+            ""
+        )
+        if mileage_key
+        else donor.get(
+            "Пробег",
+            ""
+        )
+    )
+
     text = (
         f"🚘 Донор №"
         f"{safe_text(donor.get('Номер')) or '-'}\n\n"
@@ -2379,7 +2413,7 @@ def send_donor_card(
         f"Год: "
         f"{safe_text(donor.get('Год')) or '-'}\n"
         f"Пробег: "
-        f"{safe_text(donor.get('Пробег')) or '-'}\n"
+        f"{mileage or '-'}\n"
         f"Цвет: "
         f"{safe_text(donor.get('Цвет')) or '-'}\n"
         f"VIN: "

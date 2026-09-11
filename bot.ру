@@ -16,13 +16,7 @@ from telebot import types
 # НАСТРОЙКИ
 # ============================================================
 
-TOKEN = os.getenv("8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY")
-
-if not TOKEN:
-    raise RuntimeError(
-        "Не задан BOT_TOKEN. "
-        "Создай переменную окружения BOT_TOKEN с новым токеном бота."
-    )
+BOT_TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
 
 DONORS_CSV = "https://baz-on.ru/export/c592/5c6ca/stuttgart-site-carsrc.csv"
 PARTS_CSV = "https://baz-on.ru/export/c592/e61a0/stuttgart-drom.csv"

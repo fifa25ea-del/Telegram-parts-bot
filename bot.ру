@@ -2363,50 +2363,52 @@ def send_part_card(
     donor_info = ""
 
     if donor_number:
-
+    
         donor_mileage = ""
-
+    
         if donor:
-
+    
             donor_mileage = safe_text(
                 donor.get(
                     "Пробег",
                     ""
                 )
             )
-
+    
             print(
                 f"[PART DONOR] FOUND "
                 f"number={donor_number} "
                 f"mileage={donor_mileage}"
             )
-
+    
         else:
-
+    
             print(
                 f"[PART DONOR] NOT FOUND "
                 f"number={donor_number}"
             )
-
+    
         donor_info = (
-            f"🚘 № донора: {donor_number}\n"
+            f"🚘 Донор №{donor_number}\n"
             f"📏 Пробег донора: "
-            f"{donor_mileage or '-'} км\n"
+            f"{donor_mileage or '-'} км"
         )
+    
+    
     if not name:
-
+    
         name = "Запчасть"
-
+    
+    
     text = (
-        f"🔧 {name}\n"
-        f"Артикул: {article or '-'}\n"
-        f"Номер: {number or '-'}\n"
-        f"{brand} {model}\n"
-        f"💰 {price or '-'} ₽\n"
-        f"{donor_info}\n"
+        f"🔧 {name}\n\n"
+        f"🚗 {brand} {model}\n\n"
+        f"🧾 Артикул: {article or '-'}\n"
+        f"🏷 Номер производителя: {number or '-'}\n\n"
+        f"💰 Цена: {price or '-'} ₽\n\n"
+        f"{donor_info}\n\n"
         f"({index + 1}/{len(results)})"
-    )
-
+)
 
     photos_value = (
         part.get(

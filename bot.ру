@@ -69,8 +69,8 @@ DONORS_CSV = (
 )
 
 PARTS_CSV = (
-    "https://baz-on.ru/export/c592/e61a0/"
-    "stuttgart-drom.csv"
+    "https://baz-on.ru/export/c592/5282b/"
+    "stuttgart-site-products.csv"
 )
 
 WHEELS_CSV = (

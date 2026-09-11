@@ -202,25 +202,7 @@ donors_by_number = {}
 # ============================================================
 # ИНДЕКСЫ
 # ============================================================
-donors_by_number = {}
 
-    for donor in donors_db:
-
-        donor_number = safe_text(
-            donor.get("Номер", "")
-        )
-
-        if not donor_number:
-            continue
-
-        donors_by_number[
-            normalize(donor_number)
-        ] = donor
-
-    print(
-        f"[INDEX] Donors index: "
-        f"{len(donors_by_number)} keys"
-    )
 parts_index = defaultdict(list)
 wheels_index = defaultdict(list)
 
@@ -992,6 +974,24 @@ def load_database():
 
     # Самые свежие записи → старые
     donors_db.reverse()
+
+    for donor in donors_db:
+
+        donor_number = safe_text(
+            donor.get("Номер", "")
+        )
+    
+        if not donor_number:
+            continue
+    
+        donors_by_number[
+            normalize(donor_number)
+        ] = donor
+    
+    print(
+        f"[INDEX] Donors index: "
+        f"{len(donors_by_number)} keys"
+)
 
     # =========================
     # ЗАПЧАСТИ

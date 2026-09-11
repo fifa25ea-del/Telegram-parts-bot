@@ -2391,7 +2391,7 @@ def send_part_card(
         donor_info = (
             f"🚘 № донора: {donor_number}\n"
             f"📏 Пробег донора: "
-            f"{donor_mileage or '-'}\n"
+            f"{donor_mileage or '-'} км\n"
         )
     if not name:
 

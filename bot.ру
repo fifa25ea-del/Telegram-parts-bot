@@ -3445,54 +3445,95 @@ def perform_search(
         print(
             f"🔥 SEARCH WHEELS: {query}"
         )
-
+    
         log_search(
             chat_id,
             query,
             "wheels"
         )
-
-        results = find_wheels(
-            query
-        )
-
+    
+        loading_msg = None
+    
+        try:
+    
+            loading_msg = bot.send_message(
+                chat_id,
+                "⏳ Пожалуйста, подождите...\n"
+                "🔎 Ищем подходящие шины и диски..."
+            )
+    
+            results = find_wheels(
+                query
+            )
+    
+        except Exception as e:
+    
+            print(
+                f"[WHEELS SEARCH ERROR] {e}"
+            )
+    
+            bot.send_message(
+                chat_id,
+                "❌ Произошла ошибка при поиске."
+            )
+    
+            return
+    
+        finally:
+    
+            if loading_msg:
+    
+                try:
+    
+                    bot.delete_message(
+                        chat_id,
+                        loading_msg.message_id
+                    )
+    
+                except Exception as e:
+    
+                    print(
+                        f"[LOADING MESSAGE] "
+                        f"Delete error: {e}"
+                    )
+    
         if not results:
-
+    
             print(
                 f"❌ NOT FOUND WHEELS: "
                 f"{query}"
             )
-
+    
             log_search(
                 chat_id,
                 query,
                 "NOT_FOUND_WHEELS"
             )
-
+    
             bot.send_message(
                 chat_id,
                 "❌ Ничего не найдено."
             )
-
+    
             return
-
+    
         user_results[
             chat_id
         ] = results
-
+    
         user_index[
             chat_id
         ] = 0
-
+    
         user_photo_index[
             chat_id
         ] = 0
-
+    
         send_wheels_preview(
             chat_id,
             results
         )
-
+    
         return
 
 

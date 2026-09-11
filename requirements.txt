@@ -1,3 +1,5 @@
 pyTelegramBotAPI
 requests
-ddgs
+beautifulsoup4
+Pillow
+python-telegram-bot

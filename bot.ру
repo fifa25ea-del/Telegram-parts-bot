@@ -226,6 +226,7 @@ current_mode = {}
 
 user_last_msg = {}
 user_album_msgs = {}
+user_loading_msg = {}
 
 user_locks = defaultdict(threading.Lock)
 
@@ -408,6 +409,65 @@ def delete_last_messages(chat_id):
     user_last_msg[chat_id] = []
 
 
+def show_loading_message(chat_id):
+    """
+    Показывает сообщение о загрузке
+    и сохраняет его отдельно от карточек.
+    """
+
+    # Если старое сообщение загрузки осталось —
+    # удаляем его.
+    old_message_id = user_loading_msg.get(
+        chat_id
+    )
+
+    if old_message_id:
+
+        safe_delete_message(
+            chat_id,
+            old_message_id
+        )
+
+    try:
+
+        msg = bot.send_message(
+            chat_id,
+            "⏳ Пожалуйста, подождите...\n"
+            "🔎 Ищем подходящие шины и диски..."
+        )
+
+        user_loading_msg[
+            chat_id
+        ] = msg.message_id
+
+        return msg.message_id
+
+    except Exception as e:
+
+        print(
+            f"[LOADING] Send error: {e}"
+        )
+
+        return None
+
+
+def hide_loading_message(chat_id):
+    """
+    Удаляет сообщение загрузки
+    после завершения поиска.
+    """
+
+    message_id = user_loading_msg.pop(
+        chat_id,
+        None
+    )
+
+    if message_id:
+
+        safe_delete_message(
+            chat_id,
+            message_id
+        )
 # ============================================================
 # ФАЙЛ JSON
 # ============================================================
@@ -3452,15 +3512,15 @@ def perform_search(
             "wheels"
         )
     
-        loading_msg = None
+        # --------------------------------------------------------
+        # Показываем загрузку ДО поиска и загрузки фотографий.
+        # --------------------------------------------------------
+    
+        show_loading_message(
+            chat_id
+        )
     
         try:
-    
-            loading_msg = bot.send_message(
-                chat_id,
-                "⏳ Пожалуйста, подождите...\n"
-                "🔎 Ищем подходящие шины и диски..."
-            )
     
             results = find_wheels(
                 query
@@ -3469,7 +3529,11 @@ def perform_search(
         except Exception as e:
     
             print(
-                f"[WHEELS SEARCH ERROR] {e}"
+                f"[SEARCH WHEELS] Error: {e}"
+            )
+    
+            hide_loading_message(
+                chat_id
             )
     
             bot.send_message(
@@ -3479,25 +3543,11 @@ def perform_search(
     
             return
     
-        finally:
-    
-            if loading_msg:
-    
-                try:
-    
-                    bot.delete_message(
-                        chat_id,
-                        loading_msg.message_id
-                    )
-    
-                except Exception as e:
-    
-                    print(
-                        f"[LOADING MESSAGE] "
-                        f"Delete error: {e}"
-                    )
-    
         if not results:
+    
+            hide_loading_message(
+                chat_id
+            )
     
             print(
                 f"❌ NOT FOUND WHEELS: "
@@ -3529,14 +3579,20 @@ def perform_search(
             chat_id
         ] = 0
     
+        # --------------------------------------------------------
+        # Здесь загружаются фотографии.
+        # Сообщение "Пожалуйста, подождите..."
+        # всё это время остаётся на экране.
+        # --------------------------------------------------------
+    
         send_wheels_preview(
             chat_id,
             results
         )
     
-        return
-
-
+        # --------------------------------------------------------
+        # Только после полной загрузки удаляем сообщение.
+        # --------------------------------------------------------
 # ============================================================
 # TEXT HANDLER
 # ============================================================

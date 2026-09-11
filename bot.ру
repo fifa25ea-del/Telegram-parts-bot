@@ -42,7 +42,14 @@ from telebot.apihelper import ApiTelegramException
 # НАСТРОЙКИ
 # ============================================================
 
-TOKEN = "8668461577:AAE2X7UtcKhKMRAYhHG8xiowwz74p60WMiY"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+if not BOT_TOKEN:
+    raise RuntimeError(
+        "Не задан BOT_TOKEN. "
+        "Добавь переменную BOT_TOKEN в Railway Variables."
+    )
+
 
 DONORS_CSV = (
     "https://baz-on.ru/export/c592/5c6ca/"
@@ -135,7 +142,7 @@ USER_AGENT = {
 # ============================================================
 
 bot = telebot.TeleBot(
-    TOKEN,
+    BOT_TOKEN,
     parse_mode=None,
     threaded=True
 )

@@ -971,6 +971,7 @@ def build_wheels_index():
 # ============================================================
 
 def load_database():
+
     global donors_db
     global parts_db
     global wheels_db
@@ -981,18 +982,20 @@ def load_database():
     global donor_key
     global donors_by_number
 
+    global cross_numbers_key
+    global manufacturer_number_key
+
     print("=" * 60)
     print("ЗАГРУЗКА БАЗ")
     print("=" * 60)
-
-    build_parts_index()
-    build_wheels_index()
 
     # =========================
     # ДОНОРЫ
     # =========================
 
-    donors_db, donor_headers = load_csv(DONORS_CSV)
+    donors_db, donor_headers = load_csv(
+        DONORS_CSV
+    )
 
     # Самые свежие записи → старые
     donors_db.reverse()
@@ -1003,7 +1006,10 @@ def load_database():
     for donor in donors_db:
 
         donor_number = safe_text(
-            donor.get("Номер", "")
+            donor.get(
+                "Номер",
+                ""
+            )
         )
 
         if not donor_number:
@@ -1017,11 +1023,14 @@ def load_database():
         f"[INDEX] Donors index: "
         f"{len(donors_by_number)} keys"
     )
+
     # =========================
     # ЗАПЧАСТИ
     # =========================
 
-    parts_db, part_headers = load_csv(PARTS_CSV)
+    parts_db, part_headers = load_csv(
+        PARTS_CSV
+    )
 
     # Самые свежие записи → старые
     parts_db.reverse()
@@ -1030,7 +1039,9 @@ def load_database():
     # ДИСКИ
     # =========================
 
-    wheels_db, wheel_headers = load_csv(WHEELS_CSV)
+    wheels_db, wheel_headers = load_csv(
+        WHEELS_CSV
+    )
 
     # Самые свежие записи → старые
     wheels_db.reverse()
@@ -1039,37 +1050,6 @@ def load_database():
     # КОЛОНКИ ЗАПЧАСТЕЙ
     # =========================
 
-    cross_numbers_key = find_column(
-    part_headers,
-    [
-        "Кросс-номера",
-        "кросс номера",
-        "кросс-номер",
-        "cross numbers",
-        "crossnumbers"
-    ]
-)
-
-manufacturer_number_key = find_column(
-    part_headers,
-    [
-        "Номер производителя",
-        "номер производителя",
-        "manufacturer number",
-        "manufacturernumber",
-        "oem"
-    ]
-)
-
-print(
-    f"[SEARCH] cross_numbers_key = "
-    f"{cross_numbers_key!r}"
-)
-
-print(
-    f"[SEARCH] manufacturer_number_key = "
-    f"{manufacturer_number_key!r}"
-)
     name_key = find_column(
         part_headers,
         [
@@ -1090,13 +1070,64 @@ print(
             "photo"
         ]
     )
+
+    # ========================================================
+    # КОЛОНКИ ДЛЯ ПОИСКА
+    #
+    # ИЩЕМ ТОЛЬКО:
+    #   • Кросс-номера
+    #   • Номер производителя
+    # ========================================================
+
+    cross_numbers_key = find_column(
+        part_headers,
+        [
+            "Кросс-номера",
+            "кросс номера",
+            "кросс-номер",
+            "cross numbers",
+            "crossnumbers"
+        ]
+    )
+
+    manufacturer_number_key = find_column(
+        part_headers,
+        [
+            "Номер производителя",
+            "номер производителя",
+            "manufacturer number",
+            "manufacturernumber",
+            "oem"
+        ]
+    )
+
+    print(
+        f"[SEARCH] cross_numbers_key = "
+        f"{cross_numbers_key!r}"
+    )
+
+    print(
+        f"[SEARCH] manufacturer_number_key = "
+        f"{manufacturer_number_key!r}"
+    )
+
+    # =========================
+    # DONOR
+    # =========================
+
     donor_key = None
 
     print("[DEBUG] part_headers:")
-    for header in part_headers:
-        print(repr(header))
 
-        cleaned = safe_text(header).lower()
+    for header in part_headers:
+
+        print(
+            repr(header)
+        )
+
+        cleaned = safe_text(
+            header
+        ).lower()
 
         cleaned = (
             cleaned
@@ -1106,34 +1137,83 @@ print(
         )
 
         if cleaned == "донор":
+
             donor_key = header
+
             break
 
     print(
-        f"[DONOR] donor_key = {donor_key!r}"
+        f"[DONOR] donor_key = "
+        f"{donor_key!r}"
     )
-    
+
+    # ========================================================
+    # СТАРЫЙ number_key БОЛЬШЕ НЕ ИСПОЛЬЗУЕМ
+    # ========================================================
+
+    number_key = None
+
+    # ========================================================
+    # СТРОИМ ИНДЕКСЫ ПОСЛЕ ЗАГРУЗКИ CSV
+    # ========================================================
+
+    build_parts_index()
+
+    build_wheels_index()
+
+    # =========================
+    # ИТОГ
+    # =========================
+
     print("=" * 60)
     print("БАЗЫ ЗАГРУЖЕНЫ")
-    print(f"Доноров: {len(donors_db)}")
-    print(f"Запчастей: {len(parts_db)}")
-    print(f"Дисков: {len(wheels_db)}")
-    print(f"number_key: {number_key}")
-    print(f"name_key: {name_key}")
-    print(f"photo_key: {photo_key}")
-    print("=" * 60)
+
     print(
-    f"[DONOR] donor_key = {donor_key}"
+        f"Доноров: "
+        f"{len(donors_db)}"
     )
+
+    print(
+        f"Запчастей: "
+        f"{len(parts_db)}"
+    )
+
+    print(
+        f"Дисков: "
+        f"{len(wheels_db)}"
+    )
+
+    print(
+        f"number_key: "
+        f"{number_key}"
+    )
+
+    print(
+        f"name_key: "
+        f"{name_key}"
+    )
+
+    print(
+        f"photo_key: "
+        f"{photo_key}"
+    )
+
     print(
         f"cross_numbers_key: "
         f"{cross_numbers_key}"
     )
-    
+
     print(
         f"manufacturer_number_key: "
         f"{manufacturer_number_key}"
-    )   
+    )
+
+    print(
+        f"donor_key: "
+        f"{donor_key}"
+    )
+
+    print("=" * 60)
 
 
 # ============================================================

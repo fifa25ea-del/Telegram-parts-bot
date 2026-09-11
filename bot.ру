@@ -2,29 +2,24 @@
 # TELEGRAM BOT — Stuttgart
 # Railway Edition
 #
-# ПОЛНАЯ ВЕРСИЯ
-#
-# Возможности:
+# Функции:
 #   • CSV загружается при старте
 #   • CSV автоматически обновляется раз в 60 минут
-#   • Быстрый поиск запчастей
-#   • Поиск дисков
-#   • Разбор / доноры
-#   • Запчасть показывает:
-#       - Артикул
-#       - Номер
-#       - Донор
-#       - Пробег
-#       - Марку
-#       - Модель
-#       - Цену
-#   • Пробег автоматически подтягивается из базы доноров
-#   • Фото и кэш фотографий
+#   • Индексы для быстрого поиска
+#   • Кэш фотографий
 #   • Параллельная загрузка фотографий
+#   • Защита WEBPAGE_CURL_FAILED
+#   • Защита устаревших callback query
+#   • Запчасти
+#   • Диски
+#   • Доноры
+#   • Связь ЗАПЧАСТЬ → ДОНОР
+#   • Пробег донора в карточке запчасти
+#   • Переход в карточку донора
+#   • Возврат из донора к запчасти
 #   • Избранное
 #   • Статистика
 #   • Админ-команды
-#   • Защита старых callback query
 #   • Railway / BOT_TOKEN
 # ============================================================
 
@@ -54,6 +49,31 @@ BASE_DIR = os.path.dirname(
     os.path.abspath(__file__)
 )
 
+PARTS_BG = os.path.join(
+    BASE_DIR,
+    "Parts_bg.jpg"
+)
+
+WHEELS_BG = os.path.join(
+    BASE_DIR,
+    "Wheels_bg.jpg"
+)
+
+DONORS_BG = os.path.join(
+    BASE_DIR,
+    "Donors_bg.jpg"
+)
+
+FAVORITES_BG = os.path.join(
+    BASE_DIR,
+    "Favorites_bg.jpg"
+)
+
+
+# ============================================================
+# DIRECTORIES
+# ============================================================
+
 CACHE_DIR = os.path.join(
     BASE_DIR,
     "cache"
@@ -62,21 +82,6 @@ CACHE_DIR = os.path.join(
 PHOTO_CACHE_DIR = os.path.join(
     CACHE_DIR,
     "photos"
-)
-
-FAV_FILE = os.path.join(
-    BASE_DIR,
-    "favorites.json"
-)
-
-STATS_FILE = os.path.join(
-    BASE_DIR,
-    "stats.json"
-)
-
-LOG_FILE = os.path.join(
-    BASE_DIR,
-    "logs.txt"
 )
 
 os.makedirs(
@@ -91,7 +96,7 @@ os.makedirs(
 
 
 # ============================================================
-# НАСТРОЙКИ
+# SETTINGS
 # ============================================================
 
 BOT_TOKEN = os.getenv(
@@ -126,18 +131,43 @@ WHEELS_CSV = (
 
 
 # ============================================================
-# КЭШ
+# FILES
+# ============================================================
+
+FAV_FILE = os.path.join(
+    BASE_DIR,
+    "favorites.json"
+)
+
+STATS_FILE = os.path.join(
+    BASE_DIR,
+    "stats.json"
+)
+
+LOG_FILE = os.path.join(
+    BASE_DIR,
+    "logs.txt"
+)
+
+
+# ============================================================
+# PHOTO CACHE
 # ============================================================
 
 PHOTO_CACHE_MAX_MB = 500
 
 PHOTO_WORKERS = 6
 
+
+# ============================================================
+# UPDATE
+# ============================================================
+
 CSV_UPDATE_INTERVAL = 60 * 60
 
 
 # ============================================================
-# ЛИМИТЫ
+# LIMITS
 # ============================================================
 
 MAX_RESULTS = 20
@@ -150,14 +180,14 @@ CSV_TIMEOUT = 90
 
 
 # ============================================================
-# АДМИН
+# ADMIN
 # ============================================================
 
 ADMIN_ID = 5053130650
 
 
 # ============================================================
-# КОНТАКТ
+# CONTACT
 # ============================================================
 
 CONTACT_URL = (
@@ -203,57 +233,57 @@ wheels_db = []
 
 
 # ============================================================
-# HEADERS
+# CSV HEADERS
 # ============================================================
-
-donors_headers = []
 
 parts_headers = []
 
 wheels_headers = []
 
+donors_headers = []
+
 
 # ============================================================
-# КЛЮЧИ КОЛОНОК
+# PART COLUMNS
 # ============================================================
 
-# Запчасти
 number_key = None
 
 name_key = None
 
 photo_key = None
 
-brand_key = None
-
-model_key = None
-
-price_key = None
-
-part_donor_key = None
-
-part_mileage_key = None
+donor_key = None
 
 
-# Доноры
-donor_number_key = None
-
-donor_mileage_key = None
-
-donor_photo_key = None
+# Возможные названия колонки,
+# где в CSV запчастей хранится номер донора.
+DONOR_COLUMN_VARIANTS = [
+    "донор",
+    "номер донора",
+    "№ донора",
+    "номер_донора",
+    "donor",
+    "donornumber",
+    "donor number",
+    "donor_id",
+    "donorid"
+]
 
 
 # ============================================================
-# ИНДЕКСЫ
+# INDEXES
 # ============================================================
 
 parts_index = defaultdict(list)
 
 wheels_index = defaultdict(list)
 
+donors_index = {}
+
 
 # ============================================================
-# USER STATE
+# USER STATES
 # ============================================================
 
 favorites = {}
@@ -278,6 +308,21 @@ user_locks = defaultdict(
 
 
 # ============================================================
+# DONOR LINK STATE
+#
+# Нужно для перехода:
+#
+# Запчасть → Донор
+#
+# и обратно:
+#
+# Донор → Запчасть
+# ============================================================
+
+user_donor_context = {}
+
+
+# ============================================================
 # LOCKS
 # ============================================================
 
@@ -291,7 +336,7 @@ photo_cache_lock = threading.RLock()
 
 
 # ============================================================
-# TEXT HELPERS
+# HELPERS
 # ============================================================
 
 def safe_text(value):
@@ -324,6 +369,7 @@ def normalize(text):
     }
 
     for old, new in replacements.items():
+
         text = text.replace(
             old,
             new
@@ -403,58 +449,90 @@ def photo_list(value):
 
 
 # ============================================================
-# COLUMN FINDER
+# TELEGRAM CALLBACK
 # ============================================================
 
-def find_column(
-    headers,
-    variants
+def safe_callback_answer(
+    call,
+    text=None,
+    show_alert=False
 ):
 
-    if not headers:
-        return None
+    try:
 
-    normalized_headers = {}
-
-    for header in headers:
-
-        if not header:
-            continue
-
-        normalized_headers[
-            normalize(header)
-        ] = header
-
-    # Сначала точное совпадение
-    for variant in variants:
-
-        variant_normalized = normalize(
-            variant
+        bot.answer_callback_query(
+            call.id,
+            text=text,
+            show_alert=show_alert
         )
 
-        if variant_normalized in normalized_headers:
+    except Exception as e:
 
-            return normalized_headers[
-                variant_normalized
-            ]
-
-    # Потом частичное
-    for variant in variants:
-
-        variant_normalized = normalize(
-            variant
+        print(
+            f"[CALLBACK] ignored: {e}"
         )
 
-        for key, original in normalized_headers.items():
 
-            if (
-                variant_normalized in key
-                or key in variant_normalized
-            ):
+# ============================================================
+# DELETE MESSAGE
+# ============================================================
 
-                return original
+def safe_delete_message(
+    chat_id,
+    message_id
+):
 
-    return None
+    if not message_id:
+        return
+
+    try:
+
+        bot.delete_message(
+            chat_id,
+            message_id
+        )
+
+    except Exception as e:
+
+        print(
+            f"[DELETE] "
+            f"{message_id}: {e}"
+        )
+
+
+def delete_last_messages(
+    chat_id
+):
+
+    old = user_last_msg.get(
+        chat_id
+    )
+
+    if not old:
+        return
+
+    if isinstance(
+        old,
+        list
+    ):
+
+        for message_id in old:
+
+            safe_delete_message(
+                chat_id,
+                message_id
+            )
+
+    else:
+
+        safe_delete_message(
+            chat_id,
+            old
+        )
+
+    user_last_msg[
+        chat_id
+    ] = []
 
 
 # ============================================================
@@ -484,7 +562,7 @@ def load_json_file(
     except Exception as e:
 
         print(
-            f"[JSON] Ошибка загрузки "
+            f"[JSON] Ошибка "
             f"{filename}: {e}"
         )
 
@@ -524,7 +602,7 @@ def save_json_file(
     except Exception as e:
 
         print(
-            f"[JSON] Ошибка сохранения "
+            f"[JSON] Ошибка "
             f"{filename}: {e}"
         )
 
@@ -572,15 +650,6 @@ def get_item_id(
     if number:
         return number
 
-    donor = safe_text(
-        item.get(
-            "донор"
-        )
-    )
-
-    if donor:
-        return donor
-
     return fallback
 
 
@@ -625,13 +694,18 @@ def add_favorite(
 
         if user_id not in favorites:
 
-            favorites[user_id] = []
+            favorites[
+                user_id
+            ] = []
 
-        if item_id in favorites[user_id]:
-
+        if item_id in favorites[
+            user_id
+        ]:
             return False
 
-        favorites[user_id].append(
+        favorites[
+            user_id
+        ].append(
             item_id
         )
 
@@ -659,16 +733,20 @@ def remove_favorite(
         if user_id not in favorites:
             return False
 
-        if item_id not in favorites[user_id]:
+        if item_id not in favorites[
+            user_id
+        ]:
             return False
 
-        favorites[user_id].remove(
+        favorites[
+            user_id
+        ].remove(
             item_id
         )
 
         save_favorites()
 
-        return True
+    return True
 
 
 # ============================================================
@@ -704,23 +782,31 @@ def track(
 
         if user_id not in stats:
 
-            stats[user_id] = {
+            stats[
+                user_id
+            ] = {
                 "searches": 0,
                 "views": 0,
                 "favorites": 0
             }
 
-        if action not in stats[user_id]:
+        if action not in stats[
+            user_id
+        ]:
 
-            stats[user_id][action] = 0
+            stats[
+                user_id
+            ][action] = 0
 
-        stats[user_id][action] += 1
+        stats[
+            user_id
+        ][action] += 1
 
         save_stats()
 
 
 # ============================================================
-# LOG
+# SEARCH LOG
 # ============================================================
 
 def log_search(
@@ -809,7 +895,9 @@ def load_csv(url):
                 delimiters=";,|\t"
             )
 
-            delimiter = dialect.delimiter
+            delimiter = (
+                dialect.delimiter
+            )
 
         except Exception:
 
@@ -851,306 +939,48 @@ def load_csv(url):
 
 
 # ============================================================
-# DATABASE LOAD
+# FIND COLUMN
 # ============================================================
 
-def load_database():
+def find_column(
+    headers,
+    variants
+):
 
-    global donors_db
-    global parts_db
-    global wheels_db
+    if not headers:
+        return None
 
-    global donors_headers
-    global parts_headers
-    global wheels_headers
+    normalized = {}
 
-    global number_key
-    global name_key
-    global photo_key
-    global brand_key
-    global model_key
-    global price_key
+    for header in headers:
 
-    global part_donor_key
-    global part_mileage_key
+        normalized[
+            normalize(header)
+        ] = header
 
-    global donor_number_key
-    global donor_mileage_key
-    global donor_photo_key
+    for variant in variants:
 
-    print("=" * 70)
-    print("ЗАГРУЗКА БАЗ")
-    print("=" * 70)
+        variant_normalized = normalize(
+            variant
+        )
 
-    # ========================================================
-    # DONORS
-    # ========================================================
+        for key, original in normalized.items():
 
-    new_donors_db, new_donor_headers = load_csv(
-        DONORS_CSV
-    )
+            if (
+                variant_normalized == key
+                or
+                variant_normalized in key
+                or
+                key in variant_normalized
+            ):
 
-    new_donors_db.reverse()
+                return original
 
-    # ========================================================
-    # PARTS
-    # ========================================================
-
-    new_parts_db, new_part_headers = load_csv(
-        PARTS_CSV
-    )
-
-    new_parts_db.reverse()
-
-    # ========================================================
-    # WHEELS
-    # ========================================================
-
-    new_wheels_db, new_wheel_headers = load_csv(
-        WHEELS_CSV
-    )
-
-    new_wheels_db.reverse()
-
-    # ========================================================
-    # СНАЧАЛА ПРОВЕРЯЕМ, ЧТО ДАННЫЕ ЗАГРУЗИЛИСЬ
-    # ========================================================
-
-    with database_lock:
-
-        if new_donors_db:
-            donors_db = new_donors_db
-            donors_headers = new_donor_headers
-
-        if new_parts_db:
-            parts_db = new_parts_db
-            parts_headers = new_part_headers
-
-        if new_wheels_db:
-            wheels_db = new_wheels_db
-            wheels_headers = new_wheel_headers
-
-    # ========================================================
-    # PART COLUMNS
-    # ========================================================
-
-    number_key = find_column(
-        parts_headers,
-        [
-            "артикул",
-            "номер",
-            "article",
-            "partnumber",
-            "part number"
-        ]
-    )
-
-    name_key = find_column(
-        parts_headers,
-        [
-            "наименование",
-            "название",
-            "наимен",
-            "name"
-        ]
-    )
-
-    photo_key = find_column(
-        parts_headers,
-        [
-            "фото",
-            "фотографии",
-            "фотография",
-            "image",
-            "images",
-            "photo"
-        ]
-    )
-
-    brand_key = find_column(
-        parts_headers,
-        [
-            "марка",
-            "brand",
-            "make"
-        ]
-    )
-
-    model_key = find_column(
-        parts_headers,
-        [
-            "модель",
-            "model"
-        ]
-    )
-
-    price_key = find_column(
-        parts_headers,
-        [
-            "цена",
-            "price"
-        ]
-    )
-
-    # ========================================================
-    # ГЛАВНОЕ:
-    # КОЛОНКА "ДОНОР"
-    # ========================================================
-
-    part_donor_key = find_column(
-        parts_headers,
-        [
-            "донор",
-            "донора",
-            "номер донора",
-            "donor",
-            "donor id",
-            "donor_id",
-            "id донора"
-        ]
-    )
-
-    # ========================================================
-    # ПРОБЕГ В CSV ЗАПЧАСТЕЙ
-    # ========================================================
-
-    part_mileage_key = find_column(
-        parts_headers,
-        [
-            "пробег",
-            "пробег км",
-            "пробег, км",
-            "пробег (км)",
-            "mileage",
-            "kilometrage",
-            "km"
-        ]
-    )
-
-    # ========================================================
-    # DONOR COLUMNS
-    # ========================================================
-
-    donor_number_key = find_column(
-        donors_headers,
-        [
-            "номер",
-            "донор",
-            "номер донора",
-            "id",
-            "id донора",
-            "donor",
-            "donor id",
-            "donor_id"
-        ]
-    )
-
-    donor_mileage_key = find_column(
-        donors_headers,
-        [
-            "пробег",
-            "пробег км",
-            "пробег, км",
-            "пробег (км)",
-            "mileage",
-            "kilometrage",
-            "km"
-        ]
-    )
-
-    donor_photo_key = find_column(
-        donors_headers,
-        [
-            "фото",
-            "фотографии",
-            "фотография",
-            "image",
-            "images",
-            "photo"
-        ]
-    )
-
-    # ========================================================
-    # ЛОГ КОЛОНОК
-    # ========================================================
-
-    print()
-    print("========== КОЛОНКИ ==========")
-
-    print(
-        f"PART number_key       = {number_key}"
-    )
-
-    print(
-        f"PART name_key         = {name_key}"
-    )
-
-    print(
-        f"PART photo_key        = {photo_key}"
-    )
-
-    print(
-        f"PART brand_key        = {brand_key}"
-    )
-
-    print(
-        f"PART model_key        = {model_key}"
-    )
-
-    print(
-        f"PART price_key        = {price_key}"
-    )
-
-    print(
-        f"PART donor_key        = {part_donor_key}"
-    )
-
-    print(
-        f"PART mileage_key      = {part_mileage_key}"
-    )
-
-    print(
-        f"DONOR number_key      = {donor_number_key}"
-    )
-
-    print(
-        f"DONOR mileage_key     = {donor_mileage_key}"
-    )
-
-    print(
-        f"DONOR photo_key       = {donor_photo_key}"
-    )
-
-    print("==============================")
-    print()
-
-    # ========================================================
-    # BUILD INDEX
-    # ========================================================
-
-    build_parts_index()
-
-    build_wheels_index()
-
-    print("=" * 70)
-
-    print(
-        f"Доноров:    {len(donors_db)}"
-    )
-
-    print(
-        f"Запчастей:  {len(parts_db)}"
-    )
-
-    print(
-        f"Дисков:     {len(wheels_db)}"
-    )
-
-    print("=" * 70)
+    return None
 
 
 # ============================================================
-# PART INDEX
+# BUILD PARTS INDEX
 # ============================================================
 
 def build_parts_index():
@@ -1161,14 +991,8 @@ def build_parts_index():
         list
     )
 
-    with database_lock:
-
-        database = list(
-            parts_db
-        )
-
     for position, part in enumerate(
-        database
+        parts_db
     ):
 
         values = []
@@ -1182,18 +1006,16 @@ def build_parts_index():
                 )
             )
 
-        values.extend(
-            [
-                part.get(
-                    "Артикул",
-                    ""
-                ),
-                part.get(
-                    "Номер",
-                    ""
-                )
-            ]
-        )
+        values.extend([
+            part.get(
+                "Артикул",
+                ""
+            ),
+            part.get(
+                "Номер",
+                ""
+            )
+        ])
 
         for value in values:
 
@@ -1237,7 +1059,7 @@ def build_parts_index():
 
 
 # ============================================================
-# WHEEL INDEX
+# BUILD WHEELS INDEX
 # ============================================================
 
 def build_wheels_index():
@@ -1248,14 +1070,8 @@ def build_wheels_index():
         list
     )
 
-    with database_lock:
-
-        database = list(
-            wheels_db
-        )
-
     for position, item in enumerate(
-        database
+        wheels_db
     ):
 
         fields = [
@@ -1319,430 +1135,333 @@ def build_wheels_index():
 
 
 # ============================================================
-# DONOR HELPERS
+# BUILD DONORS INDEX
 # ============================================================
 
-def normalize_donor_number(
-    value
-):
+def build_donors_index():
 
-    value = safe_text(
-        value
-    )
+    global donors_index
 
-    if not value:
-        return ""
+    new_index = {}
 
-    return normalize(
-        fix_a(value)
-    )
+    for donor in donors_db:
 
-
-def get_part_donor_number(
-    part
-):
-
-    # Главный вариант:
-    # колонка "донор"
-
-    if part_donor_key:
-
-        value = safe_text(
-            part.get(
-                part_donor_key,
+        donor_number = safe_text(
+            donor.get(
+                "Номер",
                 ""
             )
         )
 
-        if value:
-            return value
+        if not donor_number:
 
-    # Запасные варианты
-
-    for key in (
-        "донор",
-        "Донор",
-        "номер донора",
-        "Номер донора",
-        "donor",
-        "donor_id",
-        "donor id"
-    ):
-
-        value = safe_text(
-            part.get(
-                key,
-                ""
+            # Дополнительные варианты.
+            donor_number = safe_text(
+                donor.get(
+                    "Номер донора",
+                    ""
+                )
             )
+
+        if not donor_number:
+            continue
+
+        key = normalize(
+            donor_number
         )
 
-        if value:
-            return value
+        new_index[
+            key
+        ] = donor
 
-    return ""
+    donors_index = new_index
+
+    print(
+        f"[INDEX] Donors: "
+        f"{len(donors_index)} keys"
+    )
 
 
-def find_donor_for_part(
-    part
+# ============================================================
+# LOAD DATABASE
+# ============================================================
+
+def load_database():
+
+    global donors_db
+    global parts_db
+    global wheels_db
+
+    global number_key
+    global name_key
+    global photo_key
+    global donor_key
+
+    global parts_headers
+    global wheels_headers
+    global donors_headers
+
+    print("=" * 60)
+
+    print(
+        "ЗАГРУЗКА БАЗ"
+    )
+
+    print("=" * 60)
+
+    # ========================================================
+    # DONORS
+    # ========================================================
+
+    new_donors, new_donor_headers = load_csv(
+        DONORS_CSV
+    )
+
+    # Только если загрузка успешна.
+    if new_donors:
+
+        new_donors.reverse()
+
+        donors_db = new_donors
+
+        donors_headers = (
+            new_donor_headers
+        )
+
+    # ========================================================
+    # PARTS
+    # ========================================================
+
+    new_parts, new_part_headers = load_csv(
+        PARTS_CSV
+    )
+
+    if new_parts:
+
+        new_parts.reverse()
+
+        parts_db = new_parts
+
+        parts_headers = (
+            new_part_headers
+        )
+
+    # ========================================================
+    # WHEELS
+    # ========================================================
+
+    new_wheels, new_wheel_headers = load_csv(
+        WHEELS_CSV
+    )
+
+    if new_wheels:
+
+        new_wheels.reverse()
+
+        wheels_db = new_wheels
+
+        wheels_headers = (
+            new_wheel_headers
+        )
+
+    # ========================================================
+    # PART COLUMNS
+    # ========================================================
+
+    number_key = find_column(
+        parts_headers,
+        [
+            "артикул",
+            "номер",
+            "article",
+            "partnumber"
+        ]
+    )
+
+    name_key = find_column(
+        parts_headers,
+        [
+            "наименование",
+            "название",
+            "наимен",
+            "name"
+        ]
+    )
+
+    photo_key = find_column(
+        parts_headers,
+        [
+            "фото",
+            "фотографии",
+            "image",
+            "images",
+            "photo"
+        ]
+    )
+
+    donor_key = find_column(
+        parts_headers,
+        DONOR_COLUMN_VARIANTS
+    )
+
+    # ========================================================
+    # BUILD INDEXES
+    # ========================================================
+
+    build_donors_index()
+
+    build_parts_index()
+
+    build_wheels_index()
+
+    # ========================================================
+    # INFO
+    # ========================================================
+
+    print("=" * 60)
+
+    print(
+        "БАЗЫ ЗАГРУЖЕНЫ"
+    )
+
+    print(
+        f"Доноров: {len(donors_db)}"
+    )
+
+    print(
+        f"Запчастей: {len(parts_db)}"
+    )
+
+    print(
+        f"Дисков: {len(wheels_db)}"
+    )
+
+    print(
+        f"number_key: {number_key}"
+    )
+
+    print(
+        f"name_key: {name_key}"
+    )
+
+    print(
+        f"photo_key: {photo_key}"
+    )
+
+    print(
+        f"donor_key: {donor_key}"
+    )
+
+    print("=" * 60)
+
+
+# ============================================================
+# FIND DONOR
+# ============================================================
+
+def find_donor_by_number(
+    donor_number
 ):
 
-    donor_number = get_part_donor_number(
-        part
+    donor_number = safe_text(
+        donor_number
     )
 
     if not donor_number:
         return None
 
-    target = normalize_donor_number(
+    key = normalize(
         donor_number
     )
 
-    if not target:
-        return None
-
     with database_lock:
 
-        database = list(
-            donors_db
+        donor = donors_index.get(
+            key
         )
 
-        local_number_key = (
-            donor_number_key
-        )
+        if donor:
+            return donor
 
-    # ========================================================
-    # 1. Точное совпадение
-    # ========================================================
+        # Fallback.
+        for item in donors_db:
 
-    for donor in database:
-
-        values = []
-
-        if local_number_key:
-
-            values.append(
-                donor.get(
-                    local_number_key,
+            current_number = safe_text(
+                item.get(
+                    "Номер",
                     ""
                 )
             )
 
-        values.extend(
-            [
-                donor.get(
-                    "Номер",
-                    ""
-                ),
-                donor.get(
-                    "Донор",
-                    ""
-                ),
-                donor.get(
-                    "донор",
-                    ""
-                ),
-                donor.get(
-                    "ID",
-                    ""
-                ),
-                donor.get(
-                    "id",
-                    ""
-                ),
-                donor.get(
+            if normalize(
+                current_number
+            ) == key:
+
+                return item
+
+            current_number = safe_text(
+                item.get(
                     "Номер донора",
                     ""
                 )
-            ]
-        )
-
-        for value in values:
-
-            normalized = normalize_donor_number(
-                value
             )
 
-            if (
-                normalized
-                and normalized == target
-            ):
+            if normalize(
+                current_number
+            ) == key:
 
-                return donor
-
-    # ========================================================
-    # 2. Частичное совпадение
-    # ========================================================
-
-    for donor in database:
-
-        values = []
-
-        if local_number_key:
-
-            values.append(
-                donor.get(
-                    local_number_key,
-                    ""
-                )
-            )
-
-        values.extend(
-            [
-                donor.get(
-                    "Номер",
-                    ""
-                ),
-                donor.get(
-                    "Донор",
-                    ""
-                ),
-                donor.get(
-                    "донор",
-                    ""
-                ),
-                donor.get(
-                    "ID",
-                    ""
-                )
-            ]
-        )
-
-        for value in values:
-
-            normalized = normalize_donor_number(
-                value
-            )
-
-            if not normalized:
-                continue
-
-            if (
-                target in normalized
-                or normalized in target
-            ):
-
-                return donor
+                return item
 
     return None
 
 
-def get_part_mileage(
+# ============================================================
+# GET DONOR NUMBER FROM PART
+# ============================================================
+
+def get_part_donor_number(
     part
 ):
 
-    # ========================================================
-    # 1. Если пробег есть прямо в CSV запчастей
-    # ========================================================
-
-    if part_mileage_key:
-
-        mileage = safe_text(
-            part.get(
-                part_mileage_key,
-                ""
-            )
-        )
-
-        if mileage:
-            return mileage
-
-    # Дополнительные варианты
-
-    for key in (
-        "Пробег",
-        "пробег",
-        "Пробег км",
-        "пробег км",
-        "mileage",
-        "kilometrage"
-    ):
-
-        mileage = safe_text(
-            part.get(
-                key,
-                ""
-            )
-        )
-
-        if mileage:
-            return mileage
-
-    # ========================================================
-    # 2. Если в запчасти пробега нет —
-    #    ищем донора
-    # ========================================================
-
-    donor = find_donor_for_part(
-        part
-    )
-
-    if not donor:
+    if not part:
         return ""
 
-    # ========================================================
-    # 3. Берем пробег из базы донора
-    # ========================================================
+    # Основная колонка.
+    if donor_key:
 
-    if donor_mileage_key:
-
-        mileage = safe_text(
-            donor.get(
-                donor_mileage_key,
+        value = safe_text(
+            part.get(
+                donor_key,
                 ""
             )
         )
 
-        if mileage:
-            return mileage
+        if value:
+            return value
 
-    for key in (
-        "Пробег",
-        "пробег",
-        "Пробег км",
-        "пробег км",
-        "mileage",
-        "kilometrage"
-    ):
+    # Дополнительная защита.
+    for key in [
+        "Донор",
+        "Номер донора",
+        "№ донора",
+        "Номер_донора",
+        "Donor",
+        "DonorNumber",
+        "donor_id",
+        "donorid"
+    ]:
 
-        mileage = safe_text(
-            donor.get(
+        value = safe_text(
+            part.get(
                 key,
                 ""
             )
         )
 
-        if mileage:
-            return mileage
+        if value:
+            return value
 
     return ""
-
-
-def format_mileage(
-    mileage
-):
-
-    mileage = safe_text(
-        mileage
-    )
-
-    if not mileage:
-        return "-"
-
-    # Если уже есть "км"
-    if "км" in mileage.lower():
-        return mileage
-
-    # Убираем пробелы для числового значения
-    raw = mileage.replace(
-        " ",
-        ""
-    )
-
-    # Если только цифры
-    if raw.isdigit():
-
-        try:
-
-            number = int(
-                raw
-            )
-
-            return (
-                f"{number:,}"
-                .replace(",", " ")
-                + " км"
-            )
-
-        except Exception:
-            pass
-
-    return mileage
-
-
-# ============================================================
-# CALLBACK SAFE
-# ============================================================
-
-def safe_callback_answer(
-    call,
-    text=None,
-    show_alert=False
-):
-
-    try:
-
-        bot.answer_callback_query(
-            call.id,
-            text=text,
-            show_alert=show_alert
-        )
-
-    except Exception as e:
-
-        print(
-            f"[CALLBACK] ignored: {e}"
-        )
-
-
-# ============================================================
-# DELETE
-# ============================================================
-
-def safe_delete_message(
-    chat_id,
-    message_id
-):
-
-    if not message_id:
-        return
-
-    try:
-
-        bot.delete_message(
-            chat_id,
-            message_id
-        )
-
-    except Exception as e:
-
-        print(
-            f"[DELETE] {message_id}: {e}"
-        )
-
-
-def delete_last_messages(
-    chat_id
-):
-
-    old = user_last_msg.get(
-        chat_id
-    )
-
-    if not old:
-        return
-
-    if isinstance(
-        old,
-        list
-    ):
-
-        for message_id in old:
-
-            safe_delete_message(
-                chat_id,
-                message_id
-            )
-
-    else:
-
-        safe_delete_message(
-            chat_id,
-            old
-        )
-
-    user_last_msg[
-        chat_id
-    ] = []
 
 
 # ============================================================
@@ -1793,7 +1512,8 @@ def get_cached_photo(
     except Exception as e:
 
         print(
-            f"[CACHE] read error: {e}"
+            f"[CACHE] read error: "
+            f"{e}"
         )
 
         return None
@@ -1837,7 +1557,8 @@ def save_cached_photo(
     except Exception as e:
 
         print(
-            f"[CACHE] write error: {e}"
+            f"[CACHE] write error: "
+            f"{e}"
         )
 
         try:
@@ -1845,6 +1566,7 @@ def save_cached_photo(
             if os.path.exists(
                 temp_path
             ):
+
                 os.remove(
                     temp_path
                 )
@@ -1935,7 +1657,7 @@ def download_photo(
 
 
 # ============================================================
-# PARALLEL PHOTOS
+# PARALLEL PHOTO DOWNLOAD
 # ============================================================
 
 def download_photos_parallel(
@@ -1977,7 +1699,9 @@ def download_photos_parallel(
 
         if cached:
 
-            results[url] = cached
+            results[
+                url
+            ] = cached
 
         else:
 
@@ -2013,7 +1737,9 @@ def download_photos_parallel(
 
                     if content:
 
-                        results[url] = content
+                        results[
+                            url
+                        ] = content
 
                 except Exception as e:
 
@@ -2030,7 +1756,7 @@ def download_photos_parallel(
 
 
 # ============================================================
-# CACHE CLEANUP
+# CLEAN PHOTO CACHE
 # ============================================================
 
 def cleanup_photo_cache():
@@ -2127,7 +1853,7 @@ def cleanup_photo_cache():
 
 
 # ============================================================
-# DATABASE UPDATER
+# DATABASE UPDATE WORKER
 # ============================================================
 
 def database_updater():
@@ -2212,7 +1938,7 @@ def send_photo_safe(
 
 
 # ============================================================
-# SEND ALBUM
+# PHOTO ALBUM
 # ============================================================
 
 def send_photo_album(
@@ -2221,7 +1947,9 @@ def send_photo_album(
     caption=None
 ):
 
-    photos = photos[:MAX_PHOTOS]
+    photos = photos[
+        :MAX_PHOTOS
+    ]
 
     if not photos:
         return []
@@ -2270,8 +1998,7 @@ def send_photo_album(
 
         ids = [
             message.message_id
-            for message
-            in sent_messages
+            for message in sent_messages
         ]
 
         user_album_msgs[
@@ -2323,6 +2050,10 @@ def send_photo_album(
         return ids
 
 
+# ============================================================
+# ALBUM CLEANUP
+# ============================================================
+
 def delete_album(
     chat_id
 ):
@@ -2345,11 +2076,12 @@ def delete_album(
 
 
 # ============================================================
-# PART SEARCH
+# SEARCH PARTS
 # ============================================================
 
 def find_part(
-    query
+    query,
+    db=None
 ):
 
     query = normalize(
@@ -2361,60 +2093,104 @@ def find_part(
 
     with database_lock:
 
-        database = list(
+        database = (
             parts_db
+            if db is None
+            else db
         )
 
-    positions = []
+        positions = []
 
-    if query in parts_index:
+        if query in parts_index:
 
-        positions = parts_index[
-            query
-        ]
+            positions = parts_index[
+                query
+            ]
 
-    elif len(query) >= 4:
+        elif len(query) >= 4:
 
-        positions = parts_index.get(
-            query[:4],
-            []
-        )
-
-    if positions:
-
-        unique_positions = []
-
-        seen = set()
-
-        for position in positions:
-
-            if position in seen:
-                continue
-
-            seen.add(
-                position
+            positions = parts_index.get(
+                query[:4],
+                []
             )
 
-            unique_positions.append(
-                position
-            )
+        if positions:
 
-            if len(
-                unique_positions
-            ) >= MAX_RESULTS:
+            unique_positions = []
 
-                break
+            seen = set()
+
+            for position in positions:
+
+                if position in seen:
+                    continue
+
+                seen.add(
+                    position
+                )
+
+                unique_positions.append(
+                    position
+                )
+
+                if len(
+                    unique_positions
+                ) >= MAX_RESULTS:
+
+                    break
+
+            results = [
+                database[position]
+                for position
+                in unique_positions
+                if position < len(database)
+            ]
+
+            final = []
+
+            for part in results:
+
+                values = []
+
+                if number_key:
+
+                    values.append(
+                        part.get(
+                            number_key,
+                            ""
+                        )
+                    )
+
+                values.extend([
+                    part.get(
+                        "Артикул",
+                        ""
+                    ),
+                    part.get(
+                        "Номер",
+                        ""
+                    )
+                ])
+
+                if any(
+                    query in normalize(
+                        fix_a(value)
+                    )
+                    for value in values
+                    if value
+                ):
+
+                    final.append(
+                        part
+                    )
+
+            return final[
+                :MAX_RESULTS
+            ]
 
         results = []
 
-        for position in unique_positions:
-
-            if position >= len(database):
-                continue
-
-            part = database[
-                position
-            ]
+        for part in database:
 
             values = []
 
@@ -2427,54 +2203,7 @@ def find_part(
                     )
                 )
 
-            values.extend(
-                [
-                    part.get(
-                        "Артикул",
-                        ""
-                    ),
-                    part.get(
-                        "Номер",
-                        ""
-                    )
-                ]
-            )
-
-            if any(
-                query in normalize(
-                    fix_a(value)
-                )
-                for value in values
-                if value
-            ):
-
-                results.append(
-                    part
-                )
-
-        return results[:MAX_RESULTS]
-
-    # ========================================================
-    # FALLBACK
-    # ========================================================
-
-    results = []
-
-    for part in database:
-
-        values = []
-
-        if number_key:
-
-            values.append(
-                part.get(
-                    number_key,
-                    ""
-                )
-            )
-
-        values.extend(
-            [
+            values.extend([
                 part.get(
                     "Артикул",
                     ""
@@ -2483,48 +2212,57 @@ def find_part(
                     "Номер",
                     ""
                 )
-            ]
-        )
+            ])
 
-        for value in values:
+            for value in values:
 
-            normalized = normalize(
-                fix_a(value)
-            )
-
-            if (
-                query
-                and query in normalized
-            ):
-
-                results.append(
-                    part
+                normalized = normalize(
+                    fix_a(value)
                 )
+
+                if (
+                    query
+                    and query in normalized
+                ):
+
+                    results.append(
+                        part
+                    )
+
+                    break
+
+            if len(
+                results
+            ) >= MAX_RESULTS:
 
                 break
 
-        if len(results) >= MAX_RESULTS:
-            break
-
-    return results
+        return results
 
 
 # ============================================================
-# WHEEL SEARCH
+# SEARCH WHEELS
 # ============================================================
 
 def find_wheels(
-    query
+    query,
+    db=None
 ):
 
+    original = safe_text(
+        query
+    )
+
     query_normalized = normalize(
-        fix_a(query)
+        fix_a(original)
     )
 
     if not query_normalized:
         return []
 
-    radius_query = query_normalized
+    radius_query = (
+        query_normalized
+    )
 
     if radius_query.startswith(
         "r"
@@ -2536,73 +2274,87 @@ def find_wheels(
 
     with database_lock:
 
-        database = list(
+        database = (
             wheels_db
+            if db is None
+            else db
         )
 
-    results = []
+        results = []
 
-    for item in database:
+        for item in database:
 
-        radius = normalize(
-            item.get(
-                "Диаметр диска",
-                ""
-            )
-        )
-
-        brand = normalize(
-            item.get(
-                "Производитель диска",
-                ""
-            )
-        )
-
-        model = normalize(
-            item.get(
-                "Модель диска",
-                ""
-            )
-        )
-
-        article = normalize(
-            item.get(
-                "Артикул",
-                ""
-            )
-        )
-
-        if (
-            radius_query
-            and radius_query == radius
-        ):
-
-            results.append(
-                item
+            radius = normalize(
+                item.get(
+                    "Диаметр диска",
+                    ""
+                )
             )
 
-        elif query_normalized in brand:
-
-            results.append(
-                item
+            brand = normalize(
+                item.get(
+                    "Производитель диска",
+                    ""
+                )
             )
 
-        elif query_normalized in model:
-
-            results.append(
-                item
+            model = normalize(
+                item.get(
+                    "Модель диска",
+                    ""
+                )
             )
 
-        elif query_normalized in article:
-
-            results.append(
-                item
+            article = normalize(
+                item.get(
+                    "Артикул",
+                    ""
+                )
             )
 
-        if len(results) >= MAX_RESULTS:
-            break
+            if (
+                radius_query
+                and radius_query == radius
+            ):
 
-    return results
+                results.append(
+                    item
+                )
+
+            elif (
+                query_normalized
+                in brand
+            ):
+
+                results.append(
+                    item
+                )
+
+            elif (
+                query_normalized
+                in model
+            ):
+
+                results.append(
+                    item
+                )
+
+            elif (
+                query_normalized
+                in article
+            ):
+
+                results.append(
+                    item
+                )
+
+            if len(
+                results
+            ) >= MAX_RESULTS:
+
+                break
+
+        return results
 
 
 # ============================================================
@@ -2722,9 +2474,8 @@ def make_product_keyboard(
     return kb
 
 
-
 # ============================================================
-# CARD — PART
+# PART CARD
 # ============================================================
 
 def send_part_card(
@@ -2740,10 +2491,15 @@ def send_part_card(
     if not results:
         return
 
-    if index < 0 or index >= len(results):
+    if (
+        index < 0
+        or index >= len(results)
+    ):
         return
 
-    part = results[index]
+    part = results[
+        index
+    ]
 
     name = safe_text(
         part.get(
@@ -2796,14 +2552,81 @@ def send_part_card(
 
         name = "Запчасть"
 
+    # ========================================================
+    # DONOR
+    # ========================================================
+
+    donor_number = get_part_donor_number(
+        part
+    )
+
+    donor = None
+
+    donor_mileage = ""
+
+    if donor_number:
+
+        donor = find_donor_by_number(
+            donor_number
+        )
+
+        if donor:
+
+            donor_mileage = safe_text(
+                donor.get(
+                    "Пробег",
+                    ""
+                )
+            )
+
+    # ========================================================
+    # DONOR TEXT
+    # ========================================================
+
+    if donor_number:
+
+        donor_text = (
+            f"🚘 Донор: № "
+            f"{donor_number}"
+        )
+
+    else:
+
+        donor_text = (
+            "🚘 Донор: -"
+        )
+
+    if donor_mileage:
+
+        mileage_text = (
+            f"📏 Пробег донора: "
+            f"{donor_mileage} км"
+        )
+
+    else:
+
+        mileage_text = (
+            "📏 Пробег донора: -"
+        )
+
+    # ========================================================
+    # CARD TEXT
+    # ========================================================
+
     text = (
         f"🔧 {name}\n"
         f"Артикул: {article or '-'}\n"
         f"Номер: {number or '-'}\n"
         f"{brand} {model}\n"
         f"💰 {price or '-'} ₽\n\n"
+        f"{donor_text}\n"
+        f"{mileage_text}\n\n"
         f"({index + 1}/{len(results)})"
     )
+
+    # ========================================================
+    # PHOTO
+    # ========================================================
 
     photos_value = (
         part.get(
@@ -2821,12 +2644,51 @@ def send_part_card(
         photos_value
     )
 
+    # ========================================================
+    # KEYBOARD
+    # ========================================================
+
     keyboard = make_product_keyboard(
         chat_id,
         index,
         part,
         "parts"
     )
+
+    # ========================================================
+    # DONOR BUTTON
+    # ========================================================
+
+    if donor_number:
+
+        if donor:
+
+            keyboard.add(
+                types.InlineKeyboardButton(
+                    f"🚘 Открыть донора № "
+                    f"{donor_number}",
+                    callback_data=(
+                        f"open_donor_{donor_number}"
+                    )
+                )
+            )
+
+        else:
+
+            keyboard.add(
+                types.InlineKeyboardButton(
+                    f"⚠️ Донор № "
+                    f"{donor_number} "
+                    f"(не найден)",
+                    callback_data=(
+                        f"missing_donor_{donor_number}"
+                    )
+                )
+            )
+
+    # ========================================================
+    # SEND
+    # ========================================================
 
     delete_last_messages(
         chat_id
@@ -2872,7 +2734,7 @@ def send_part_card(
 
 
 # ============================================================
-# CARD — WHEEL
+# WHEEL CARD
 # ============================================================
 
 def send_wheel_card(
@@ -2888,10 +2750,15 @@ def send_wheel_card(
     if not results:
         return
 
-    if index < 0 or index >= len(results):
+    if (
+        index < 0
+        or index >= len(results)
+    ):
         return
 
-    item = results[index]
+    item = results[
+        index
+    ]
 
     brand = safe_text(
         item.get(
@@ -3030,12 +2897,13 @@ def send_wheel_card(
 
 
 # ============================================================
-# CARD — DONOR
+# DONOR CARD
 # ============================================================
 
 def send_donor_card(
     chat_id,
-    index
+    index,
+    from_part=False
 ):
 
     results = user_results.get(
@@ -3046,26 +2914,35 @@ def send_donor_card(
     if not results:
         return
 
-    if index < 0 or index >= len(results):
+    if (
+        index < 0
+        or index >= len(results)
+    ):
         return
 
-    donor = results[index]
+    donor = results[
+        index
+    ]
 
-    mileage = safe_text(
+    donor_number = safe_text(
         donor.get(
-            mileage_key,
-            ""
-        )
-        if mileage_key
-        else donor.get(
-            "Пробег",
+            "Номер",
             ""
         )
     )
 
+    if not donor_number:
+
+        donor_number = safe_text(
+            donor.get(
+                "Номер донора",
+                ""
+            )
+        )
+
     text = (
         f"🚘 Донор №"
-        f"{safe_text(donor.get('Номер')) or '-'}\n\n"
+        f"{donor_number or '-'}\n\n"
         f"{safe_text(donor.get('Марка'))} "
         f"{safe_text(donor.get('Модель'))}\n"
         f"Кузов: "
@@ -3074,8 +2951,8 @@ def send_donor_card(
         f"{safe_text(donor.get('Двигатель')) or '-'}\n"
         f"Год: "
         f"{safe_text(donor.get('Год')) or '-'}\n"
-        f"Пробег: "
-        f"{mileage or '-'}\n"
+        f"📏 Пробег: "
+        f"{safe_text(donor.get('Пробег')) or '-'} км\n"
         f"Цвет: "
         f"{safe_text(donor.get('Цвет')) or '-'}\n"
         f"VIN: "
@@ -3096,6 +2973,23 @@ def send_donor_card(
         donor,
         "donors"
     )
+
+    # ========================================================
+    # BACK TO PART
+    # ========================================================
+
+    context = user_donor_context.get(
+        chat_id
+    )
+
+    if context:
+
+        keyboard.add(
+            types.InlineKeyboardButton(
+                "⬅️ Назад к запчасти",
+                callback_data="back_to_part"
+            )
+        )
 
     delete_last_messages(
         chat_id
@@ -3141,7 +3035,7 @@ def send_donor_card(
 
 
 # ============================================================
-# ОБЩАЯ CARD
+# GENERAL CARD
 # ============================================================
 
 def send_card(
@@ -3176,7 +3070,7 @@ def send_card(
 
 
 # ============================================================
-# ВСЕ ФОТО
+# ALL PHOTOS
 # ============================================================
 
 def show_all_photos(
@@ -3192,14 +3086,19 @@ def show_all_photos(
     if not results:
         return
 
-    if index < 0 or index >= len(results):
+    if (
+        index < 0
+        or index >= len(results)
+    ):
         return
 
     mode = current_mode.get(
         chat_id
     )
 
-    item = results[index]
+    item = results[
+        index
+    ]
 
     if mode == "donors":
 
@@ -3289,47 +3188,62 @@ def show_all_photos(
 
 
 # ============================================================
-# PREVIEW WHEELS
+# WHEELS PREVIEW
 # ============================================================
 
-def send_wheels_preview(chat_id, results):
-    """
-    Сначала показываем до 10 фото найденных дисков,
-    затем открываем первый вариант отдельной карточкой.
-    """
+def send_wheels_preview(
+    chat_id,
+    results
+):
 
-    delete_album(chat_id)
+    delete_album(
+        chat_id
+    )
 
     photos = []
 
     for item in results[:10]:
+
         photo = first_photo(
-            item.get("Фото", "")
+            item.get(
+                "Фото",
+                ""
+            )
         )
 
         if photo:
-            photos.append(photo)
+            photos.append(
+                photo
+            )
 
     if photos:
+
         send_photo_album(
             chat_id,
             photos,
             caption=(
                 "🛞 Найденные варианты\n"
-                "Ниже можно просматривать каждый вариант отдельно 👇"
+                "Ниже можно просматривать "
+                "каждый вариант отдельно 👇"
             )
         )
 
-    user_index[chat_id] = 0
-    user_photo_index[chat_id] = 0
+    user_index[
+        chat_id
+    ] = 0
+
+    user_photo_index[
+        chat_id
+    ] = 0
 
     send_wheel_card(
         chat_id,
         0
     )
 
+
 # ============================================================
-# PREVIEW DONORS
+# DONORS PREVIEW
 # ============================================================
 
 def send_donors_preview(
@@ -3349,7 +3263,6 @@ def send_donors_preview(
         )
 
         if photo:
-
             photos.append(
                 photo
             )
@@ -3452,6 +3365,11 @@ def start(message):
         chat_id
     ] = None
 
+    user_donor_context.pop(
+        chat_id,
+        None
+    )
+
     bot.send_message(
         chat_id,
         "🚗 Добро пожаловать в Stuttgart!\n\n"
@@ -3484,6 +3402,11 @@ def enter_parts_mode(
         chat_id
     ] = 0
 
+    user_donor_context.pop(
+        chat_id,
+        None
+    )
+
     bot.send_message(
         chat_id,
         "🔎 Введите номер детали:",
@@ -3515,6 +3438,11 @@ def enter_wheels_mode(
         chat_id
     ] = 0
 
+    user_donor_context.pop(
+        chat_id,
+        None
+    )
+
     bot.send_message(
         chat_id,
         "🔎 Введите размер или производителя.\n\n"
@@ -3537,6 +3465,11 @@ def enter_donors_mode(
     current_mode[
         chat_id
     ] = "donors"
+
+    user_donor_context.pop(
+        chat_id,
+        None
+    )
 
     with database_lock:
 
@@ -3783,9 +3716,9 @@ def perform_search(
         "searches"
     )
 
-    # --------------------------------------------------------
+    # ========================================================
     # PARTS
-    # --------------------------------------------------------
+    # ========================================================
 
     if mode == "parts":
 
@@ -3836,6 +3769,11 @@ def perform_search(
             chat_id
         ] = 0
 
+        user_donor_context.pop(
+            chat_id,
+            None
+        )
+
         send_part_card(
             chat_id,
             0
@@ -3843,9 +3781,9 @@ def perform_search(
 
         return
 
-    # --------------------------------------------------------
+    # ========================================================
     # WHEELS
-    # --------------------------------------------------------
+    # ========================================================
 
     if mode == "wheels":
 
@@ -3900,8 +3838,6 @@ def perform_search(
             results
         )
 
-        return
-
 
 # ============================================================
 # TEXT HANDLER
@@ -3910,7 +3846,9 @@ def perform_search(
 @bot.message_handler(
     content_types=["text"]
 )
-def handle_text(message):
+def handle_text(
+    message
+):
 
     chat_id = message.chat.id
 
@@ -3978,8 +3916,6 @@ def callback_favorite(
     call
 ):
 
-    # ВАЖНО:
-    # отвечаем сразу.
     safe_callback_answer(
         call
     )
@@ -4013,7 +3949,9 @@ def callback_favorite(
 
         return
 
-    item = results[index]
+    item = results[
+        index
+    ]
 
     if is_favorite(
         chat_id,
@@ -4029,8 +3967,6 @@ def callback_favorite(
             item_id
         )
 
-        # Второй ответ может уже быть
-        # просроченным — функция безопасная.
         safe_callback_answer(
             call,
             "💔 Удалено из избранного"
@@ -4109,6 +4045,209 @@ def callback_remove_favorite(
 
 
 # ============================================================
+# CALLBACK — OPEN DONOR
+# ============================================================
+
+@bot.callback_query_handler(
+    func=lambda call:
+        call.data.startswith(
+            "open_donor_"
+        )
+)
+def callback_open_donor(
+    call
+):
+
+    safe_callback_answer(
+        call
+    )
+
+    chat_id = (
+        call.message.chat.id
+    )
+
+    donor_number = call.data[
+        len("open_donor_"):
+    ]
+
+    if not donor_number:
+
+        return
+
+    # --------------------------------------------------------
+    # Сохраняем текущую запчасть,
+    # чтобы потом можно было вернуться.
+    # --------------------------------------------------------
+
+    old_mode = current_mode.get(
+        chat_id
+    )
+
+    old_results = user_results.get(
+        chat_id,
+        []
+    )
+
+    old_index = user_index.get(
+        chat_id,
+        0
+    )
+
+    if (
+        old_mode == "parts"
+        and old_results
+        and 0 <= old_index < len(old_results)
+    ):
+
+        user_donor_context[
+            chat_id
+        ] = {
+            "mode": "parts",
+            "results": old_results,
+            "index": old_index
+        }
+
+    # --------------------------------------------------------
+    # Ищем донора.
+    # --------------------------------------------------------
+
+    donor = find_donor_by_number(
+        donor_number
+    )
+
+    if not donor:
+
+        bot.send_message(
+            chat_id,
+            f"❌ Донор № {donor_number} "
+            f"не найден в базе."
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # Переключаемся в donors.
+    # --------------------------------------------------------
+
+    current_mode[
+        chat_id
+    ] = "donors"
+
+    user_results[
+        chat_id
+    ] = [donor]
+
+    user_index[
+        chat_id
+    ] = 0
+
+    user_photo_index[
+        chat_id
+    ] = 0
+
+    send_donor_card(
+        chat_id,
+        0
+    )
+
+
+# ============================================================
+# CALLBACK — MISSING DONOR
+# ============================================================
+
+@bot.callback_query_handler(
+    func=lambda call:
+        call.data.startswith(
+            "missing_donor_"
+        )
+)
+def callback_missing_donor(
+    call
+):
+
+    donor_number = call.data[
+        len("missing_donor_"):
+    ]
+
+    safe_callback_answer(
+        call,
+        (
+            f"Донор № {donor_number} "
+            f"не найден в базе."
+        ),
+        show_alert=True
+    )
+
+
+# ============================================================
+# CALLBACK — BACK TO PART
+# ============================================================
+
+@bot.callback_query_handler(
+    func=lambda call:
+        call.data == "back_to_part"
+)
+def callback_back_to_part(
+    call
+):
+
+    safe_callback_answer(
+        call
+    )
+
+    chat_id = (
+        call.message.chat.id
+    )
+
+    context = user_donor_context.get(
+        chat_id
+    )
+
+    if not context:
+
+        bot.send_message(
+            chat_id,
+            "❌ Запчасть больше недоступна."
+        )
+
+        return
+
+    current_mode[
+        chat_id
+    ] = context[
+        "mode"
+    ]
+
+    user_results[
+        chat_id
+    ] = context[
+        "results"
+    ]
+
+    index = context[
+        "index"
+    ]
+
+    user_index[
+        chat_id
+    ] = index
+
+    user_photo_index[
+        chat_id
+    ] = 0
+
+    user_donor_context.pop(
+        chat_id,
+        None
+    )
+
+    send_part_card(
+        chat_id,
+        index
+    )
+
+
+# ============================================================
 # CALLBACK — ALL PHOTOS
 # ============================================================
 
@@ -4122,7 +4261,6 @@ def callback_all_photos(
     call
 ):
 
-    # Отвечаем ДО загрузки фотографий.
     safe_callback_answer(
         call
     )
@@ -4211,7 +4349,9 @@ def callback_donor_photos(
     ):
         return
 
-    donor = results[index]
+    donor = results[
+        index
+    ]
 
     photos = photo_list(
         donor.get(
@@ -4338,7 +4478,6 @@ def callback_navigation(
     call
 ):
 
-    # Сразу закрываем callback.
     safe_callback_answer(
         call
     )
@@ -4538,7 +4677,9 @@ def admin_panel(
         f"🛞 Дисков: "
         f"{wheels_count}\n"
         f"🚘 Доноров: "
-        f"{donors_count}"
+        f"{donors_count}\n\n"
+        f"🔗 Колонка донора: "
+        f"{donor_key or 'не найдена'}"
     )
 
     bot.send_message(
@@ -4633,7 +4774,9 @@ def get_not_found():
 
             lines = f.readlines()
 
-        data = defaultdict(list)
+        data = defaultdict(
+            list
+        )
 
         for line in lines:
 
@@ -4805,9 +4948,7 @@ def polling_error_handler():
 
         except Exception as e:
 
-            print(
-                "=" * 60
-            )
+            print("=" * 60)
 
             print(
                 "❌ POLLING ERROR"
@@ -4817,9 +4958,7 @@ def polling_error_handler():
                 repr(e)
             )
 
-            print(
-                "=" * 60
-            )
+            print("=" * 60)
 
             time.sleep(
                 5
@@ -4832,9 +4971,7 @@ def polling_error_handler():
 
 if __name__ == "__main__":
 
-    print(
-        "=" * 60
-    )
+    print("=" * 60)
 
     print(
         "🚗 STUTTGART BOT"
@@ -4844,25 +4981,23 @@ if __name__ == "__main__":
         "Railway Edition"
     )
 
-    print(
-        "=" * 60
-    )
+    print("=" * 60)
 
-    # --------------------------------------------------------
-    # Первичная загрузка базы.
-    # --------------------------------------------------------
+    # ========================================================
+    # FIRST DATABASE LOAD
+    # ========================================================
 
     load_database()
 
-    # --------------------------------------------------------
-    # Очистка старого кэша.
-    # --------------------------------------------------------
+    # ========================================================
+    # PHOTO CACHE
+    # ========================================================
 
     cleanup_photo_cache()
 
-    # --------------------------------------------------------
-    # Запускаем автообновление CSV.
-    # --------------------------------------------------------
+    # ========================================================
+    # AUTO UPDATE
+    # ========================================================
 
     updater_thread = threading.Thread(
         target=database_updater,
@@ -4884,6 +5019,10 @@ if __name__ == "__main__":
     )
 
     print(
+        "🔗 Donor → Part linking enabled"
+    )
+
+    print(
         "🚂 Railway mode enabled"
     )
 
@@ -4891,8 +5030,8 @@ if __name__ == "__main__":
         "🤖 Bot is starting..."
     )
 
-    # --------------------------------------------------------
-    # Telegram polling.
-    # --------------------------------------------------------
+    # ========================================================
+    # POLLING
+    # ========================================================
 
     polling_error_handler()

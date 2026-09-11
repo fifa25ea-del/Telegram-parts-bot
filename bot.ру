@@ -135,7 +135,7 @@ USER_AGENT = {
 # ============================================================
 
 bot = telebot.TeleBot(
-    BOT_TOKEN,
+    TOKEN,
     parse_mode=None,
     threaded=True
 )

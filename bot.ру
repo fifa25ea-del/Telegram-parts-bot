@@ -2310,9 +2310,11 @@ def send_part_card(
 
     number = safe_text(
         part.get(
-            "Номер",
+            manufacturer_number_key,
             ""
         )
+        if manufacturer_number_key
+        else ""
     )
 
     brand = safe_text(

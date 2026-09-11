@@ -29,6 +29,13 @@ import threading
 import requests
 import os
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+PARTS_BG = os.path.join(BASE_DIR, "Parts_bg.jpg")
+WHEELS_BG = os.path.join(BASE_DIR, "Wheels_bg.jpg")
+DONORS_BG = os.path.join(BASE_DIR, "Donors_bg.jpg")
+FAVORITES_BG = os.path.join(BASE_DIR, "Favorites_bg.jpg")
+
 CACHE_DIR = "cache"
 PHOTO_CACHE_DIR = "cache/photos"
 

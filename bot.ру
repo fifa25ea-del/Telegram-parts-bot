@@ -19,10 +19,6 @@
 #   • Railway / BOT_TOKEN
 # ============================================================
 
-import html
-import threading
-
-from ddgs import DDGS
 import io
 import csv
 import json

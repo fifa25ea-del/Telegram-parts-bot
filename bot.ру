@@ -4511,6 +4511,10 @@ def polling_error_handler():
                 "=" * 60
             )
 
+            print(
+                "🔄 Restarting polling in 5 seconds..."
+            )
+
             time.sleep(
                 5
             )
@@ -4586,3 +4590,4 @@ if __name__ == "__main__":
     # --------------------------------------------------------
 
     polling_error_handler()
+

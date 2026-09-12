@@ -98,11 +98,19 @@ except ImportError:
     OpenAI = None
 
 
-OPENAI_API_KEY = os.getenv(
-    "OPENAI_API_KEY",
+AI_TUNNEL_API_KEY = os.getenv(
+    "AI_TUNNEL_API_KEY",
     ""
 ).strip()
 
+AI_WEB_MODEL = os.getenv(
+    "AI_WEB_MODEL",
+    "gpt-5-mini"
+).strip()
+
+AI_WEB_ENABLED = bool(
+    AI_TUNNEL_API_KEY
+)
 
 AI_WEB_MODEL = os.getenv(
     "AI_WEB_MODEL",
@@ -138,18 +146,18 @@ AI_WEB_ENABLED = bool(
 
 ai_client = None
 
-
 if AI_WEB_ENABLED:
 
     try:
 
         ai_client = OpenAI(
-            api_key=OPENAI_API_KEY
+            api_key=AI_TUNNEL_API_KEY,
+            base_url="https://api.aitunnel.ru/v1/"
         )
 
         print(
             f"🤖 AI WEB SEARCH ENABLED: "
-            f"{AI_WEB_MODEL}"
+            f"{AI_WEB_MODEL} via AI Tunnel"
         )
 
     except Exception as e:
@@ -159,9 +167,7 @@ if AI_WEB_ENABLED:
         )
 
         ai_client = None
-
         AI_WEB_ENABLED = False
-
 # ------------------------------------------------------------
 # Файлы
 # ------------------------------------------------------------

@@ -6619,7 +6619,10 @@ def ai_web_search(
 ):
 
     if not AI_WEB_ENABLED:
-        return []
+        return {
+            "answer": "",
+            "results": []
+        }
 
     original_query = safe_text(
         original_query
@@ -6630,7 +6633,10 @@ def ai_web_search(
     )
 
     if not original_query:
-        return []
+        return {
+            "answer": "",
+            "results": []
+        }
 
     if not prepared_query:
         prepared_query = original_query
@@ -6758,16 +6764,22 @@ def ai_web_search(
         print(
             f"❌ [DDGS] ERROR: {e}"
         )
-
-        return []
+    
+        return {
+            "answer": "",
+            "results": []
+        }
 
     if not search_results:
 
         print(
             "[DDGS] No results"
         )
-
-        return []
+    
+        return {
+            "answer": "",
+            "results": []
+        }
 
     print(
         f"[DDGS] Found: "
@@ -6971,7 +6983,10 @@ def ai_web_search(
         f"{len(results)}"
     )
 
-    return results
+    return {
+        "answer": answer,
+        "results": results
+    }
 
 # ============================================================
 # SEARCH
@@ -7056,17 +7071,27 @@ def perform_search(
                     query,
                     search_query
                 )
-
+            
                 answer = ai_result.get(
                     "answer",
                     ""
                 )
-
+            
                 results = ai_result.get(
                     "results",
                     []
                 )
-
+            
+                if answer:
+            
+                    results.insert(
+                        0,
+                        {
+                            "type": "ai_answer",
+                            "body": answer,
+                            "sources": results.copy()
+                        }
+                    )
 
             # ----------------------------------------------------
             # Fallback:

@@ -309,10 +309,6 @@ web_results = {}
 web_index = {}
 web_query = {}
 
-ai_web_search()
-ai_build_answer()
-clean_web_text()
-
 # ============================================================
 # WEB SEARCH SETTINGS
 # ============================================================

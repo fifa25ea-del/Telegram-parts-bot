@@ -5221,100 +5221,100 @@ def perform_search(
     # --------------------------------------------------------
 
     if mode == "wheels":
-
-    print(
-        f"🔥 SEARCH WHEELS: {query}"
-    )
-
-    log_search(
-        chat_id,
-        query,
-        "wheels"
-    )
-
-    # --------------------------------------------------------
-    # Показываем загрузку ДО поиска и загрузки фотографий.
-    # --------------------------------------------------------
-
-    show_loading_message(
-        chat_id,
-        "⏳ Пожалуйста, подождите...\n"
-        "🛞 Ищем подходящие шины и диски..."
-    )
-
-    try:
-
-        results = find_wheels(
-            query
-        )
-
-    except Exception as e:
-
+    
         print(
-            f"[SEARCH WHEELS] Error: {e}"
+            f"🔥 SEARCH WHEELS: {query}"
         )
-
-        hide_loading_message(
-            chat_id
-        )
-
-        bot.send_message(
-            chat_id,
-            "❌ Произошла ошибка при поиске."
-        )
-
-        return
-
-    if not results:
-
-        hide_loading_message(
-            chat_id
-        )
-
-        print(
-            f"❌ NOT FOUND WHEELS: "
-            f"{query}"
-        )
-
+    
         log_search(
             chat_id,
             query,
-            "NOT_FOUND_WHEELS"
+            "wheels"
         )
-
-        bot.send_message(
+    
+        # --------------------------------------------------------
+        # Показываем загрузку ДО поиска и загрузки фотографий.
+        # --------------------------------------------------------
+    
+        show_loading_message(
             chat_id,
-            "❌ Ничего не найдено."
+            "⏳ Пожалуйста, подождите...\n"
+            "🛞 Ищем подходящие шины и диски..."
         )
-
-        return
-
-    user_results[
-        chat_id
-    ] = results
-
-    user_index[
-        chat_id
-    ] = 0
-
-    user_photo_index[
-        chat_id
-    ] = 0
-
-    # --------------------------------------------------------
-    # Здесь загружаются фотографии.
-    # Сообщение загрузки остаётся на экране.
-    # --------------------------------------------------------
-
-    send_wheels_preview(
-        chat_id,
-        results
-    )
-
-    # --------------------------------------------------------
-    # После формирования карточки/альбома
-    # сообщение загрузки можно удалить.
-    # --------------------------------------------------------
+    
+        try:
+    
+            results = find_wheels(
+                query
+            )
+    
+        except Exception as e:
+    
+            print(
+                f"[SEARCH WHEELS] Error: {e}"
+            )
+    
+            hide_loading_message(
+                chat_id
+            )
+    
+            bot.send_message(
+                chat_id,
+                "❌ Произошла ошибка при поиске."
+            )
+    
+            return
+    
+        if not results:
+    
+            hide_loading_message(
+                chat_id
+            )
+    
+            print(
+                f"❌ NOT FOUND WHEELS: "
+                f"{query}"
+            )
+    
+            log_search(
+                chat_id,
+                query,
+                "NOT_FOUND_WHEELS"
+            )
+    
+            bot.send_message(
+                chat_id,
+                "❌ Ничего не найдено."
+            )
+    
+            return
+    
+        user_results[
+            chat_id
+        ] = results
+    
+        user_index[
+            chat_id
+        ] = 0
+    
+        user_photo_index[
+            chat_id
+        ] = 0
+    
+        # --------------------------------------------------------
+        # Здесь загружаются фотографии.
+        # Сообщение загрузки остаётся на экране.
+        # --------------------------------------------------------
+    
+        send_wheels_preview(
+            chat_id,
+            results
+        )
+    
+        # --------------------------------------------------------
+        # После формирования карточки/альбома
+        # сообщение загрузки можно удалить.
+        # --------------------------------------------------------
 
     hide_loading_message(
         chat_id

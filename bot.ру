@@ -1,5 +1,6 @@
 
-CSV_TIMEOUT = 90# ============================================================
+CSV_TIMEOUT = 90
+
 # TELEGRAM BOT — Stuttgart
 # Railway Edition
 #
@@ -384,6 +385,9 @@ WEB_TRACKING_PARAMS = {
 
 
 def web_domain(url):
+    """
+    Возвращает домен без www, порта и userinfo.
+    """
 
     try:
 
@@ -409,6 +413,9 @@ def web_domain(url):
 
 
 def canonical_web_url(url):
+    """
+    Нормализует URL и удаляет tracking-параметры.
+    """
 
     url = safe_text(url)
 
@@ -429,6 +436,7 @@ def canonical_web_url(url):
             parsed.netloc
             .lower()
             .split("@")[-1]
+            .split(":")[0]
         )
 
         if host.startswith("www."):
@@ -463,14 +471,16 @@ def canonical_web_url(url):
             doseq=True
         )
 
-        return urlunparse((
-            parsed.scheme.lower(),
-            host,
-            path,
-            "",
-            query,
-            ""
-        ))
+        return urlunparse(
+            (
+                parsed.scheme.lower(),
+                host,
+                path,
+                "",
+                query,
+                ""
+            )
+        )
 
     except Exception:
 
@@ -478,17 +488,24 @@ def canonical_web_url(url):
 
 
 def web_tokens(text):
+    """
+    Токены для оценки релевантности.
+    Поддерживает русский, немецкий и английский.
+    """
 
     return re.findall(
-        r"[a-zа-яё0-9]{2,}",
+        r"[a-zа-яёäöüß0-9]{2,}",
         safe_text(text).lower(),
         flags=re.IGNORECASE
     )
-def improve_web_query(query):
 
-    query = safe_text(
-        query
-    )
+
+def improve_web_query(query):
+    """
+    Улучшает поисковый запрос под автомобильные вопросы.
+    """
+
+    query = safe_text(query)
 
     if not query:
         return ""
@@ -499,7 +516,7 @@ def improve_web_query(query):
     # Вопросы о годах выпуска
     # --------------------------------------------------------
 
-    year_patterns = [
+    year_patterns = (
         r"с какого года",
         r"до какого года",
         r"какого года выпуска",
@@ -509,7 +526,9 @@ def improve_web_query(query):
         r"выпускался",
         r"производился",
         r"производство",
-    ]
+        r"когда выпускался",
+        r"когда производился",
+    )
 
     if any(
         re.search(
@@ -522,7 +541,7 @@ def improve_web_query(query):
         return (
             query
             + " годы выпуска "
-            + "production years"
+            + "production years model years"
         )
 
     # --------------------------------------------------------
@@ -535,13 +554,16 @@ def improve_web_query(query):
             "какой двигатель",
             "какой мотор",
             "двигатель",
-            "мотор"
+            "мотор",
+            "какой engine",
+            "engine",
+            "motor",
         )
     ):
 
         return (
             query
-            + " engine motor"
+            + " engine motor engine code"
         )
 
     # --------------------------------------------------------
@@ -554,13 +576,16 @@ def improve_web_query(query):
             "какое масло",
             "масло лить",
             "масло заливать",
-            "объем масла"
+            "объем масла",
+            "сколько масла",
+            "масло двигателя",
+            "какое масло в двигатель",
         )
     ):
 
         return (
             query
-            + " oil capacity specification"
+            + " engine oil capacity oil specification"
         )
 
     # --------------------------------------------------------
@@ -574,26 +599,75 @@ def improve_web_query(query):
             "характеристика",
             "сколько лошадей",
             "мощность",
-            "разгон"
+            "разгон",
+            "максимальная скорость",
+            "расход топлива",
         )
     ):
 
         return (
             query
-            + " specifications"
+            + " specifications technical data"
+        )
+
+    # --------------------------------------------------------
+    # Коробка передач
+    # --------------------------------------------------------
+
+    if any(
+        phrase in lower
+        for phrase in (
+            "какая коробка",
+            "коробка передач",
+            "акпп",
+            "мкпп",
+            "автомат",
+            "трансмиссия",
+            "getriebe",
+        )
+    ):
+
+        return (
+            query
+            + " transmission gearbox"
+        )
+
+    # --------------------------------------------------------
+    # Привод
+    # --------------------------------------------------------
+
+    if any(
+        phrase in lower
+        for phrase in (
+            "какой привод",
+            "привод",
+            "задний привод",
+            "передний привод",
+            "полный привод",
+        )
+    ):
+
+        return (
+            query
+            + " drivetrain drive"
         )
 
     return query
 
-def web_region_candidates(query):
 
-    query = safe_text(
-        query
-    )
+def web_region_candidates(query):
+    """
+    Возвращает регионы поиска в порядке приоритета.
+    """
+
+    query = safe_text(query)
 
     lower = query.lower()
 
-    # Русский запрос.
+    # --------------------------------------------------------
+    # Русский запрос
+    # --------------------------------------------------------
+
     if re.search(
         r"[а-яё]",
         lower
@@ -601,10 +675,14 @@ def web_region_candidates(query):
 
         return [
             "ru-ru",
-            "de-de"
+            "de-de",
+            "us-en",
         ]
 
-    # Немецкий запрос.
+    # --------------------------------------------------------
+    # Немецкий запрос
+    # --------------------------------------------------------
+
     german_words = {
         "der",
         "die",
@@ -620,8 +698,13 @@ def web_region_candidates(query):
         "ersatzteile",
         "bremsen",
         "fahrzeug",
+        "fahrzeuge",
         "mercedes",
         "benz",
+        "baujahr",
+        "leistung",
+        "verbrauch",
+        "motoröl",
     }
 
     tokens = set(
@@ -638,11 +721,13 @@ def web_region_candidates(query):
 
         return [
             "de-de",
-            "us-en"
+            "us-en",
         ]
 
-    # Для автомобильных запросов
-    # сначала Германия.
+    # --------------------------------------------------------
+    # Автомобильные запросы
+    # --------------------------------------------------------
+
     car_markers = (
         "mercedes",
         "benz",
@@ -674,6 +759,11 @@ def web_region_candidates(query):
         "om642",
         "m274",
         "m276",
+        "m264",
+        "m254",
+        "m256",
+        "m177",
+        "m178",
     )
 
     if any(
@@ -683,7 +773,7 @@ def web_region_candidates(query):
 
         return [
             "de-de",
-            "us-en"
+            "us-en",
         ]
 
     return [
@@ -695,6 +785,9 @@ def web_result_score(
     result,
     query
 ):
+    """
+    Оценивает релевантность результата поиска.
+    """
 
     title = safe_text(
         result.get("title")
@@ -715,19 +808,24 @@ def web_result_score(
 
     score = 0
 
-    # Полный запрос в заголовке.
+    # --------------------------------------------------------
+    # Полный запрос
+    # --------------------------------------------------------
+
     if query and query in title:
         score += 30
 
-    # Полный запрос в описании.
     if query and query in body:
         score += 12
+
+    # --------------------------------------------------------
+    # Отдельные слова
+    # --------------------------------------------------------
 
     tokens = web_tokens(
         query
     )
 
-    # Слова запроса.
     for token in set(tokens):
 
         if len(token) < 3:
@@ -742,14 +840,20 @@ def web_result_score(
         if token in url:
             score += 1
 
-    # Технические документы часто очень полезны
-    # для автомобильных запросов.
-    if url.endswith(".pdf"):
+    # --------------------------------------------------------
+    # PDF
+    # --------------------------------------------------------
+
+    if url.split("?")[0].endswith(".pdf"):
         score += 4
 
-    # Официальные/технические домены.
+    # --------------------------------------------------------
+    # Официальные / технические домены
+    # --------------------------------------------------------
+
     trusted_domains = (
         "mercedes-benz.com",
+        "mercedes-benz.de",
         "bosch.com",
         "zf.com",
         "continental.com",
@@ -779,8 +883,15 @@ def web_result_score(
 
 
 def clean_web_text(text):
+    """
+    Приводит HTML-текст к нормальному виду.
+    """
 
     text = safe_text(
+        text
+    )
+
+    text = unescape(
         text
     )
 
@@ -798,6 +909,10 @@ def web_excerpt(
     query,
     max_chars=1200
 ):
+    """
+    Извлекает наиболее полезный фрагмент текста
+    относительно поискового запроса.
+    """
 
     text = clean_web_text(
         text
@@ -817,32 +932,42 @@ def web_excerpt(
 
     query_tokens = [
         token
-        for token in web_tokens(
-            query
-        )
+        for token in web_tokens(query)
         if len(token) >= 3
     ]
 
-    # Удаляем общеупотребительные
-    # слова из вопроса.
+    # --------------------------------------------------------
+    # Стоп-слова.
+    # --------------------------------------------------------
+
     stop_words = {
         "какой",
         "какая",
         "какое",
         "какие",
+        "сколько",
         "года",
         "год",
         "выпускается",
         "выпускался",
         "выпуск",
+        "производство",
+        "производился",
         "с",
         "до",
+        "для",
+        "это",
+        "есть",
         "the",
         "what",
         "when",
         "year",
         "years",
-        "production"
+        "production",
+        "from",
+        "until",
+        "which",
+        "with",
     }
 
     useful_tokens = [
@@ -861,20 +986,27 @@ def web_excerpt(
         sentences
     ):
 
+        sentence = safe_text(
+            sentence
+        )
+
+        if not sentence:
+            continue
+
         sentence_lower = (
             sentence.lower()
         )
 
         score = 0
 
+        # Слова запроса.
         for token in useful_tokens:
 
             if token in sentence_lower:
 
                 score += 5
 
-        # Числа годов — очень важны
-        # для вопросов про годы.
+        # Годы.
         if re.search(
             r"\b(?:19|20)\d{2}\b",
             sentence
@@ -882,8 +1014,7 @@ def web_excerpt(
 
             score += 3
 
-        # Фразы, которые часто встречаются
-        # в автомобильных карточках.
+        # Автомобильные технические маркеры.
         for phrase in (
             "производ",
             "выпуск",
@@ -894,6 +1025,16 @@ def web_excerpt(
             "built",
             "from",
             "until",
+            "engine",
+            "motor",
+            "oil",
+            "capacity",
+            "specification",
+            "technical data",
+            "leistung",
+            "baujahr",
+            "motoröl",
+            "getriebe",
         ):
 
             if phrase in sentence_lower:
@@ -911,21 +1052,20 @@ def web_excerpt(
             )
 
     # --------------------------------------------------------
-    # Если нашли хорошие предложения —
-    # собираем несколько соседних.
+    # Собираем соседние предложения.
     # --------------------------------------------------------
 
     if scored:
 
         scored.sort(
-            key=lambda item:
+            key=lambda item: (
                 item[0],
+                -item[1]
+            ),
             reverse=True
         )
 
-        best_score, best_position, _ = (
-            scored[0]
-        )
+        best_position = scored[0][1]
 
         selected = []
 
@@ -937,9 +1077,7 @@ def web_excerpt(
 
             if (
                 position < 0
-                or position >= len(
-                    sentences
-                )
+                or position >= len(sentences)
             ):
                 continue
 
@@ -947,10 +1085,10 @@ def web_excerpt(
                 sentences[position]
             )
 
-            if not sentence:
-                continue
-
-            if sentence not in selected:
+            if (
+                sentence
+                and sentence not in selected
+            ):
 
                 selected.append(
                     sentence
@@ -970,7 +1108,7 @@ def web_excerpt(
         return result
 
     # --------------------------------------------------------
-    # Fallback
+    # Fallback.
     # --------------------------------------------------------
 
     if len(text) > max_chars:
@@ -984,10 +1122,23 @@ def web_excerpt(
 
 
 # ============================================================
-# WEB SEARCH — PAGE EXTRACTION
+# WEB RESPONSE ENCODING
 # ============================================================
 
 def decode_web_response(response):
+    """
+    Надёжное определение кодировки HTTP-ответа.
+
+    Приоритет:
+        1. BOM
+        2. HTTP Content-Type
+        3. HTML meta charset
+        4. UTF-8
+        5. CP1251 / Windows-1251
+        6. KOI8-R
+        7. ISO-8859-5
+        8. requests apparent_encoding
+    """
 
     raw = response.content
 
@@ -997,22 +1148,62 @@ def decode_web_response(response):
     candidates = []
 
     # --------------------------------------------------------
-    # 1. Кодировка из HTTP-заголовка
+    # BOM
     # --------------------------------------------------------
 
-    header_encoding = (
-        response.encoding
-        or ""
-    )
-
-    if header_encoding:
+    if raw.startswith(
+        b"\xef\xbb\xbf"
+    ):
 
         candidates.append(
-            header_encoding
+            "utf-8-sig"
+        )
+
+    elif raw.startswith(
+        b"\xff\xfe"
+    ):
+
+        candidates.append(
+            "utf-16"
+        )
+
+    elif raw.startswith(
+        b"\xfe\xff"
+    ):
+
+        candidates.append(
+            "utf-16-be"
         )
 
     # --------------------------------------------------------
-    # 2. Ищем charset внутри HTML
+    # HTTP charset
+    # --------------------------------------------------------
+
+    content_type = safe_text(
+        response.headers.get(
+            "Content-Type",
+            ""
+        )
+    )
+
+    match = re.search(
+        r"charset\s*=\s*['\"]?([^;\s'\"]+)",
+        content_type,
+        re.IGNORECASE
+    )
+
+    if match:
+
+        candidates.append(
+            match.group(1)
+        )
+
+    # --------------------------------------------------------
+    # Charset из HTML.
+    #
+    # Важно:
+    # читаем только начало файла как latin-1,
+    # чтобы не потерять байты.
     # --------------------------------------------------------
 
     try:
@@ -1022,8 +1213,33 @@ def decode_web_response(response):
             errors="ignore"
         )
 
+        # HTML5:
+        #
+        # <meta charset="utf-8">
+        #
+
         match = re.search(
-            r'<meta[^>]+charset=["\']?\s*'
+            r"<meta[^>]+charset\s*=\s*"
+            r"[\"']?\s*([a-zA-Z0-9._-]+)",
+            head,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            candidates.append(
+                match.group(1)
+            )
+
+        # Старый формат:
+        #
+        # <meta http-equiv="Content-Type"
+        #       content="text/html; charset=windows-1251">
+        #
+
+        match = re.search(
+            r"content\s*=\s*[\"'][^\"']*"
+            r"charset\s*=\s*"
             r"([a-zA-Z0-9._-]+)",
             head,
             re.IGNORECASE
@@ -1031,22 +1247,7 @@ def decode_web_response(response):
 
         if match:
 
-            candidates.insert(
-                0,
-                match.group(1)
-            )
-
-        match = re.search(
-            r'content=["\'][^"\']*charset='
-            r'([a-zA-Z0-9._-]+)',
-            head,
-            re.IGNORECASE
-        )
-
-        if match:
-
-            candidates.insert(
-                0,
+            candidates.append(
                 match.group(1)
             )
 
@@ -1054,7 +1255,7 @@ def decode_web_response(response):
         pass
 
     # --------------------------------------------------------
-    # 3. Частые кодировки русских сайтов
+    # Основные варианты.
     # --------------------------------------------------------
 
     candidates.extend([
@@ -1062,11 +1263,11 @@ def decode_web_response(response):
         "cp1251",
         "windows-1251",
         "koi8-r",
-        "iso-8859-5"
+        "iso-8859-5",
     ])
 
     # --------------------------------------------------------
-    # 4. Что предполагает requests
+    # requests detection.
     # --------------------------------------------------------
 
     try:
@@ -1085,10 +1286,10 @@ def decode_web_response(response):
         pass
 
     # --------------------------------------------------------
-    # Убираем дубликаты.
+    # Убираем дубли.
     # --------------------------------------------------------
 
-    unique_encodings = []
+    unique = []
 
     seen = set()
 
@@ -1108,20 +1309,19 @@ def decode_web_response(response):
             encoding
         )
 
-        unique_encodings.append(
+        unique.append(
             encoding
         )
 
     # --------------------------------------------------------
-    # Выбираем вариант с минимальным
-    # количеством символов �.
+    # Проверяем кодировки.
     # --------------------------------------------------------
 
     best_text = ""
-
     best_score = None
+    best_encoding = ""
 
-    for encoding in unique_encodings:
+    for encoding in unique:
 
         try:
 
@@ -1138,6 +1338,19 @@ def decode_web_response(response):
             text.count("\ufffd")
         )
 
+        # Mojibake:
+        #
+        # РџСЂРёРІРµС‚
+        # РЈСЂРѕР»...
+        #
+
+        mojibake_count = len(
+            re.findall(
+                r"(?:Р.|С.|Ð.|Ñ.){3,}",
+                text
+            )
+        )
+
         cyrillic_count = len(
             re.findall(
                 r"[А-Яа-яЁё]",
@@ -1145,14 +1358,38 @@ def decode_web_response(response):
             )
         )
 
-        # Чем меньше � — тем лучше.
-        # Русский текст получает дополнительный бонус.
+        latin_count = len(
+            re.findall(
+                r"[A-Za-z]",
+                text
+            )
+        )
+
+        # Наличие HTML также является
+        # небольшим признаком нормальной
+        # декодировки.
+        html_marker_bonus = 0
+
+        if (
+            "<html" in text.lower()
+            or "<body" in text.lower()
+            or "<meta" in text.lower()
+        ):
+
+            html_marker_bonus = 20
+
         score = (
-            replacement_count * 100
+            replacement_count * 1000
+            + mojibake_count * 10
             - min(
                 cyrillic_count,
-                5000
+                10000
             )
+            - min(
+                latin_count,
+                5000
+            ) * 0.02
+            - html_marker_bonus
         )
 
         if (
@@ -1162,6 +1399,15 @@ def decode_web_response(response):
 
             best_score = score
             best_text = text
+            best_encoding = encoding
+
+    if best_text:
+
+        print(
+            f"[WEB ENCODING] "
+            f"selected={best_encoding} "
+            f"score={best_score}"
+        )
 
     return best_text
 
@@ -1174,6 +1420,20 @@ def extract_web_page(
     url,
     query
 ):
+    """
+    Загружает HTML-страницу, декодирует её,
+    очищает от мусора и возвращает релевантный
+    текстовый фрагмент.
+
+    ВАЖНО:
+    здесь используется именно decode_web_response(),
+    поэтому переменная html всегда создаётся
+    до дальнейшей обработки.
+    """
+
+    url = safe_text(
+        url
+    )
 
     if not url:
         return ""
@@ -1214,6 +1474,10 @@ def extract_web_page(
 
             return ""
 
+        # ----------------------------------------------------
+        # Content-Type.
+        # ----------------------------------------------------
+
         content_type = (
             response.headers.get(
                 "Content-Type",
@@ -1221,42 +1485,59 @@ def extract_web_page(
             ).lower()
         )
 
-        # Не пытаемся парсить PDF,
-        # картинки и прочее.
-        if (
-            "text/html"
-            not in content_type
-            and "application/xhtml"
-            not in content_type
-        ):
+        # Иногда сервер не указывает Content-Type.
+        # В таком случае всё равно пробуем HTML,
+        # если URL выглядит как обычная страница.
+        is_html = (
+            "text/html" in content_type
+            or "application/xhtml" in content_type
+            or not content_type
+        )
 
-            return ""
+        if not is_html:
 
-        html = response.content
-
-        if not html:
-            return ""
-
-        if not html:
-            return ""
-
-        # ----------------------------------------------------
-        # Проверка кодировки.
-        # ----------------------------------------------------
-
-        if "\ufffd" in html:
-
-            replacement_count = html.count(
-                "\ufffd"
+            print(
+                f"[WEB PAGE] Skip non-HTML: "
+                f"{content_type}"
             )
+
+            return ""
+
+        # ----------------------------------------------------
+        # Декодирование.
+        # ----------------------------------------------------
+
+        html = decode_web_response(
+            response
+        )
+
+        if not html:
+
+            print(
+                f"[WEB PAGE] Empty decoded HTML: "
+                f"{url}"
+            )
+
+            return ""
+
+        # ----------------------------------------------------
+        # Проверка битых символов.
+        # ----------------------------------------------------
+
+        replacement_count = html.count(
+            "\ufffd"
+        )
+
+        if replacement_count:
 
             print(
                 f"[WEB PAGE] Warning: "
-                f"{replacement_count} replacement chars"
+                f"{replacement_count} "
+                f"replacement chars"
             )
 
         # ----------------------------------------------------
-        # HTML -> text
+        # HTML -> BeautifulSoup.
         # ----------------------------------------------------
 
         soup = BeautifulSoup(
@@ -1264,7 +1545,10 @@ def extract_web_page(
             "html.parser"
         )
 
-        # Удаляем мусор.
+        # ----------------------------------------------------
+        # Удаляем технический мусор.
+        # ----------------------------------------------------
+
         for tag in soup([
             "script",
             "style",
@@ -1275,13 +1559,42 @@ def extract_web_page(
             "form",
             "nav",
             "footer",
-            "header"
+            "header",
+            "aside",
+            "template",
         ]):
 
             tag.decompose()
 
         # ----------------------------------------------------
-        # Сначала пытаемся взять основной контент.
+        # Удаляем очевидные элементы
+        # cookie / advertising.
+        # ----------------------------------------------------
+
+        for selector in (
+            "[class*='cookie']",
+            "[id*='cookie']",
+            "[class*='advert']",
+            "[id*='advert']",
+            "[class*='banner']",
+            "[id*='banner']",
+            "[class*='popup']",
+            "[id*='popup']",
+        ):
+
+            try:
+
+                for tag in soup.select(
+                    selector
+                ):
+
+                    tag.decompose()
+
+            except Exception:
+                pass
+
+        # ----------------------------------------------------
+        # Сначала основной контент.
         # ----------------------------------------------------
 
         content_node = None
@@ -1289,15 +1602,30 @@ def extract_web_page(
         for selector in (
             "main",
             "article",
-            "[role='main']"
+            "[role='main']",
+            ".article",
+            ".article-content",
+            ".post-content",
+            ".entry-content",
+            ".content",
         ):
 
-            content_node = soup.select_one(
-                selector
-            )
+            try:
+
+                content_node = soup.select_one(
+                    selector
+                )
+
+            except Exception:
+
+                content_node = None
 
             if content_node:
                 break
+
+        # ----------------------------------------------------
+        # Получаем текст.
+        # ----------------------------------------------------
 
         if content_node:
 
@@ -1313,22 +1641,13 @@ def extract_web_page(
                 strip=True
             )
 
+        # ----------------------------------------------------
+        # Нормализация.
+        # ----------------------------------------------------
+
         text = unescape(
             text
         )
-
-        text = re.sub(
-            r"\s+",
-            " ",
-            text
-        ).strip()
-
-        if not text:
-            return ""
-
-        # ----------------------------------------------------
-        # Удаляем повторяющиеся �.
-        # ----------------------------------------------------
 
         text = re.sub(
             r"\ufffd+",
@@ -1342,8 +1661,11 @@ def extract_web_page(
             text
         ).strip()
 
+        if not text:
+            return ""
+
         # ----------------------------------------------------
-        # Ищем полезный фрагмент.
+        # Выбираем релевантный фрагмент.
         # ----------------------------------------------------
 
         excerpt = web_excerpt(
@@ -1355,7 +1677,27 @@ def extract_web_page(
         if excerpt:
             return excerpt
 
-        return text[:1200]
+        # ----------------------------------------------------
+        # Fallback.
+        # ----------------------------------------------------
+
+        if len(text) > 1200:
+
+            return (
+                text[:1197]
+                + "..."
+            )
+
+        return text
+
+    except requests.RequestException as e:
+
+        print(
+            f"[WEB PAGE] REQUEST ERROR: "
+            f"{url} -> {e}"
+        )
+
+        return ""
 
     except Exception as e:
 
@@ -5801,6 +6143,20 @@ def ai_web_search(
 Ответ дай на русском языке.
 
 Не придумывай отсутствующие данные.
+Не копируй большие фрагменты исходных веб-страниц.
+
+Не выводи HTML, служебный текст сайта,
+кракозябры или повреждённую кодировку.
+
+Если текст какого-либо источника отображается
+некорректно или содержит нечитаемые символы,
+игнорируй этот источник и используй другой.
+
+Ответ формируй своими словами на основе
+найденных данных.
+
+Не показывай пользователю сырой текст страницы.
+
 
 Не задавай уточняющий вопрос, если можно сделать
 разумный поиск самостоятельно.

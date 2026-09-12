@@ -1229,6 +1229,10 @@ def repair_web_mojibake(text):
 # WEB RESPONSE DECODING
 # ============================================================
 
+# ============================================================
+# WEB RESPONSE ENCODING
+# ============================================================
+
 def decode_web_response(response):
 
     raw = response.content
@@ -1236,39 +1240,125 @@ def decode_web_response(response):
     if not raw:
         return ""
 
+    # --------------------------------------------------------
+    # 1. BOM
+    # --------------------------------------------------------
+
+    if raw.startswith(b"\xef\xbb\xbf"):
+
+        try:
+            text = raw.decode(
+                "utf-8-sig",
+                errors="strict"
+            )
+
+            print(
+                "[WEB ENCODING] selected=utf-8-sig"
+            )
+
+            return text
+
+        except Exception:
+            pass
+
+    if raw.startswith(b"\xff\xfe"):
+
+        try:
+            text = raw.decode(
+                "utf-16",
+                errors="strict"
+            )
+
+            print(
+                "[WEB ENCODING] selected=utf-16"
+            )
+
+            return text
+
+        except Exception:
+            pass
+
+    if raw.startswith(b"\xfe\xff"):
+
+        try:
+            text = raw.decode(
+                "utf-16-be",
+                errors="strict"
+            )
+
+            print(
+                "[WEB ENCODING] selected=utf-16-be"
+            )
+
+            return text
+
+        except Exception:
+            pass
+
+    # --------------------------------------------------------
+    # 2. Если UTF-8 валидный — почти всегда это лучший
+    # вариант для современного HTML.
+    # --------------------------------------------------------
+
+    try:
+
+        text = raw.decode(
+            "utf-8",
+            errors="strict"
+        )
+
+        # Проверяем на явный mojibake.
+        mojibake_patterns = (
+            "Рђ",
+            "Р°",
+            "Рё",
+            "РЅ",
+            "Рѕ",
+            "Рї",
+            "С‚",
+            "СЊ",
+            "Ð",
+            "Ñ",
+            "пїЅ",
+            "п╨",
+            "п╬",
+            "п²",
+            "п©",
+            "я┐",
+            "я│",
+            "я┌",
+            "я─",
+        )
+
+        mojibake_count = sum(
+            text.count(pattern)
+            for pattern in mojibake_patterns
+        )
+
+        replacement_count = text.count(
+            "\ufffd"
+        )
+
+        if (
+            replacement_count == 0
+            and mojibake_count < 3
+        ):
+
+            print(
+                "[WEB ENCODING] selected=utf-8"
+            )
+
+            return text
+
+    except UnicodeDecodeError:
+
+        pass
+
+    # --------------------------------------------------------
+    # 3. Charset из HTTP заголовка
+    # --------------------------------------------------------
+
     candidates = []
-
-    # --------------------------------------------------------
-    # BOM
-    # --------------------------------------------------------
-
-    if raw.startswith(
-        b"\xef\xbb\xbf"
-    ):
-
-        candidates.append(
-            "utf-8-sig"
-        )
-
-    elif raw.startswith(
-        b"\xff\xfe"
-    ):
-
-        candidates.append(
-            "utf-16"
-        )
-
-    elif raw.startswith(
-        b"\xfe\xff"
-    ):
-
-        candidates.append(
-            "utf-16-be"
-        )
-
-    # --------------------------------------------------------
-    # HTTP Content-Type charset
-    # --------------------------------------------------------
 
     content_type = safe_text(
         response.headers.get(
@@ -1290,22 +1380,19 @@ def decode_web_response(response):
         )
 
     # --------------------------------------------------------
-    # HTML charset
+    # 4. Charset из HTML
     # --------------------------------------------------------
 
     try:
 
-        head = raw[
-            :200000
-        ].decode(
+        head = raw[:100000].decode(
             "latin-1",
             errors="ignore"
         )
 
-        # <meta charset="utf-8">
         match = re.search(
-            r"<meta[^>]+charset\s*=\s*"
-            r"['\"]?\s*([a-zA-Z0-9._-]+)",
+            r'<meta[^>]+charset\s*=\s*'
+            r'["\']?\s*([a-zA-Z0-9._-]+)',
             head,
             re.IGNORECASE
         )
@@ -1316,12 +1403,9 @@ def decode_web_response(response):
                 match.group(1)
             )
 
-        # <meta http-equiv="Content-Type"
-        # content="text/html; charset=utf-8">
         match = re.search(
-            r"content\s*=\s*['\"][^'\"]*"
-            r"charset\s*=\s*"
-            r"([a-zA-Z0-9._-]+)",
+            r'content=["\'][^"\']*charset='
+            r'([a-zA-Z0-9._-]+)',
             head,
             re.IGNORECASE
         )
@@ -1336,22 +1420,19 @@ def decode_web_response(response):
         pass
 
     # --------------------------------------------------------
-    # ВАЖНО:
-    # UTF-8 ставим раньше старых кодировок.
+    # 5. Старые русские кодировки
     # --------------------------------------------------------
 
     candidates.extend([
-        "utf-8",
-        "utf-8-sig",
         "cp1251",
         "windows-1251",
         "koi8-r",
         "iso-8859-5",
+        "latin-1",
     ])
 
     # --------------------------------------------------------
-    # Requests apparent encoding —
-    # только дополнительный вариант.
+    # 6. apparent_encoding — только в конце
     # --------------------------------------------------------
 
     try:
@@ -1370,7 +1451,7 @@ def decode_web_response(response):
         pass
 
     # --------------------------------------------------------
-    # Убираем дубли.
+    # 7. Убираем дубли
     # --------------------------------------------------------
 
     unique = []
@@ -1398,10 +1479,12 @@ def decode_web_response(response):
         )
 
     # --------------------------------------------------------
-    # Декодируем всеми возможными вариантами.
+    # 8. Оцениваем кодировки
     # --------------------------------------------------------
 
-    decoded = []
+    best_text = ""
+    best_score = None
+    best_encoding = ""
 
     for encoding in unique:
 
@@ -1416,53 +1499,99 @@ def decode_web_response(response):
 
             continue
 
-        if not text:
-            continue
-
-        score = web_encoding_score(
-            text
+        replacement_count = text.count(
+            "\ufffd"
         )
 
-        decoded.append(
-            (
-                score,
-                encoding,
+        # ----------------------------------------------------
+        # Определяем типичные признаки mojibake.
+        # ----------------------------------------------------
+
+        mojibake_patterns = (
+            "Рђ",
+            "Р°",
+            "Рё",
+            "РЅ",
+            "Рѕ",
+            "Рї",
+            "С‚",
+            "СЊ",
+            "Ð",
+            "Ñ",
+            "пїЅ",
+            "п╨",
+            "п╬",
+            "п²",
+            "п©",
+            "я┐",
+            "я│",
+            "я┌",
+            "я─",
+        )
+
+        mojibake_count = sum(
+            text.count(pattern)
+            for pattern in mojibake_patterns
+        )
+
+        cyrillic_count = len(
+            re.findall(
+                r"[А-Яа-яЁё]",
                 text
             )
         )
 
-    if not decoded:
-        return ""
+        latin_count = len(
+            re.findall(
+                r"[A-Za-z]",
+                text
+            )
+        )
 
-    # --------------------------------------------------------
-    # Лучший вариант.
-    # --------------------------------------------------------
+        # ----------------------------------------------------
+        # Чем меньше битых символов —
+        # тем лучше.
+        #
+        # Mojibake штрафуем очень сильно.
+        #
+        # Кириллица получает небольшой бонус.
+        # ----------------------------------------------------
 
-    decoded.sort(
-        key=lambda item:
-            item[0]
-    )
+        score = (
+            replacement_count * 5000
+            + mojibake_count * 500
+            - min(
+                cyrillic_count,
+                20000
+            ) * 0.05
+        )
 
-    best_score, best_encoding, best_text = (
-        decoded[0]
-    )
+        # Русский сайт.
+        if (
+            cyrillic_count > 50
+            and cyrillic_count > latin_count * 0.05
+        ):
 
-    print(
-        "[WEB ENCODING] "
-        f"selected={best_encoding} "
-        f"score={best_score}"
-    )
+            score -= 10
 
-    # --------------------------------------------------------
-    # Дополнительный ремонт mojibake.
-    # --------------------------------------------------------
+        if (
+            best_score is None
+            or score < best_score
+        ):
 
-    repaired = repair_web_mojibake(
-        best_text
-    )
+            best_score = score
+            best_text = text
+            best_encoding = encoding
 
-    return repaired
+    if best_text:
 
+        print(
+            f"[WEB ENCODING] "
+            f"selected={best_encoding} "
+            f"score={best_score}"
+        )
+
+    return best_text
 
 # ============================================================
 # WEB EXCERPT
@@ -1753,26 +1882,24 @@ def extract_web_page(
         )
 
         # ----------------------------------------------------
-        # Проверяем тип документа.
+        # Только HTML / XHTML.
         # ----------------------------------------------------
 
         if (
-            "text/html"
-            not in content_type
-            and "application/xhtml"
-            not in content_type
+            "text/html" not in content_type
+            and "application/xhtml" not in content_type
+            and "application/xml" not in content_type
         ):
 
             print(
-                "[WEB PAGE] "
-                f"Unsupported content type: "
+                f"[WEB PAGE] Skip non-HTML: "
                 f"{content_type}"
             )
 
             return ""
 
         # ----------------------------------------------------
-        # Декодируем HTML.
+        # ДЕКОДИРУЕМ RESPONSE
         # ----------------------------------------------------
 
         html = decode_web_response(
@@ -1782,14 +1909,13 @@ def extract_web_page(
         if not html:
 
             print(
-                "[WEB PAGE] "
-                "Empty decoded HTML"
+                "[WEB PAGE] Empty decoded HTML"
             )
 
             return ""
 
         # ----------------------------------------------------
-        # Проверка кодировки.
+        # Проверка битых символов.
         # ----------------------------------------------------
 
         replacement_count = html.count(
@@ -1799,21 +1925,12 @@ def extract_web_page(
         if replacement_count:
 
             print(
-                "[WEB PAGE] Warning: "
-                f"{replacement_count} "
-                "replacement chars"
+                f"[WEB PAGE] Warning: "
+                f"{replacement_count} replacement chars"
             )
 
         # ----------------------------------------------------
-        # Исправляем mojibake.
-        # ----------------------------------------------------
-
-        html = repair_web_mojibake(
-            html
-        )
-
-        # ----------------------------------------------------
-        # HTML -> BeautifulSoup.
+        # HTML -> BeautifulSoup
         # ----------------------------------------------------
 
         soup = BeautifulSoup(
@@ -1842,7 +1959,7 @@ def extract_web_page(
             tag.decompose()
 
         # ----------------------------------------------------
-        # Основной контент.
+        # Ищем основной контент.
         # ----------------------------------------------------
 
         content_node = None
@@ -1854,15 +1971,13 @@ def extract_web_page(
             ".content",
             ".article",
             ".post",
-            ".entry-content",
+            ".entry-content"
         ):
 
             try:
 
-                content_node = (
-                    soup.select_one(
-                        selector
-                    )
+                content_node = soup.select_one(
+                    selector
                 )
 
             except Exception:
@@ -1870,10 +1985,11 @@ def extract_web_page(
                 content_node = None
 
             if content_node:
+
                 break
 
         # ----------------------------------------------------
-        # Получаем текст.
+        # Извлекаем текст.
         # ----------------------------------------------------
 
         if content_node:
@@ -1890,17 +2006,23 @@ def extract_web_page(
                 strip=True
             )
 
-        # ----------------------------------------------------
-        # Очистка.
-        # ----------------------------------------------------
-
         text = unescape(
             text
         )
 
-        text = repair_web_mojibake(
+        text = re.sub(
+            r"\s+",
+            " ",
             text
-        )
+        ).strip()
+
+        if not text:
+
+            return ""
+
+        # ----------------------------------------------------
+        # Удаляем replacement characters.
+        # ----------------------------------------------------
 
         text = re.sub(
             r"\ufffd+",
@@ -1915,10 +2037,11 @@ def extract_web_page(
         ).strip()
 
         if not text:
+
             return ""
 
         # ----------------------------------------------------
-        # Берём наиболее релевантный фрагмент.
+        # Получаем релевантный фрагмент.
         # ----------------------------------------------------
 
         excerpt = web_excerpt(

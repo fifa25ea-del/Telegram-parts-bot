@@ -137,7 +137,7 @@ AI_WEB_CONTEXT = os.getenv(
 AI_WEB_MAX_SOURCES = int(
     os.getenv(
         "AI_WEB_MAX_SOURCES",
-        "8"
+        "4"
     )
 )
 
@@ -352,14 +352,14 @@ web_query = {}
 # WEB SEARCH SETTINGS
 # ============================================================
 
-WEB_MAX_RESULTS = 8
+WEB_MAX_RESULTS = 5
 
 # Получаем больше результатов, чем показываем,
 # чтобы потом отфильтровать мусор.
-WEB_RAW_RESULTS = 14
+WEB_RAW_RESULTS = 8
 
 # Сколько лучших страниц реально открываем.
-WEB_EXTRACT_COUNT = 5
+WEB_EXTRACT_COUNT = 3
 
 WEB_SEARCH_TIMEOUT = 15
 WEB_EXTRACT_TIMEOUT = 12
@@ -6594,11 +6594,10 @@ def _extract_ai_sources(
 def ai_web_search(
     original_query,
     prepared_query=None,
-    max_results=10
+    max_results=5
 ):
 
     if not AI_WEB_ENABLED:
-
         return []
 
     original_query = safe_text(
@@ -6610,110 +6609,247 @@ def ai_web_search(
     )
 
     if not original_query:
-
         return []
 
     if not prepared_query:
-
         prepared_query = original_query
 
     print(
-        "🤖 AI WEB SEARCH"
+        "🤖 AI WEB SEARCH — ECONOMY MODE"
     )
 
     print(
-        f"[AI WEB] Original: "
-        f"{original_query}"
+        f"[AI WEB] Query: {prepared_query}"
     )
 
-    print(
-        f"[AI WEB] Prepared: "
-        f"{prepared_query}"
-    )
-
-    prompt = f"""
-Пользовательский запрос:
-
-{original_query}
-
-Предварительно нормализованный запрос:
-
-{prepared_query}
-
-Проведи полноценное web-исследование.
-
-Сначала самостоятельно определи смысл запроса.
-
-Если это автомобильный запрос — определи автомобиль,
-кузов, двигатель, модификацию и техническую тему.
-
-Если в запросе есть код кузова, двигателя, ошибки,
-номер детали или размер — обязательно учитывай его
-как важный поисковый идентификатор.
-
-Проведи поиск по нескольким релевантным источникам.
-
-Сравни найденные данные.
-
-Если информация зависит от года, двигателя,
-рестайлинга или конкретной модификации —
-обязательно учитывай это.
-
-Если пользователь ожидает конкретное значение,
-дай его в начале ответа.
-
-Ответ дай на русском языке.
-
-Не придумывай отсутствующие данные.
-Не копируй большие фрагменты исходных веб-страниц.
-
-Не выводи HTML, служебный текст сайта,
-кракозябры или повреждённую кодировку.
-
-Если текст какого-либо источника отображается
-некорректно или содержит нечитаемые символы,
-игнорируй этот источник и используй другой.
-
-Ответ формируй своими словами на основе
-найденных данных.
-
-Не показывай пользователю сырой текст страницы.
-
-
-Не задавай уточняющий вопрос, если можно сделать
-разумный поиск самостоятельно.
-
-Не вставляй длинные URL в текст.
-Источники будут показаны Telegram-кнопками.
-
-Максимально полезный ответ:
-не больше примерно 2500-3000 символов.
-"""
+    # ========================================================
+    # 1. DDGS — дешёвый поиск
+    # ========================================================
 
     try:
 
-        response = ai_client.responses.create(
+        from ddgs import DDGS
+
+        search_results = []
+
+        regions = web_region_candidates(
+            prepared_query
+        )
+
+        for region in regions:
+
+            try:
+
+                with DDGS(
+                    timeout=WEB_SEARCH_TIMEOUT
+                ) as ddgs:
+
+                    results = list(
+                        ddgs.text(
+                            prepared_query,
+                            region=region,
+                            safesearch="moderate",
+                            max_results=max_results
+                        )
+                    )
+
+                if results:
+
+                    search_results.extend(
+                        results
+                    )
+
+            except Exception as e:
+
+                print(
+                    f"[DDGS] ERROR "
+                    f"{region}: {e}"
+                )
+
+        # ----------------------------------------------------
+        # Убираем дубли
+        # ----------------------------------------------------
+
+        unique_results = []
+
+        seen_urls = set()
+
+        for item in search_results:
+
+            if not isinstance(
+                item,
+                dict
+            ):
+                continue
+
+            url = canonical_web_url(
+                item.get(
+                    "href",
+                    ""
+                )
+            )
+
+            if not url:
+                continue
+
+            if url in seen_urls:
+                continue
+
+            seen_urls.add(url)
+
+            unique_results.append(
+                {
+                    "title": clean_web_text(
+                        item.get(
+                            "title",
+                            ""
+                        )
+                    ),
+                    "url": url,
+                    "description": clean_web_text(
+                        item.get(
+                            "body",
+                            ""
+                        )
+                    )
+                }
+            )
+
+        # ----------------------------------------------------
+        # Сортируем по релевантности
+        # ----------------------------------------------------
+
+        unique_results.sort(
+            key=lambda item:
+                web_result_score(
+                    item,
+                    prepared_query
+                ),
+            reverse=True
+        )
+
+        search_results = unique_results[
+            :max_results
+        ]
+
+    except Exception as e:
+
+        print(
+            f"❌ [DDGS] ERROR: {e}"
+        )
+
+        return []
+
+    if not search_results:
+
+        print(
+            "[DDGS] No results"
+        )
+
+        return []
+
+    print(
+        f"[DDGS] Found: "
+        f"{len(search_results)}"
+    )
+
+    # ========================================================
+    # 2. Формируем короткий контекст для AI
+    # ========================================================
+
+    context_parts = []
+
+    for index, item in enumerate(
+        search_results[:5],
+        start=1
+    ):
+
+        title = safe_text(
+            item.get("title")
+        )
+
+        description = safe_text(
+            item.get("description")
+        )
+
+        url = safe_text(
+            item.get("url")
+        )
+
+        if len(description) > 700:
+
+            description = (
+                description[:697]
+                + "..."
+            )
+
+        context_parts.append(
+            f"[{index}] {title}\n"
+            f"{description}\n"
+            f"URL: {url}"
+        )
+
+    context = "\n\n".join(
+        context_parts
+    )
+
+    # ========================================================
+    # 3. Очень короткий prompt
+    # ========================================================
+
+    prompt = f"""
+Ответь на вопрос пользователя:
+
+{original_query}
+
+Используй только информацию ниже.
+
+{context}
+
+Правила:
+- Ответ только на русском.
+- Сначала сразу дай ответ.
+- Максимум 2-3 коротких предложения.
+- Не повторяй вопрос.
+- Не придумывай данные.
+- Если источники противоречат друг другу,
+  укажи это кратко.
+- Не вставляй URL.
+"""
+
+    # ========================================================
+    # 4. AI — только суммаризация
+    # ========================================================
+
+    try:
+
+        response = ai_client.chat.completions.create(
+
             model=AI_WEB_MODEL,
 
-            instructions=AI_WEB_INSTRUCTIONS,
-
-            input=prompt,
-
-            tools=[
+            messages=[
                 {
-                    "type": "web_search"
+                    "role": "system",
+                    "content": (
+                        "Ты автомобильный помощник. "
+                        "Отвечай кратко, точно и по делу."
+                    )
+                },
+                {
+                    "role": "user",
+                    "content": prompt
                 }
             ],
 
-            tool_choice="auto",
+            temperature=0.1,
 
-            max_output_tokens=6000,
+            max_tokens=300
+        )
 
-            text={
-                "verbosity": "medium"
-            },
-
-            store=False
+        answer = safe_text(
+            response.choices[0]
+            .message
+            .content
         )
 
     except Exception as e:
@@ -6723,109 +6859,76 @@ def ai_web_search(
             f"{repr(e)}"
         )
 
-        return []
-
-    answer = ""
-
-    try:
-
-        answer = response.output_text
-
-    except Exception:
+        # Если AI недоступен —
+        # всё равно можем показать
+        # найденный результат.
 
         answer = ""
 
-    answer = _truncate_ai_text(
+    # ========================================================
+    # 5. Ограничиваем ответ
+    # ========================================================
+
+    answer = clean_web_text(
         answer
     )
 
-    sources = _extract_ai_sources(
-        response
+    answer = repair_web_mojibake(
+        answer
     )
 
-    print(
-        f"[AI WEB] Sources: "
-        f"{len(sources)}"
-    )
+    if len(answer) > 700:
+
+        answer = (
+            answer[:697]
+            + "..."
+        )
 
     if not answer:
 
         answer = (
-            "❌ Не удалось сформировать "
-            "ответ по найденной информации."
+            search_results[0]
+            .get(
+                "description",
+                ""
+            )
         )
+
+        answer = clean_web_text(
+            answer
+        )
+
+    # ========================================================
+    # 6. Результаты для Telegram
+    # ========================================================
 
     results = []
 
-
-    # --------------------------------------------------------
-    # ПЕРВАЯ КАРТОЧКА — AI ОТВЕТ
-    # --------------------------------------------------------
-
-    results.append(
-        {
-            "type": "ai_answer",
-
-            "title": (
-                "AI-поиск"
-            ),
-
-            "url": (
-                sources[0]["url"]
-                if sources
-                else ""
-            ),
-
-            "body": answer,
-
-            "excerpt": answer,
-
-            "sources": sources,
-
-            "query": original_query
-        }
-    )
-
-    # --------------------------------------------------------
-    # ДАЛЬШЕ — ОТДЕЛЬНЫЕ ИСТОЧНИКИ
-    # --------------------------------------------------------
-
-    for source in sources:
-
-        if len(results) >= max_results:
-
-            break
+    for item in search_results:
 
         results.append(
             {
-                "type":
-                    "web_source",
-
-                "title":
-                    source.get(
-                        "title",
-                        "Источник"
-                    ),
-
-                "url":
-                    source.get(
-                        "url",
-                        ""
-                    ),
-
-                "body":
-                    source.get(
-                        "description",
-                        ""
-                    ),
-
-                "excerpt":
-                    source.get(
-                        "description",
-                        ""
-                    )
+                "title": safe_text(
+                    item.get("title")
+                ),
+                "url": safe_text(
+                    item.get("url")
+                ),
+                "description": safe_text(
+                    item.get("description")
+                )
             }
         )
+
+    print(
+        f"[AI WEB] Answer: "
+        f"{answer[:200]}"
+    )
+
+    print(
+        f"[AI WEB] Sources: "
+        f"{len(results)}"
+    )
 
     return results
 

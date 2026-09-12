@@ -5025,119 +5025,120 @@ def perform_search(
     )
 
      # --------------------------------------------------------
-    # WEB SEARCH
-    # --------------------------------------------------------
+   # WEB SEARCH
+# --------------------------------------------------------
 
-    if mode == "web":
+if mode == "web":
 
-        print(
-            f"🌐 WEB SEARCH: {query}"
-        )
+    print(
+        f"🌐 WEB SEARCH: {query}"
+    )
 
-        log_search(
-            chat_id,
-            query,
-            "web"
-        )
+    log_search(
+        chat_id,
+        query,
+        "web"
+    )
 
-        show_loading_message(
-            chat_id
-        )
+    show_loading_message(
+        chat_id
+    )
 
-        try:
+    try:
 
-            search_query = improve_web_query(
+        search_query = improve_web_query(
             query
         )
-        
+
         print(
             f"[WEB SEARCH] Original: "
             f"{query}"
         )
-        
+
         print(
             f"[WEB SEARCH] Improved: "
             f"{search_query}"
         )
-        
+
         results = web_search(
             search_query,
             max_results=WEB_MAX_RESULTS
         )
 
-        except Exception as e:
+    except Exception as e:
 
-            print(
-                f"[WEB SEARCH] Error: {e}"
-            )
-
-            hide_loading_message(
-                chat_id
-            )
-
-            bot.send_message(
-                chat_id,
-                "❌ Ошибка поиска в интернете."
-            )
-
-            return
+        print(
+            f"[WEB SEARCH] Error: {e}"
+        )
 
         hide_loading_message(
             chat_id
         )
 
-        if not results:
-
-            log_search(
-                chat_id,
-                query,
-                "NOT_FOUND_WEB"
-            )
-
-            bot.send_message(
-                chat_id,
-                "❌ В интернете ничего "
-                "подходящего не найдено.\n\n"
-                "Попробуйте изменить запрос."
-            )
-
-            return
-
-        web_results[
-            chat_id
-        ] = results
-
-        web_index[
-            chat_id
-        ] = 0
-
-        web_query[
-            chat_id
-        ] = query
-
-        send_web_card(
+        bot.send_message(
             chat_id,
-            0
+            "❌ Ошибка поиска в интернете."
         )
 
         return
-    if mode not in (
-        "parts",
-        "wheels"
-    ):
+
+    hide_loading_message(
+        chat_id
+    )
+
+    if not results:
+
+        log_search(
+            chat_id,
+            query,
+            "NOT_FOUND_WEB"
+        )
 
         bot.send_message(
             chat_id,
-            "Сначала выберите раздел.",
-            reply_markup=main_menu()
+            "❌ В интернете ничего "
+            "подходящего не найдено.\n\n"
+            "Попробуйте изменить запрос."
         )
 
         return
 
-    track(
+    web_results[
+        chat_id
+    ] = results
+
+    web_index[
+        chat_id
+    ] = 0
+
+    web_query[
+        chat_id
+    ] = query
+
+    send_web_card(
         chat_id,
-        "searches"
+        0
     )
+
+    return
+
+if mode not in (
+    "parts",
+    "wheels"
+):
+
+    bot.send_message(
+        chat_id,
+        "Сначала выберите раздел.",
+        reply_markup=main_menu()
+    )
+
+    return
+
+track(
+    chat_id,
+    "searches"
+)
 
     # --------------------------------------------------------
     # PARTS

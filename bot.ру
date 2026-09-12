@@ -1,4 +1,5 @@
-# ============================================================
+
+CSV_TIMEOUT = 90# ============================================================
 # TELEGRAM BOT — Stuttgart
 # Railway Edition
 #
@@ -122,7 +123,6 @@ MAX_PHOTOS = 10
 
 REQUEST_TIMEOUT = 20
 
-CSV_TIMEOUT = 90
 
 
 # ------------------------------------------------------------
@@ -1822,7 +1822,10 @@ def delete_last_messages(chat_id):
     user_last_msg[chat_id] = []
 
 
-def show_loading_message(chat_id):
+def show_loading_message(
+    chat_id,
+    text=None
+):
     """
     Показывает сообщение о загрузке
     и сохраняет его отдельно от карточек.
@@ -1841,12 +1844,19 @@ def show_loading_message(chat_id):
             old_message_id
         )
 
+    # Текст по умолчанию
+    if not text:
+
+        text = (
+            "⏳ Пожалуйста, подождите...\n"
+            "🔎 Ищем подходящую информацию..."
+        )
+
     try:
 
         msg = bot.send_message(
             chat_id,
-            "⏳ Пожалуйста, подождите...\n"
-            "🔎 Ищем подходящие шины и диски..."
+            text
         )
 
         user_loading_msg[
@@ -5041,7 +5051,8 @@ def perform_search(
         )
 
         show_loading_message(
-            chat_id
+            chat_id,
+            "🔎 Ищем подходящую информацию..."
         )
 
         try:
@@ -5211,97 +5222,103 @@ def perform_search(
 
     if mode == "wheels":
 
-        print(
-            f"🔥 SEARCH WHEELS: {query}"
+    print(
+        f"🔥 SEARCH WHEELS: {query}"
+    )
+
+    log_search(
+        chat_id,
+        query,
+        "wheels"
+    )
+
+    # --------------------------------------------------------
+    # Показываем загрузку ДО поиска и загрузки фотографий.
+    # --------------------------------------------------------
+
+    show_loading_message(
+        chat_id,
+        "⏳ Пожалуйста, подождите...\n"
+        "🛞 Ищем подходящие шины и диски..."
+    )
+
+    try:
+
+        results = find_wheels(
+            query
         )
-    
+
+    except Exception as e:
+
+        print(
+            f"[SEARCH WHEELS] Error: {e}"
+        )
+
+        hide_loading_message(
+            chat_id
+        )
+
+        bot.send_message(
+            chat_id,
+            "❌ Произошла ошибка при поиске."
+        )
+
+        return
+
+    if not results:
+
+        hide_loading_message(
+            chat_id
+        )
+
+        print(
+            f"❌ NOT FOUND WHEELS: "
+            f"{query}"
+        )
+
         log_search(
             chat_id,
             query,
-            "wheels"
+            "NOT_FOUND_WHEELS"
         )
-    
-        # --------------------------------------------------------
-        # Показываем загрузку ДО поиска и загрузки фотографий.
-        # --------------------------------------------------------
-    
-        show_loading_message(
-            chat_id
-        )
-    
-        try:
-    
-            results = find_wheels(
-                query
-            )
-    
-        except Exception as e:
-    
-            print(
-                f"[SEARCH WHEELS] Error: {e}"
-            )
-    
-            hide_loading_message(
-                chat_id
-            )
-    
-            bot.send_message(
-                chat_id,
-                "❌ Произошла ошибка при поиске."
-            )
-    
-            return
-    
-        if not results:
-    
-            hide_loading_message(
-                chat_id
-            )
-    
-            print(
-                f"❌ NOT FOUND WHEELS: "
-                f"{query}"
-            )
-    
-            log_search(
-                chat_id,
-                query,
-                "NOT_FOUND_WHEELS"
-            )
-    
-            bot.send_message(
-                chat_id,
-                "❌ Ничего не найдено."
-            )
-    
-            return
-    
-        user_results[
-            chat_id
-        ] = results
-    
-        user_index[
-            chat_id
-        ] = 0
-    
-        user_photo_index[
-            chat_id
-        ] = 0
-    
-        # --------------------------------------------------------
-        # Здесь загружаются фотографии.
-        # Сообщение "Пожалуйста, подождите..."
-        # всё это время остаётся на экране.
-        # --------------------------------------------------------
-    
-        send_wheels_preview(
+
+        bot.send_message(
             chat_id,
-            results
+            "❌ Ничего не найдено."
         )
-    
-        # --------------------------------------------------------
-        # Только после полной загрузки удаляем сообщение.
-        # --------------------------------------------------------
+
+        return
+
+    user_results[
+        chat_id
+    ] = results
+
+    user_index[
+        chat_id
+    ] = 0
+
+    user_photo_index[
+        chat_id
+    ] = 0
+
+    # --------------------------------------------------------
+    # Здесь загружаются фотографии.
+    # Сообщение загрузки остаётся на экране.
+    # --------------------------------------------------------
+
+    send_wheels_preview(
+        chat_id,
+        results
+    )
+
+    # --------------------------------------------------------
+    # После формирования карточки/альбома
+    # сообщение загрузки можно удалить.
+    # --------------------------------------------------------
+
+    hide_loading_message(
+        chat_id
+    )
 # ============================================================
 # TEXT HANDLER
 # ============================================================

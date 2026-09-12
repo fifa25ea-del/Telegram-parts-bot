@@ -6693,32 +6693,16 @@ def ai_web_search(
     try:
 
         response = ai_client.responses.create(
-
             model=AI_WEB_MODEL,
 
-            instructions=(
-                AI_WEB_INSTRUCTIONS
-            ),
+            instructions=AI_WEB_INSTRUCTIONS,
 
             input=prompt,
 
-            reasoning={
-                "effort":
-                    AI_WEB_REASONING
-            },
-
             tools=[
                 {
-                    "type": "web_search",
-                    "search_context_size":
-                        AI_WEB_CONTEXT,
-                    "return_token_budget":
-                        "unlimited"
+                    "type": "web_search"
                 }
-            ],
-
-            include=[
-                "web_search_call.action.sources"
             ],
 
             tool_choice="auto",
@@ -6726,8 +6710,7 @@ def ai_web_search(
             max_output_tokens=6000,
 
             text={
-                "verbosity":
-                    "medium"
+                "verbosity": "medium"
             },
 
             store=False
@@ -6773,6 +6756,7 @@ def ai_web_search(
         )
 
     results = []
+
 
     # --------------------------------------------------------
     # ПЕРВАЯ КАРТОЧКА — AI ОТВЕТ

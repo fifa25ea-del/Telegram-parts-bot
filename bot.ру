@@ -29,6 +29,10 @@ import threading
 import requests
 import os
 from urllib.parse import urlparse, urlunparse, parse_qsl, urlencode
+from bs4 import BeautifulSoup
+from html import unescape
+from urllib.parse import urlparse
+
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -403,7 +407,106 @@ def web_tokens(text):
         safe_text(text).lower(),
         flags=re.IGNORECASE
     )
+def improve_web_query(query):
 
+    query = safe_text(
+        query
+    )
+
+    if not query:
+        return ""
+
+    lower = query.lower()
+
+    # --------------------------------------------------------
+    # Вопросы о годах выпуска
+    # --------------------------------------------------------
+
+    year_patterns = [
+        r"с какого года",
+        r"до какого года",
+        r"какого года выпуска",
+        r"годы выпуска",
+        r"год выпуска",
+        r"выпускается",
+        r"выпускался",
+        r"производился",
+        r"производство",
+    ]
+
+    if any(
+        re.search(
+            pattern,
+            lower
+        )
+        for pattern in year_patterns
+    ):
+
+        return (
+            query
+            + " годы выпуска "
+            + "production years"
+        )
+
+    # --------------------------------------------------------
+    # Вопросы про двигатель
+    # --------------------------------------------------------
+
+    if any(
+        phrase in lower
+        for phrase in (
+            "какой двигатель",
+            "какой мотор",
+            "двигатель",
+            "мотор"
+        )
+    ):
+
+        return (
+            query
+            + " engine motor"
+        )
+
+    # --------------------------------------------------------
+    # Вопросы про масло
+    # --------------------------------------------------------
+
+    if any(
+        phrase in lower
+        for phrase in (
+            "какое масло",
+            "масло лить",
+            "масло заливать",
+            "объем масла"
+        )
+    ):
+
+        return (
+            query
+            + " oil capacity specification"
+        )
+
+    # --------------------------------------------------------
+    # Вопросы про характеристики
+    # --------------------------------------------------------
+
+    if any(
+        phrase in lower
+        for phrase in (
+            "характеристики",
+            "характеристика",
+            "сколько лошадей",
+            "мощность",
+            "разгон"
+        )
+    ):
+
+        return (
+            query
+            + " specifications"
+        )
+
+    return query
 
 def web_region_candidates(query):
 
@@ -616,7 +719,7 @@ def clean_web_text(text):
 def web_excerpt(
     text,
     query,
-    max_chars=1000
+    max_chars=1200
 ):
 
     text = clean_web_text(
@@ -626,62 +729,368 @@ def web_excerpt(
     if not text:
         return ""
 
-    lower = text.lower()
+    # --------------------------------------------------------
+    # Разбиваем страницу на предложения.
+    # --------------------------------------------------------
 
-    positions = []
-
-    for token in set(
-        web_tokens(query)
-    ):
-
-        if len(token) < 3:
-            continue
-
-        position = lower.find(
-            token.lower()
-        )
-
-        if position >= 0:
-
-            positions.append(
-                position
-            )
-
-    if positions:
-
-        start_position = min(
-            positions
-        )
-
-        start = max(
-            0,
-            start_position - 250
-        )
-
-    else:
-
-        start = 0
-
-    end = min(
-        len(text),
-        start + max_chars
+    sentences = re.split(
+        r"(?<=[.!?])\s+",
+        text
     )
 
-    result = text[
-        start:end
-    ].strip()
+    query_tokens = [
+        token
+        for token in web_tokens(
+            query
+        )
+        if len(token) >= 3
+    ]
 
-    if start > 0:
-        result = "..." + result
+    # Удаляем общеупотребительные
+    # слова из вопроса.
+    stop_words = {
+        "какой",
+        "какая",
+        "какое",
+        "какие",
+        "года",
+        "год",
+        "выпускается",
+        "выпускался",
+        "выпуск",
+        "с",
+        "до",
+        "the",
+        "what",
+        "when",
+        "year",
+        "years",
+        "production"
+    }
 
-    if end < len(text):
-        result += "..."
+    useful_tokens = [
+        token
+        for token in query_tokens
+        if token not in stop_words
+    ]
 
-    return result
+    # --------------------------------------------------------
+    # Оцениваем предложения.
+    # --------------------------------------------------------
+
+    scored = []
+
+    for position, sentence in enumerate(
+        sentences
+    ):
+
+        sentence_lower = (
+            sentence.lower()
+        )
+
+        score = 0
+
+        for token in useful_tokens:
+
+            if token in sentence_lower:
+
+                score += 5
+
+        # Числа годов — очень важны
+        # для вопросов про годы.
+        if re.search(
+            r"\b(?:19|20)\d{2}\b",
+            sentence
+        ):
+
+            score += 3
+
+        # Фразы, которые часто встречаются
+        # в автомобильных карточках.
+        for phrase in (
+            "производ",
+            "выпуск",
+            "production",
+            "model year",
+            "introduced",
+            "debut",
+            "built",
+            "from",
+            "until",
+        ):
+
+            if phrase in sentence_lower:
+
+                score += 2
+
+        if score > 0:
+
+            scored.append(
+                (
+                    score,
+                    position,
+                    sentence
+                )
+            )
+
+    # --------------------------------------------------------
+    # Если нашли хорошие предложения —
+    # собираем несколько соседних.
+    # --------------------------------------------------------
+
+    if scored:
+
+        scored.sort(
+            key=lambda item:
+                item[0],
+            reverse=True
+        )
+
+        best_score, best_position, _ = (
+            scored[0]
+        )
+
+        selected = []
+
+        for position in (
+            best_position - 1,
+            best_position,
+            best_position + 1
+        ):
+
+            if (
+                position < 0
+                or position >= len(
+                    sentences
+                )
+            ):
+                continue
+
+            sentence = safe_text(
+                sentences[position]
+            )
+
+            if not sentence:
+                continue
+
+            if sentence not in selected:
+
+                selected.append(
+                    sentence
+                )
+
+        result = " ".join(
+            selected
+        )
+
+        if len(result) > max_chars:
+
+            result = (
+                result[:max_chars - 3]
+                + "..."
+            )
+
+        return result
+
+    # --------------------------------------------------------
+    # Fallback
+    # --------------------------------------------------------
+
+    if len(text) > max_chars:
+
+        return (
+            text[:max_chars - 3]
+            + "..."
+        )
+
+    return text
 
 
 # ============================================================
 # WEB SEARCH — PAGE EXTRACTION
+# ============================================================
+
+def decode_web_response(response):
+
+    raw = response.content
+
+    if not raw:
+        return ""
+
+    candidates = []
+
+    # --------------------------------------------------------
+    # 1. Кодировка из HTTP-заголовка
+    # --------------------------------------------------------
+
+    header_encoding = (
+        response.encoding
+        or ""
+    )
+
+    if header_encoding:
+
+        candidates.append(
+            header_encoding
+        )
+
+    # --------------------------------------------------------
+    # 2. Ищем charset внутри HTML
+    # --------------------------------------------------------
+
+    try:
+
+        head = raw[:100000].decode(
+            "latin-1",
+            errors="ignore"
+        )
+
+        match = re.search(
+            r'<meta[^>]+charset=["\']?\s*'
+            r"([a-zA-Z0-9._-]+)",
+            head,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            candidates.insert(
+                0,
+                match.group(1)
+            )
+
+        match = re.search(
+            r'content=["\'][^"\']*charset='
+            r'([a-zA-Z0-9._-]+)',
+            head,
+            re.IGNORECASE
+        )
+
+        if match:
+
+            candidates.insert(
+                0,
+                match.group(1)
+            )
+
+    except Exception:
+        pass
+
+    # --------------------------------------------------------
+    # 3. Частые кодировки русских сайтов
+    # --------------------------------------------------------
+
+    candidates.extend([
+        "utf-8",
+        "cp1251",
+        "windows-1251",
+        "koi8-r",
+        "iso-8859-5"
+    ])
+
+    # --------------------------------------------------------
+    # 4. Что предполагает requests
+    # --------------------------------------------------------
+
+    try:
+
+        apparent = (
+            response.apparent_encoding
+        )
+
+        if apparent:
+
+            candidates.append(
+                apparent
+            )
+
+    except Exception:
+        pass
+
+    # --------------------------------------------------------
+    # Убираем дубликаты.
+    # --------------------------------------------------------
+
+    unique_encodings = []
+
+    seen = set()
+
+    for encoding in candidates:
+
+        encoding = safe_text(
+            encoding
+        ).lower()
+
+        if not encoding:
+            continue
+
+        if encoding in seen:
+            continue
+
+        seen.add(
+            encoding
+        )
+
+        unique_encodings.append(
+            encoding
+        )
+
+    # --------------------------------------------------------
+    # Выбираем вариант с минимальным
+    # количеством символов �.
+    # --------------------------------------------------------
+
+    best_text = ""
+
+    best_score = None
+
+    for encoding in unique_encodings:
+
+        try:
+
+            text = raw.decode(
+                encoding,
+                errors="replace"
+            )
+
+        except Exception:
+
+            continue
+
+        replacement_count = (
+            text.count("\ufffd")
+        )
+
+        cyrillic_count = len(
+            re.findall(
+                r"[А-Яа-яЁё]",
+                text
+            )
+        )
+
+        # Чем меньше � — тем лучше.
+        # Русский текст получает дополнительный бонус.
+        score = (
+            replacement_count * 100
+            - min(
+                cyrillic_count,
+                5000
+            )
+        )
+
+        if (
+            best_score is None
+            or score < best_score
+        ):
+
+            best_score = score
+            best_text = text
+
+    return best_text
+
+
+# ============================================================
+# WEB PAGE TEXT
 # ============================================================
 
 def extract_web_page(
@@ -694,42 +1103,190 @@ def extract_web_page(
 
     try:
 
-        from ddgs import DDGS
-
-        ddgs = DDGS(
-            timeout=WEB_EXTRACT_TIMEOUT
+        print(
+            f"[WEB PAGE] GET: {url}"
         )
 
-        page = ddgs.extract(
+        response = requests.get(
             url,
-            fmt="text_plain"
+            headers={
+                **USER_AGENT,
+                "Accept": (
+                    "text/html,"
+                    "application/xhtml+xml,"
+                    "application/xml;q=0.9,"
+                    "*/*;q=0.8"
+                ),
+                "Accept-Language": (
+                    "ru-RU,ru;q=0.9,"
+                    "de-DE,de;q=0.8,"
+                    "en;q=0.7"
+                ),
+            },
+            timeout=WEB_EXTRACT_TIMEOUT,
+            allow_redirects=True
         )
 
-        content = safe_text(
-            page.get(
-                "content",
-                ""
+        if response.status_code != 200:
+
+            print(
+                f"[WEB PAGE] HTTP "
+                f"{response.status_code}: "
+                f"{url}"
             )
-        )
 
-        if not content:
             return ""
 
-        return web_excerpt(
-            content,
-            query,
-            max_chars=1000
+        content_type = (
+            response.headers.get(
+                "Content-Type",
+                ""
+            ).lower()
         )
+
+        # Не пытаемся парсить PDF,
+        # картинки и прочее.
+        if (
+            "text/html"
+            not in content_type
+            and "application/xhtml"
+            not in content_type
+        ):
+
+            return ""
+
+        html = decode_web_response(
+            response
+        )
+
+        if not html:
+            return ""
+
+        # ----------------------------------------------------
+        # Проверка кодировки.
+        # ----------------------------------------------------
+
+        if "\ufffd" in html:
+
+            replacement_count = html.count(
+                "\ufffd"
+            )
+
+            print(
+                f"[WEB PAGE] Warning: "
+                f"{replacement_count} replacement chars"
+            )
+
+        # ----------------------------------------------------
+        # HTML -> text
+        # ----------------------------------------------------
+
+        soup = BeautifulSoup(
+            html,
+            "html.parser"
+        )
+
+        # Удаляем мусор.
+        for tag in soup([
+            "script",
+            "style",
+            "noscript",
+            "svg",
+            "canvas",
+            "iframe",
+            "form",
+            "nav",
+            "footer",
+            "header"
+        ]):
+
+            tag.decompose()
+
+        # ----------------------------------------------------
+        # Сначала пытаемся взять основной контент.
+        # ----------------------------------------------------
+
+        content_node = None
+
+        for selector in (
+            "main",
+            "article",
+            "[role='main']"
+        ):
+
+            content_node = soup.select_one(
+                selector
+            )
+
+            if content_node:
+                break
+
+        if content_node:
+
+            text = content_node.get_text(
+                " ",
+                strip=True
+            )
+
+        else:
+
+            text = soup.get_text(
+                " ",
+                strip=True
+            )
+
+        text = unescape(
+            text
+        )
+
+        text = re.sub(
+            r"\s+",
+            " ",
+            text
+        ).strip()
+
+        if not text:
+            return ""
+
+        # ----------------------------------------------------
+        # Удаляем повторяющиеся �.
+        # ----------------------------------------------------
+
+        text = re.sub(
+            r"\ufffd+",
+            " ",
+            text
+        )
+
+        text = re.sub(
+            r"\s+",
+            " ",
+            text
+        ).strip()
+
+        # ----------------------------------------------------
+        # Ищем полезный фрагмент.
+        # ----------------------------------------------------
+
+        excerpt = web_excerpt(
+            text,
+            query,
+            max_chars=1200
+        )
+
+        if excerpt:
+            return excerpt
+
+        return text[:1200]
 
     except Exception as e:
 
         print(
-            f"[WEB EXTRACT] "
+            f"[WEB PAGE] ERROR: "
             f"{url} -> {e}"
         )
 
         return ""
-
 
 # ============================================================
 # WEB SEARCH
@@ -4489,10 +5046,24 @@ def perform_search(
 
         try:
 
-            results = web_search(
-                query,
-                max_results=WEB_MAX_RESULTS
-            )
+            search_query = improve_web_query(
+            query
+        )
+        
+        print(
+            f"[WEB SEARCH] Original: "
+            f"{query}"
+        )
+        
+        print(
+            f"[WEB SEARCH] Improved: "
+            f"{search_query}"
+        )
+        
+        results = web_search(
+            search_query,
+            max_results=WEB_MAX_RESULTS
+        )
 
         except Exception as e:
 

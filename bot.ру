@@ -84,6 +84,82 @@ WHEELS_CSV = (
     "drom-wheels.csv"
 )
 
+# ============================================================
+# AI WEB SEARCH
+# ============================================================
+
+try:
+
+    from openai import OpenAI
+
+except ImportError:
+
+    OpenAI = None
+
+
+OPENAI_API_KEY = os.getenv(
+    "OPENAI_API_KEY",
+    ""
+).strip()
+
+
+AI_WEB_MODEL = os.getenv(
+    "AI_WEB_MODEL",
+    "gpt-6-astra"
+).strip()
+
+
+AI_WEB_REASONING = os.getenv(
+    "AI_WEB_REASONING",
+    "xhigh"
+).strip()
+
+
+AI_WEB_CONTEXT = os.getenv(
+    "AI_WEB_CONTEXT",
+    "high"
+).strip()
+
+
+AI_WEB_MAX_SOURCES = int(
+    os.getenv(
+        "AI_WEB_MAX_SOURCES",
+        "8"
+    )
+)
+
+
+AI_WEB_ENABLED = bool(
+    OPENAI_API_KEY
+    and OpenAI
+)
+
+
+ai_client = None
+
+
+if AI_WEB_ENABLED:
+
+    try:
+
+        ai_client = OpenAI(
+            api_key=OPENAI_API_KEY
+        )
+
+        print(
+            f"🤖 AI WEB SEARCH ENABLED: "
+            f"{AI_WEB_MODEL}"
+        )
+
+    except Exception as e:
+
+        print(
+            f"❌ AI CLIENT ERROR: {e}"
+        )
+
+        ai_client = None
+
+        AI_WEB_ENABLED = False
 
 # ------------------------------------------------------------
 # Файлы
@@ -4697,17 +4773,177 @@ def send_web_card(
     )
 
     if not results:
+
         return
 
     if (
         index < 0
         or index >= len(results)
     ):
+
         return
 
     result = results[
         index
     ]
+
+    result_type = result.get(
+        "type",
+        "web_source"
+    )
+
+    # ========================================================
+    # AI ANSWER
+    # ========================================================
+
+    if result_type == "ai_answer":
+
+        answer = safe_text(
+            result.get(
+                "body",
+                ""
+            )
+        )
+
+        query = safe_text(
+            web_query.get(
+                chat_id,
+                ""
+            )
+        )
+
+        sources = result.get(
+            "sources",
+            []
+        )
+
+        text = (
+            "🤖 AI-поиск\n\n"
+            f"🔎 Запрос:\n"
+            f"{query}\n\n"
+            f"{answer}\n\n"
+        )
+
+        if sources:
+
+            text += (
+                f"📚 Источников найдено: "
+                f"{len(sources)}\n"
+            )
+
+        text += (
+            f"\n({index + 1}/"
+            f"{len(results)})"
+        )
+
+        keyboard = types.InlineKeyboardMarkup(
+            row_width=2
+        )
+
+        keyboard.add(
+
+            types.InlineKeyboardButton(
+                "⬅️ Назад",
+                callback_data="web_prev"
+            ),
+
+            types.InlineKeyboardButton(
+                "➡️ Вперед",
+                callback_data="web_next"
+            )
+        )
+
+        # ----------------------------------------------------
+        # Кнопки источников
+        # ----------------------------------------------------
+
+        for position, source in enumerate(
+            sources[:6],
+            start=1
+        ):
+
+            url = safe_text(
+                source.get(
+                    "url",
+                    ""
+                )
+            )
+
+            if not url:
+
+                continue
+
+            title = safe_text(
+                source.get(
+                    "title",
+                    ""
+                )
+            )
+
+            if not title:
+
+                title = (
+                    web_domain(url)
+                    or
+                    "Источник"
+                )
+
+            title = (
+                title
+                .replace(
+                    "\n",
+                    " "
+                )
+                .strip()
+            )
+
+            if len(title) > 42:
+
+                title = (
+                    title[:39]
+                    + "..."
+                )
+
+            keyboard.add(
+
+                types.InlineKeyboardButton(
+                    f"🔗 {position}. {title}",
+                    url=url
+                )
+            )
+
+        delete_last_messages(
+            chat_id
+        )
+
+        try:
+
+            msg = bot.send_message(
+                chat_id,
+                text,
+                reply_markup=keyboard
+            )
+
+            user_last_msg[
+                chat_id
+            ] = msg.message_id
+
+            web_index[
+                chat_id
+            ] = index
+
+        except Exception as e:
+
+            print(
+                f"[AI WEB CARD] "
+                f"{e}"
+            )
+
+        return
+
+    # ========================================================
+    # Обычный WEB SOURCE
+    # ========================================================
 
     title = safe_text(
         result.get(
@@ -4737,19 +4973,21 @@ def send_web_card(
         )
     )
 
+    description = (
+        excerpt
+        or
+        body
+    )
+
     domain = web_domain(
         url
     )
 
-    query = safe_text(
-        web_query.get(
-            chat_id,
-            ""
-        )
-    )
-
     if not title:
-        title = "Страница без названия"
+
+        title = (
+            "Страница без названия"
+        )
 
     if len(title) > 250:
 
@@ -4758,25 +4996,25 @@ def send_web_card(
             + "..."
         )
 
-    # Сначала предпочитаем
-    # реальный текст страницы.
-    description = (
-        excerpt
-        or body
-    )
-
     if not description:
 
         description = (
             "Описание отсутствует."
         )
 
-    if len(description) > 1000:
+    if len(description) > 1200:
 
         description = (
-            description[:997]
+            description[:1197]
             + "..."
         )
+
+    query = safe_text(
+        web_query.get(
+            chat_id,
+            ""
+        )
+    )
 
     text = (
         f"🌐 {title}\n\n"
@@ -4785,7 +5023,8 @@ def send_web_card(
         f"📖 Фрагмент:\n"
         f"{description}\n\n"
         f"🌍 {domain or '-'}\n\n"
-        f"({index + 1}/{len(results)})"
+        f"({index + 1}/"
+        f"{len(results)})"
     )
 
     keyboard = types.InlineKeyboardMarkup(
@@ -5007,6 +5246,724 @@ def show_favorites(
             reply_markup=keyboard
         )
 
+# ============================================================
+# AI WEB SEARCH ENGINE
+# ============================================================
+
+AI_WEB_INSTRUCTIONS = """
+Ты — интеллектуальный автомобильный web-research агент
+для Telegram-бота Stuttgart.
+
+Твоя задача — не просто найти страницы, а самостоятельно
+понять смысл запроса пользователя, выполнить web-поиск,
+сопоставить информацию из нескольких источников и дать
+точный, практичный ответ.
+
+ОСНОВНЫЕ ПРАВИЛА:
+
+1. ОБЯЗАТЕЛЬНО используй web search для поиска фактов.
+
+2. Не отвечай только на основе своих внутренних знаний,
+если информацию можно проверить через интернет.
+
+3. Если запрос автомобильный, самостоятельно распознавай:
+
+- марку;
+- модель;
+- поколение;
+- кузов;
+- двигатель;
+- модификацию;
+- год;
+- рестайлинг;
+- код двигателя;
+- код коробки;
+- код ошибки;
+- оригинальный номер детали;
+- размер шин;
+- размер дисков;
+- PCD;
+- ET;
+- DIA.
+
+4. Понимай автомобильный сленг.
+
+Например:
+
+W205 = Mercedes-Benz C-Class W205
+W213 = Mercedes-Benz E-Class W213
+W204 = Mercedes-Benz C-Class W204
+W222 = Mercedes-Benz S-Class W222
+M274 = двигатель Mercedes-Benz M274
+OM651 = двигатель Mercedes-Benz OM651
+
+5. Если пользователь пишет коротко или неграмотно,
+восстанови наиболее вероятный смысл.
+
+Например:
+
+"w205 масло"
+
+может означать:
+какое масло заливать, допуск, вязкость, объём,
+интервал замены и подходящие варианты.
+
+6. Если запрос неоднозначный, НЕ останавливайся сразу
+и не задавай вопрос.
+
+Сначала исследуй наиболее вероятные варианты.
+
+Если после поиска остаётся неопределённость —
+объясни её пользователю.
+
+7. Для технических вопросов приоритет источников:
+
+- официальная документация производителя;
+- руководства;
+- технические документы;
+- каталоги производителей;
+- официальные сервисные материалы;
+- качественные технические автомобильные источники;
+- профильные форумы и сообщества.
+
+8. Не доверяй одному источнику, если вопрос технически
+важный.
+
+По возможности сравни несколько источников.
+
+9. Если источники противоречат друг другу:
+
+- укажи расхождение;
+- объясни возможную причину;
+- не придумывай "правильное" значение.
+
+10. Для запчастей обращай внимание на:
+
+- OEM;
+- оригинальный номер;
+- аналоги;
+- совместимость;
+- двигатель;
+- кузов;
+- год;
+- рестайлинг.
+
+11. Для дисков:
+
+- R;
+- ширина;
+- ET;
+- PCD;
+- DIA;
+- передняя/задняя ось;
+- допустимые размеры;
+- совместимость.
+
+12. Для шин:
+
+- размер;
+- индекс нагрузки;
+- индекс скорости;
+- сезонность;
+- допустимость для автомобиля.
+
+13. Для ремонта:
+
+- симптомы;
+- вероятные причины;
+- типичные неисправности;
+- диагностика;
+- порядок проверки;
+- возможные решения.
+
+14. Для кодов ошибок:
+
+- значение ошибки;
+- система;
+- вероятные причины;
+- что проверить;
+- типичные решения.
+
+15. Для цен и актуальной информации всегда ищи
+свежие данные.
+
+16. Никогда не выдумывай цифры, номера деталей,
+допуски, размеры или характеристики.
+
+17. Если точного значения найти не удалось,
+честно напиши об этом.
+
+18. Ответ должен быть НА РУССКОМ языке.
+
+19. Не пиши длинное вступление.
+
+20. Не вставляй длинные URL в текст ответа.
+Источники будут показаны отдельными кнопками Telegram.
+
+21. Ответ структурируй:
+
+Краткий вывод
+
+Основная информация
+
+Если необходимо:
+- характеристики;
+- варианты;
+- причины;
+- рекомендации;
+- важные ограничения.
+
+22. Для сложных вопросов можешь сделать вывод
+в формате:
+
+📌 Главное:
+...
+
+🔧 Что подходит:
+...
+
+⚠️ Важно:
+...
+
+23. Если пользователь спрашивает конкретную техническую
+характеристику, сначала дай непосредственно значение,
+а затем краткое объяснение.
+
+24. Не говори пользователю "я не могу искать",
+если web search доступен.
+
+25. Не спрашивай уточнения, если можно сделать
+разумный поиск самостоятельно.
+
+26. После исследования дай максимально полезный
+ответ, но без лишней воды.
+
+27. Не используй выдуманные источники.
+
+28. Все важные фактические утверждения должны быть
+основаны на найденных web-источниках.
+"""
+
+
+def _truncate_ai_text(
+    text,
+    max_length=3000
+):
+
+    text = safe_text(
+        text
+    )
+
+    if not text:
+
+        return ""
+
+    # Убираем markdown-заголовки,
+    # чтобы Telegram не показывал их сырой разметкой.
+    text = re.sub(
+        r"^\s*#{1,6}\s*",
+        "",
+        text,
+        flags=re.MULTILINE
+    )
+
+    # Убираем жирный markdown.
+    text = text.replace(
+        "**",
+        ""
+    )
+
+    # Убираем markdown-ссылки,
+    # потому что ссылки будут отдельными кнопками.
+    text = re.sub(
+        r"\[([^\]]+)\]\((https?://[^)]+)\)",
+        r"\1",
+        text
+    )
+
+    text = text.strip()
+
+    if len(text) > max_length:
+
+        text = (
+            text[:max_length - 3]
+            + "..."
+        )
+
+    return text
+
+
+def _extract_ai_sources(
+    response
+):
+
+    sources = []
+
+    seen = set()
+
+    try:
+
+        data = response.model_dump()
+
+    except Exception:
+
+        data = {}
+
+    # --------------------------------------------------------
+    # Источники из web_search_call.action.sources
+    # --------------------------------------------------------
+
+    for item in data.get(
+        "output",
+        []
+    ):
+
+        if not isinstance(
+            item,
+            dict
+        ):
+
+            continue
+
+        if item.get(
+            "type"
+        ) != "web_search_call":
+
+            continue
+
+        action = item.get(
+            "action"
+        ) or {}
+
+        raw_sources = action.get(
+            "sources",
+            []
+        )
+
+        if not isinstance(
+            raw_sources,
+            list
+        ):
+
+            continue
+
+        for source in raw_sources:
+
+            if not isinstance(
+                source,
+                dict
+            ):
+
+                continue
+
+            url = safe_text(
+                source.get(
+                    "url",
+                    ""
+                )
+            )
+
+            if not url:
+
+                continue
+
+            if not url.startswith(
+                (
+                    "http://",
+                    "https://"
+                )
+            ):
+
+                continue
+
+            if url in seen:
+
+                continue
+
+            seen.add(
+                url
+            )
+
+            title = safe_text(
+                source.get(
+                    "title",
+                    ""
+                )
+            )
+
+            description = safe_text(
+                source.get(
+                    "description",
+                    ""
+                )
+                or
+                source.get(
+                    "snippet",
+                    ""
+                )
+            )
+
+            sources.append(
+                {
+                    "title": (
+                        title
+                        or
+                        web_domain(url)
+                        or
+                        "Источник"
+                    ),
+                    "url": url,
+                    "description": description
+                }
+            )
+
+    # --------------------------------------------------------
+    # Если sources отсутствуют,
+    # пробуем достать URL из annotations.
+    # --------------------------------------------------------
+
+    if not sources:
+
+        for item in data.get(
+            "output",
+            []
+        ):
+
+            if not isinstance(
+                item,
+                dict
+            ):
+
+                continue
+
+            if item.get(
+                "type"
+            ) != "message":
+
+                continue
+
+            for content in item.get(
+                "content",
+                []
+            ):
+
+                if not isinstance(
+                    content,
+                    dict
+                ):
+
+                    continue
+
+                for annotation in content.get(
+                    "annotations",
+                    []
+                ):
+
+                    if not isinstance(
+                        annotation,
+                        dict
+                    ):
+
+                        continue
+
+                    if annotation.get(
+                        "type"
+                    ) != "url_citation":
+
+                        continue
+
+                    citation = (
+                        annotation.get(
+                            "url_citation"
+                        )
+                        or
+                        annotation
+                    )
+
+                    url = safe_text(
+                        citation.get(
+                            "url",
+                            ""
+                        )
+                    )
+
+                    if not url:
+
+                        continue
+
+                    if url in seen:
+
+                        continue
+
+                    seen.add(
+                        url
+                    )
+
+                    title = safe_text(
+                        citation.get(
+                            "title",
+                            ""
+                        )
+                    )
+
+                    sources.append(
+                        {
+                            "title": (
+                                title
+                                or
+                                web_domain(url)
+                                or
+                                "Источник"
+                            ),
+                            "url": url,
+                            "description": ""
+                        }
+                    )
+
+    return sources[
+        :AI_WEB_MAX_SOURCES
+    ]
+
+
+def ai_web_search(
+    original_query,
+    prepared_query=None,
+    max_results=10
+):
+
+    if not AI_WEB_ENABLED:
+
+        return []
+
+    original_query = safe_text(
+        original_query
+    )
+
+    prepared_query = safe_text(
+        prepared_query
+    )
+
+    if not original_query:
+
+        return []
+
+    if not prepared_query:
+
+        prepared_query = original_query
+
+    print(
+        "🤖 AI WEB SEARCH"
+    )
+
+    print(
+        f"[AI WEB] Original: "
+        f"{original_query}"
+    )
+
+    print(
+        f"[AI WEB] Prepared: "
+        f"{prepared_query}"
+    )
+
+    prompt = f"""
+Пользовательский запрос:
+
+{original_query}
+
+Предварительно нормализованный запрос:
+
+{prepared_query}
+
+Проведи полноценное web-исследование.
+
+Сначала самостоятельно определи смысл запроса.
+
+Если это автомобильный запрос — определи автомобиль,
+кузов, двигатель, модификацию и техническую тему.
+
+Если в запросе есть код кузова, двигателя, ошибки,
+номер детали или размер — обязательно учитывай его
+как важный поисковый идентификатор.
+
+Проведи поиск по нескольким релевантным источникам.
+
+Сравни найденные данные.
+
+Если информация зависит от года, двигателя,
+рестайлинга или конкретной модификации —
+обязательно учитывай это.
+
+Если пользователь ожидает конкретное значение,
+дай его в начале ответа.
+
+Ответ дай на русском языке.
+
+Не придумывай отсутствующие данные.
+
+Не задавай уточняющий вопрос, если можно сделать
+разумный поиск самостоятельно.
+
+Не вставляй длинные URL в текст.
+Источники будут показаны Telegram-кнопками.
+
+Максимально полезный ответ:
+не больше примерно 2500-3000 символов.
+"""
+
+    try:
+
+        response = ai_client.responses.create(
+
+            model=AI_WEB_MODEL,
+
+            instructions=(
+                AI_WEB_INSTRUCTIONS
+            ),
+
+            input=prompt,
+
+            reasoning={
+                "effort":
+                    AI_WEB_REASONING
+            },
+
+            tools=[
+                {
+                    "type": "web_search",
+                    "search_context_size":
+                        AI_WEB_CONTEXT,
+                    "return_token_budget":
+                        "unlimited"
+                }
+            ],
+
+            include=[
+                "web_search_call.action.sources"
+            ],
+
+            tool_choice="auto",
+
+            max_output_tokens=6000,
+
+            text={
+                "verbosity":
+                    "medium"
+            },
+
+            store=False
+        )
+
+    except Exception as e:
+
+        print(
+            f"❌ [AI WEB] API ERROR: "
+            f"{repr(e)}"
+        )
+
+        return []
+
+    answer = ""
+
+    try:
+
+        answer = response.output_text
+
+    except Exception:
+
+        answer = ""
+
+    answer = _truncate_ai_text(
+        answer
+    )
+
+    sources = _extract_ai_sources(
+        response
+    )
+
+    print(
+        f"[AI WEB] Sources: "
+        f"{len(sources)}"
+    )
+
+    if not answer:
+
+        answer = (
+            "❌ Не удалось сформировать "
+            "ответ по найденной информации."
+        )
+
+    results = []
+
+    # --------------------------------------------------------
+    # ПЕРВАЯ КАРТОЧКА — AI ОТВЕТ
+    # --------------------------------------------------------
+
+    results.append(
+        {
+            "type": "ai_answer",
+
+            "title": (
+                "AI-поиск"
+            ),
+
+            "url": (
+                sources[0]["url"]
+                if sources
+                else ""
+            ),
+
+            "body": answer,
+
+            "excerpt": answer,
+
+            "sources": sources,
+
+            "query": original_query
+        }
+    )
+
+    # --------------------------------------------------------
+    # ДАЛЬШЕ — ОТДЕЛЬНЫЕ ИСТОЧНИКИ
+    # --------------------------------------------------------
+
+    for source in sources:
+
+        if len(results) >= max_results:
+
+            break
+
+        results.append(
+            {
+                "type":
+                    "web_source",
+
+                "title":
+                    source.get(
+                        "title",
+                        "Источник"
+                    ),
+
+                "url":
+                    source.get(
+                        "url",
+                        ""
+                    ),
+
+                "body":
+                    source.get(
+                        "description",
+                        ""
+                    ),
+
+                "excerpt":
+                    source.get(
+                        "description",
+                        ""
+                    )
+            }
+        )
+
+    return results
 
 # ============================================================
 # SEARCH
@@ -5043,118 +6000,133 @@ def perform_search(
         print(
             f"🌐 WEB SEARCH: {query}"
         )
-
+    
         log_search(
             chat_id,
             query,
             "web"
         )
-
+    
         show_loading_message(
             chat_id,
-            "🔎 Ищем подходящую информацию..."
+            "⏳ Пожалуйста, подождите...\n"
+            "🧠 Анализируем запрос и ищем информацию..."
         )
-
+    
         try:
-
+    
             search_query = improve_web_query(
                 query
             )
-
+    
             print(
                 f"[WEB SEARCH] Original: "
                 f"{query}"
             )
-
+    
             print(
                 f"[WEB SEARCH] Improved: "
                 f"{search_query}"
             )
-
-            results = web_search(
-                search_query,
-                max_results=WEB_MAX_RESULTS
-            )
-
+    
+            # ----------------------------------------------------
+            # Сначала настоящий AI Web Search.
+            # ----------------------------------------------------
+    
+            results = []
+    
+            if AI_WEB_ENABLED:
+    
+                results = ai_web_search(
+                    query,
+                    search_query,
+                    max_results=WEB_MAX_RESULTS
+                )
+    
+            # ----------------------------------------------------
+            # Fallback:
+            # если AI недоступен или произошла ошибка,
+            # используем твой старый web_search().
+            # ----------------------------------------------------
+    
+            if not results:
+    
+                print(
+                    "⚠️ AI WEB unavailable. "
+                    "Using legacy web search."
+                )
+    
+                results = web_search(
+                    search_query,
+                    max_results=WEB_MAX_RESULTS
+                )
+    
         except Exception as e:
-
+    
             print(
-                f"[WEB SEARCH] Error: {e}"
+                f"[WEB SEARCH] Error: "
+                f"{repr(e)}"
             )
-
-            hide_loading_message(
-                chat_id
-            )
-
-            bot.send_message(
-                chat_id,
-                "❌ Ошибка поиска в интернете."
-            )
-
-            return
-
+    
+            # ----------------------------------------------------
+            # Последняя попытка — старый поиск.
+            # ----------------------------------------------------
+    
+            try:
+    
+                results = web_search(
+                    query,
+                    max_results=WEB_MAX_RESULTS
+                )
+    
+            except Exception as fallback_error:
+    
+                print(
+                    f"[WEB SEARCH FALLBACK] "
+                    f"{repr(fallback_error)}"
+                )
+    
+                results = []
+    
         hide_loading_message(
             chat_id
         )
-
+    
         if not results:
-
+    
             log_search(
                 chat_id,
                 query,
                 "NOT_FOUND_WEB"
             )
-
+    
             bot.send_message(
                 chat_id,
                 "❌ В интернете ничего "
                 "подходящего не найдено.\n\n"
                 "Попробуйте изменить запрос."
             )
-
+    
             return
-
+    
         web_results[
             chat_id
         ] = results
-
+    
         web_index[
             chat_id
         ] = 0
-
+    
         web_query[
             chat_id
         ] = query
-
+    
         send_web_card(
             chat_id,
             0
         )
-
+    
         return
-
-    # --------------------------------------------------------
-    # Проверка режима
-    # --------------------------------------------------------
-
-    if mode not in (
-        "parts",
-        "wheels"
-    ):
-
-        bot.send_message(
-            chat_id,
-            "Сначала выберите раздел.",
-            reply_markup=main_menu()
-        )
-
-        return
-
-    track(
-        chat_id,
-        "searches"
-    )
-
 
     # --------------------------------------------------------
     # PARTS

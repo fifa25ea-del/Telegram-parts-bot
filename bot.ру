@@ -7024,11 +7024,21 @@ def perform_search(
     
             if AI_WEB_ENABLED:
     
-                results = ai_web_search(
-                    query,
-                    search_query,
-                    max_results=WEB_MAX_RESULTS
+                ai_result = ai_web_search(
+                    original_query,
+                    prepared_query
                 )
+            
+                answer = ai_result.get(
+                    "answer",
+                    ""
+                )
+            
+                results = ai_result.get(
+                    "results",
+                    []
+                )
+
     
             # ----------------------------------------------------
             # Fallback:
@@ -7113,7 +7123,10 @@ def perform_search(
             0
         )
     
-        return
+        return {
+            "answer": answer,
+            "results": results
+        }
 
     # --------------------------------------------------------
     # PARTS

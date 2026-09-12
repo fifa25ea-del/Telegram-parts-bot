@@ -882,26 +882,6 @@ def web_result_score(
     return score
 
 
-def clean_web_text(text):
-    """
-    Приводит HTML-текст к нормальному виду.
-    """
-
-    text = safe_text(
-        text
-    )
-
-    text = unescape(
-        text
-    )
-
-    text = re.sub(
-        r"\s+",
-        " ",
-        text
-    )
-
-    return text.strip()
 
 
 # ============================================================
@@ -930,9 +910,37 @@ def clean_web_text(text):
 
     return text.strip()
 
+# ============================================================
+# WEB TEXT / ENCODING / PAGE EXTRACTION
+# ============================================================
+
+def clean_web_text(text):
+
+    text = safe_text(text)
+
+    if not text:
+        return ""
+
+    text = unescape(text)
+
+    # Убираем replacement characters.
+    text = text.replace(
+        "\ufffd",
+        " "
+    )
+
+    # Схлопываем пробелы.
+    text = re.sub(
+        r"\s+",
+        " ",
+        text
+    )
+
+    return text.strip()
+
 
 # ============================================================
-# MOJIBAKE DETECTION
+# MOJIBAKE SCORE
 # ============================================================
 
 def web_mojibake_score(text):
@@ -944,7 +952,12 @@ def web_mojibake_score(text):
 
     score = 0
 
-    # UTF-8 -> Windows-1251 / Latin-1 типичные остатки.
+    # --------------------------------------------------------
+    # Явные признаки UTF-8 -> CP1251/Latin-1.
+    # Не используем просто "Р" или "С",
+    # потому что это обычные русские буквы.
+    # --------------------------------------------------------
+
     patterns = (
         "Рђ",
         "Р‘",
@@ -954,62 +967,103 @@ def web_mojibake_score(text):
         "Р•",
         "Р–",
         "Р—",
-        "Р",
-        "С",
+        "Р�",
+
+        "С‚",
+        "СЃ",
+        "СЏ",
+        "СЂ",
+        "С‚",
+        "Сѓ",
+        "С‡",
+        "СЊ",
+
         "Ð",
         "Ñ",
-        "â",
-        "а",
-        "а",
-        "а",
-        "а",
-        "а",
-        "а",
-        "а",
-        "а",
-        "а",
-        "а",
-        "а",
-        "а",
-        "а",
-        "а",
-        "а",
-        "а",
-        "б",
-        "б",
-        "б",
-        "б",
-        "б",
-        "б",
-        "б",
-        "б",
-        "б",
-        "б",
-        "б",
-        "б",
-        "б",
-        "б",
-        "б",
-        "б",
+
+        "â€™",
+        "â€œ",
+        "â€",
+        "Â",
+
+        "пїЅ",
+        "п╨",
+        "п╬",
+        "п²",
+        "п©",
+        "п°",
+        "п±",
+        "п·",
+        "п»",
+        "п¼",
+        "п½",
+        "п╡",
+        "п╢",
+        "п╣",
+        "п╤",
+        "п╥",
+        "п╦",
+        "п╧",
+        "п╨",
+        "п╩",
+        "п╪",
+        "п╫",
+        "п╭",
+        "п╮",
+        "п╯",
+
+        "я┐",
+        "я│",
+        "я┌",
+        "я─",
+        "я└",
+        "я╞",
+        "я╟",
+        "я╠",
+        "я╡",
+        "я╢",
+        "я╣",
+        "я╤",
+        "я╥",
+        "я╦",
+        "я╧",
+        "я╨",
+        "я╩",
+        "я╪",
+        "я╫",
     )
 
     for pattern in patterns:
 
-        score += text.count(pattern)
+        score += text.count(
+            pattern
+        )
 
-    # Характерные сочетания.
+    # --------------------------------------------------------
+    # Длинные цепочки характерного mojibake.
+    # --------------------------------------------------------
+
     score += len(
         re.findall(
-            r"(?:Р.|С.|Ð.|Ñ.|а.|б.){3,}",
+            r"(?:Р.|С.|Ð.|Ñ.|п.|я.){4,}",
             text
         )
-    ) * 2
+    ) * 5
+
+    # --------------------------------------------------------
+    # Replacement character.
+    # --------------------------------------------------------
+
+    score += (
+        text.count("\ufffd")
+        * 100
+    )
 
     return score
 
 
 # ============================================================
-# TRY REPAIR MOJIBAKE
+# REPAIR MOJIBAKE
 # ============================================================
 
 def repair_web_mojibake(text):
@@ -1021,105 +1075,146 @@ def repair_web_mojibake(text):
 
     original = text
 
+    original_score = web_mojibake_score(
+        original
+    )
+
+    # Если текст нормальный,
+    # вообще ничего не делаем.
+    if original_score == 0:
+
+        return original
+
     candidates = []
 
-    # ========================================================
-    # Вариант 1:
-    # текст был UTF-8 -> ошибочно декодирован как CP1251
-    # ========================================================
-
-    try:
-
-        candidates.append(
-            text
-            .encode("cp1251")
-            .decode("utf-8")
-        )
-
-    except Exception:
-        pass
-
-    # ========================================================
-    # Вариант 2:
-    # UTF-8 -> Latin-1
-    # ========================================================
-
-    try:
-
-        candidates.append(
-            text
-            .encode("latin-1")
-            .decode("utf-8")
-        )
-
-    except Exception:
-        pass
-
-    # ========================================================
-    # Вариант 3:
+    # --------------------------------------------------------
     # UTF-8 -> CP1251 -> UTF-8
-    #
-    # Для строк вида:
-    # п²п╬п╡п╬я│я┌п╦
-    # ========================================================
+    # --------------------------------------------------------
 
     try:
 
-        step1 = text.encode(
-            "cp866"
-        )
-
-        candidates.append(
-            step1.decode(
-                "utf-8",
-                errors="strict"
+        candidate = (
+            original
+            .encode(
+                "latin-1"
+            )
+            .decode(
+                "utf-8"
             )
         )
 
+        candidates.append(
+            candidate
+        )
+
     except Exception:
         pass
 
-    # ========================================================
-    # Вариант 4:
-    # Частый случай двойного mojibake.
-    # ========================================================
+    # --------------------------------------------------------
+    # UTF-8 -> CP1251
+    # --------------------------------------------------------
 
-    for encoding_a in (
-        "cp1251",
-        "latin-1",
-        "cp866"
-    ):
+    try:
 
-        for encoding_b in (
-            "utf-8",
+        candidate = (
+            original
+            .encode(
+                "cp1251"
+            )
+            .decode(
+                "utf-8"
+            )
+        )
+
+        candidates.append(
+            candidate
+        )
+
+    except Exception:
+        pass
+
+    # --------------------------------------------------------
+    # CP866-вариант.
+    #
+    # Используем только если реально
+    # получаем значительное улучшение.
+    # --------------------------------------------------------
+
+    try:
+
+        candidate = (
+            original
+            .encode(
+                "cp866"
+            )
+            .decode(
+                "utf-8"
+            )
+        )
+
+        candidates.append(
+            candidate
+        )
+
+    except Exception:
+        pass
+
+    # --------------------------------------------------------
+    # Иногда mojibake получается двойным.
+    # --------------------------------------------------------
+
+    first_pass = list(
+        candidates
+    )
+
+    for candidate in first_pass:
+
+        if not candidate:
+            continue
+
+        candidate_score = (
+            web_mojibake_score(
+                candidate
+            )
+        )
+
+        if candidate_score == 0:
+            continue
+
+        for encoding_a in (
+            "latin-1",
             "cp1251",
             "cp866"
         ):
 
-            try:
+            for encoding_b in (
+                "utf-8",
+            ):
 
-                repaired = (
-                    text
-                    .encode(
-                        encoding_a
+                try:
+
+                    repaired = (
+                        candidate
+                        .encode(
+                            encoding_a
+                        )
+                        .decode(
+                            encoding_b
+                        )
                     )
-                    .decode(
-                        encoding_b
+
+                    candidates.append(
+                        repaired
                     )
-                )
 
-                candidates.append(
-                    repaired
-                )
+                except Exception:
+                    continue
 
-            except Exception:
-                continue
+    # --------------------------------------------------------
+    # Оценка кандидатов.
+    # --------------------------------------------------------
 
-    # ========================================================
-    # Оценка кандидатов
-    # ========================================================
-
-    def score(value):
+    def candidate_score(value):
 
         value = safe_text(
             value
@@ -1128,62 +1223,30 @@ def repair_web_mojibake(text):
         if not value:
             return 10**9
 
-        bad = 0
+        bad = web_mojibake_score(
+            value
+        )
 
-        # Явный mojibake.
-        bad += len(
-            re.findall(
-                r"[РСÐÑ][^\s]{1,3}",
-                value
-            )
-        ) * 100
-
-        bad += len(
-            re.findall(
-                r"[п╬╧╟╩╠╡╢╣╤╥╦╧╨╩╪╫╬╭╮╯╰╱╲╳╴╵╶╷╸╹╺╻╼╽╾╿]",
-                value
-            )
-        ) * 100
-
-        # Replacement chars.
-        bad += value.count(
-            "\ufffd"
-        ) * 1000
-
-        # Нормальная кириллица.
-        cyr = len(
+        cyrillic = len(
             re.findall(
                 r"[А-Яа-яЁё]",
                 value
             )
         )
 
-        # Нормальный ASCII.
-        latin = len(
-            re.findall(
-                r"[A-Za-z0-9]",
-                value
+        # Нормальный русский текст.
+        score = (
+            bad * 1000
+            - min(
+                cyrillic,
+                20000
             )
         )
 
-        # Хорошая строка должна иметь
-        # нормальную кириллицу.
-        result = bad
-
-        result -= min(
-            cyr,
-            10000
-        )
-
-        result -= min(
-            latin,
-            3000
-        ) * 0.1
-
-        return result
+        return score
 
     best = original
-    best_score = score(
+    best_score = candidate_score(
         original
     )
 
@@ -1196,14 +1259,16 @@ def repair_web_mojibake(text):
         if not candidate:
             continue
 
-        candidate_score = score(
+        score = candidate_score(
             candidate
         )
 
-        if candidate_score < best_score:
+        # Принимаем исправление только если
+        # оно действительно лучше.
+        if score < best_score:
 
             best = candidate
-            best_score = candidate_score
+            best_score = score
 
     if best != original:
 
@@ -1213,70 +1278,16 @@ def repair_web_mojibake(text):
         )
 
         print(
-            f"[WEB ENCODING] "
-            f"before={original[:120]}"
+            "[WEB ENCODING] "
+            f"before={original[:150]}"
         )
 
         print(
-            f"[WEB ENCODING] "
-            f"after={best[:120]}"
+            "[WEB ENCODING] "
+            f"after={best[:150]}"
         )
 
     return best
-
-# ============================================================
-# SCORE DECODED TEXT
-# ============================================================
-
-def web_encoding_score(text):
-
-    text = safe_text(text)
-
-    if not text:
-        return 10**9
-
-    replacement_count = text.count(
-        "\ufffd"
-    )
-
-    mojibake_count = (
-        web_mojibake_score(text)
-    )
-
-    cyrillic_count = len(
-        re.findall(
-            r"[А-Яа-яЁё]",
-            text
-        )
-    )
-
-    latin_count = len(
-        re.findall(
-            r"[A-Za-z]",
-            text
-        )
-    )
-
-    # Нормальный русский HTML.
-    score = (
-        replacement_count * 10000
-        + mojibake_count * 100
-    )
-
-    # Бонус за нормальную кириллицу.
-    score -= min(
-        cyrillic_count,
-        20000
-    )
-
-    # Не позволяем английскому тексту
-    # автоматически проигрывать.
-    score -= min(
-        latin_count,
-        5000
-    ) * 0.1
-
-    return score
 
 
 # ============================================================
@@ -1290,8 +1301,6 @@ def decode_web_response(response):
     if not raw:
         return ""
 
-    candidates = []
-
     # --------------------------------------------------------
     # BOM
     # --------------------------------------------------------
@@ -1300,30 +1309,51 @@ def decode_web_response(response):
         b"\xef\xbb\xbf"
     ):
 
-        candidates.append(
-            "utf-8-sig"
-        )
+        try:
 
-    elif raw.startswith(
+            return raw.decode(
+                "utf-8-sig",
+                errors="strict"
+            )
+
+        except Exception:
+            pass
+
+    if raw.startswith(
         b"\xff\xfe"
     ):
 
-        candidates.append(
-            "utf-16"
-        )
+        try:
 
-    elif raw.startswith(
+            return raw.decode(
+                "utf-16",
+                errors="strict"
+            )
+
+        except Exception:
+            pass
+
+    if raw.startswith(
         b"\xfe\xff"
     ):
 
-        candidates.append(
-            "utf-16-be"
-        )
+        try:
+
+            return raw.decode(
+                "utf-16-be",
+                errors="strict"
+            )
+
+        except Exception:
+            pass
 
     # --------------------------------------------------------
-    # HTTP Content-Type charset
+    # Собираем заявленные кодировки.
     # --------------------------------------------------------
 
+    candidates = []
+
+    # HTTP Content-Type.
     content_type = safe_text(
         response.headers.get(
             "Content-Type",
@@ -1332,7 +1362,8 @@ def decode_web_response(response):
     )
 
     match = re.search(
-        r"charset\s*=\s*['\"]?([^;\s'\"]+)",
+        r"charset\s*=\s*['\"]?"
+        r"([^;\s'\"]+)",
         content_type,
         re.IGNORECASE
     )
@@ -1344,22 +1375,20 @@ def decode_web_response(response):
         )
 
     # --------------------------------------------------------
-    # HTML charset
+    # Charset из HTML.
     # --------------------------------------------------------
 
     try:
 
-        head = raw[
-            :200000
-        ].decode(
+        head = raw[:100000].decode(
             "latin-1",
             errors="ignore"
         )
 
-        # <meta charset="utf-8">
         match = re.search(
-            r"<meta[^>]+charset\s*=\s*"
-            r"['\"]?\s*([a-zA-Z0-9._-]+)",
+            r'<meta[^>]+charset\s*=\s*'
+            r'["\']?\s*'
+            r'([a-zA-Z0-9._-]+)',
             head,
             re.IGNORECASE
         )
@@ -1370,12 +1399,9 @@ def decode_web_response(response):
                 match.group(1)
             )
 
-        # <meta http-equiv="Content-Type"
-        # content="text/html; charset=utf-8">
         match = re.search(
-            r"content\s*=\s*['\"][^'\"]*"
-            r"charset\s*=\s*"
-            r"([a-zA-Z0-9._-]+)",
+            r'content=["\'][^"\']*charset='
+            r'([a-zA-Z0-9._-]+)',
             head,
             re.IGNORECASE
         )
@@ -1390,24 +1416,21 @@ def decode_web_response(response):
         pass
 
     # --------------------------------------------------------
-    # ВАЖНО:
-    # UTF-8 ставим раньше старых кодировок.
+    # Основные варианты.
+    #
+    # UTF-8 обязательно проверяем первым.
     # --------------------------------------------------------
 
     candidates.extend([
         "utf-8",
-        "utf-8-sig",
         "cp1251",
         "windows-1251",
         "koi8-r",
         "iso-8859-5",
+        "latin-1",
     ])
 
-    # --------------------------------------------------------
-    # Requests apparent encoding —
-    # только дополнительный вариант.
-    # --------------------------------------------------------
-
+    # requests detection — последним.
     try:
 
         apparent = (
@@ -1452,10 +1475,12 @@ def decode_web_response(response):
         )
 
     # --------------------------------------------------------
-    # Декодируем всеми возможными вариантами.
+    # Проверяем кодировки.
     # --------------------------------------------------------
 
-    decoded = []
+    best_text = ""
+    best_score = None
+    best_encoding = ""
 
     for encoding in unique:
 
@@ -1470,53 +1495,318 @@ def decode_web_response(response):
 
             continue
 
-        if not text:
-            continue
-
-        score = web_encoding_score(
+        text = clean_web_text(
             text
         )
 
-        decoded.append(
-            (
-                score,
-                encoding,
+        if not text:
+            continue
+
+        mojibake = (
+            web_mojibake_score(
                 text
             )
         )
 
-    if not decoded:
+        replacement = text.count(
+            "\ufffd"
+        )
+
+        cyrillic = len(
+            re.findall(
+                r"[А-Яа-яЁё]",
+                text
+            )
+        )
+
+        # ----------------------------------------------------
+        # Чем меньше score — тем лучше.
+        # ----------------------------------------------------
+
+        score = (
+            mojibake * 1000
+            + replacement * 5000
+            - min(
+                cyrillic,
+                20000
+            )
+        )
+
+        if (
+            best_score is None
+            or score < best_score
+        ):
+
+            best_score = score
+            best_text = text
+            best_encoding = encoding
+
+    if best_text:
+
+        print(
+            "[WEB ENCODING] "
+            f"selected={best_encoding} "
+            f"score={best_score}"
+        )
+
+        # ----------------------------------------------------
+        # Последняя страховка:
+        # если выбранная кодировка всё-таки
+        # дала mojibake — пробуем восстановить.
+        # ----------------------------------------------------
+
+        repaired = repair_web_mojibake(
+            best_text
+        )
+
+        if repaired != best_text:
+
+            print(
+                "[WEB ENCODING] "
+                "post-decode repair applied"
+            )
+
+            best_text = repaired
+
+    return best_text
+
+
+# ============================================================
+# WEB EXCERPT
+# ============================================================
+
+def web_excerpt(
+    text,
+    query,
+    max_chars=1200
+):
+
+    text = clean_web_text(
+        text
+    )
+
+    if not text:
         return ""
 
     # --------------------------------------------------------
-    # Лучший вариант.
+    # Исправляем mojibake.
     # --------------------------------------------------------
 
-    decoded.sort(
-        key=lambda item:
-            item[0]
-    )
-
-    best_score, best_encoding, best_text = (
-        decoded[0]
-    )
-
-    print(
-        "[WEB ENCODING] "
-        f"selected={best_encoding} "
-        f"score={best_score}"
+    text = repair_web_mojibake(
+        text
     )
 
     # --------------------------------------------------------
-    # Дополнительный ремонт mojibake.
+    # Разбиваем на предложения.
     # --------------------------------------------------------
 
-    repaired = repair_web_mojibake(
-        best_text
+    sentences = re.split(
+        r"(?<=[.!?])\s+",
+        text
     )
 
-    return repaired
+    query_tokens = [
+        token
+        for token in web_tokens(
+            query
+        )
+        if len(token) >= 3
+    ]
 
+    stop_words = {
+        "какой",
+        "какая",
+        "какое",
+        "какие",
+        "какого",
+        "года",
+        "год",
+        "годы",
+        "выпуска",
+        "выпускается",
+        "выпускался",
+        "выпускались",
+        "выпуск",
+        "с",
+        "до",
+        "для",
+        "это",
+
+        "the",
+        "what",
+        "when",
+        "year",
+        "years",
+        "production",
+        "model",
+        "models",
+    }
+
+    useful_tokens = [
+        token
+        for token in query_tokens
+        if token not in stop_words
+    ]
+
+    query_lower = safe_text(
+        query
+    ).lower()
+
+    # --------------------------------------------------------
+    # Оцениваем предложения.
+    # --------------------------------------------------------
+
+    scored = []
+
+    for position, sentence in enumerate(
+        sentences
+    ):
+
+        sentence_lower = (
+            sentence.lower()
+        )
+
+        score = 0
+
+        for token in useful_tokens:
+
+            if token in sentence_lower:
+
+                score += 5
+
+        # Полный запрос.
+        if (
+            query_lower
+            and query_lower in sentence_lower
+        ):
+
+            score += 20
+
+        # Годы.
+        if re.search(
+            r"\b(?:19|20)\d{2}\b",
+            sentence
+        ):
+
+            score += 5
+
+        # Формулировки про производство.
+        for phrase in (
+            "производ",
+            "выпуск",
+            "годы выпуска",
+            "год выпуска",
+            "production",
+            "production years",
+            "model year",
+            "introduced",
+            "debut",
+            "built",
+            "from",
+            "until",
+        ):
+
+            if phrase in sentence_lower:
+
+                score += 2
+
+        if score > 0:
+
+            scored.append(
+                (
+                    score,
+                    position,
+                    sentence
+                )
+            )
+
+    # --------------------------------------------------------
+    # Берём лучший фрагмент.
+    # --------------------------------------------------------
+
+    if scored:
+
+        scored.sort(
+            key=lambda item: (
+                -item[0],
+                item[1]
+            )
+        )
+
+        _, best_position, _ = (
+            scored[0]
+        )
+
+        selected = []
+
+        for position in (
+            best_position - 1,
+            best_position,
+            best_position + 1
+        ):
+
+            if (
+                position < 0
+                or position >= len(
+                    sentences
+                )
+            ):
+                continue
+
+            sentence = safe_text(
+                sentences[position]
+            )
+
+            if (
+                sentence
+                and sentence not in selected
+            ):
+
+                selected.append(
+                    sentence
+                )
+
+        result = " ".join(
+            selected
+        )
+
+        result = clean_web_text(
+            result
+        )
+
+        result = repair_web_mojibake(
+            result
+        )
+
+        if len(result) > max_chars:
+
+            result = (
+                result[
+                    :max_chars - 3
+                ]
+                + "..."
+            )
+
+        return result
+
+    # --------------------------------------------------------
+    # Fallback.
+    # --------------------------------------------------------
+
+    text = repair_web_mojibake(
+        text
+    )
+
+    if len(text) > max_chars:
+
+        return (
+            text[
+                :max_chars - 3
+            ]
+            + "..."
+        )
+
+    return text
 
 # ============================================================
 # WEB EXCERPT

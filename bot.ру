@@ -251,6 +251,80 @@ def safe_text(value):
 
     return str(value).strip()
 
+# ============================================================
+# ПОИСК В ИНТЕРНЕТЕ
+# ============================================================
+
+def web_search(query, max_results=5):
+    """
+    Поиск информации в интернете через DuckDuckGo.
+
+    Отдельный API-ключ не нужен.
+    """
+
+    query = safe_text(query)
+
+    if not query:
+        return []
+
+    try:
+
+        from ddgs import DDGS
+
+        print(
+            f"[WEB SEARCH] {query}"
+        )
+
+        results = []
+
+        ddgs = DDGS(
+            timeout=15
+        )
+
+        search_results = ddgs.text(
+            query,
+            region="wt-wt",
+            safesearch="moderate",
+            max_results=max_results
+        )
+
+        for item in search_results:
+
+            title = safe_text(
+                item.get("title")
+            )
+
+            url = safe_text(
+                item.get("href")
+            )
+
+            body = safe_text(
+                item.get("body")
+            )
+
+            if not url:
+                continue
+
+            results.append({
+                "title": title,
+                "url": url,
+                "body": body
+            })
+
+        print(
+            f"[WEB SEARCH] "
+            f"Found: {len(results)}"
+        )
+
+        return results
+
+    except Exception as e:
+
+        print(
+            f"[WEB SEARCH] ERROR: {e}"
+        )
+
+        return []
 
 def normalize(text):
     """
@@ -2236,6 +2310,10 @@ def main_menu():
         "🚘 В разборе"
     )
 
+    kb.row(
+        "🌐 Поиск в интернете"
+    )
+
     return kb
 
 
@@ -3223,7 +3301,26 @@ def enter_donors_mode(
         chat_id,
         results
     )
+# ============================================================
+# WEB SEARCH MODE
+# ============================================================
 
+def enter_web_mode(chat_id):
+
+    current_mode[
+        chat_id
+    ] = "web"
+
+    bot.send_message(
+        chat_id,
+        "🌐 Напишите, что хотите найти в интернете.\n\n"
+        "Например:\n"
+        "Mercedes W205 какое масло\n"
+        "размер дисков W213\n"
+        "как снять фару W204\n"
+        "Mercedes M274 характеристики",
+        reply_markup=main_menu()
+    )
 
 # ============================================================
 # FAVORITES
@@ -3417,6 +3514,123 @@ def perform_search(
     mode = current_mode.get(
         chat_id
     )
+
+     # --------------------------------------------------------
+    # WEB SEARCH
+    # --------------------------------------------------------
+
+    if mode == "web":
+
+        show_loading_message(
+            chat_id
+        )
+
+        try:
+
+            results = web_search(
+                query,
+                max_results=5
+            )
+
+        except Exception as e:
+
+            print(
+                f"[WEB SEARCH] Error: {e}"
+            )
+
+            hide_loading_message(
+                chat_id
+            )
+
+            bot.send_message(
+                chat_id,
+                "❌ Ошибка поиска в интернете."
+            )
+
+            return
+
+        hide_loading_message(
+            chat_id
+        )
+
+        if not results:
+
+            bot.send_message(
+                chat_id,
+                "❌ По вашему запросу ничего не найдено.\n\n"
+                "Попробуйте изменить запрос."
+            )
+
+            return
+
+        text = (
+            f"🌐 Результаты поиска\n\n"
+            f"🔎 {query}\n\n"
+        )
+
+        for index, result in enumerate(
+            results,
+            start=1
+        ):
+
+            title = result.get(
+                "title",
+                "Без названия"
+            )
+
+            url = result.get(
+                "url",
+                ""
+            )
+
+            body = result.get(
+                "body",
+                ""
+            )
+
+            # Не даём одному сайту
+            # занимать слишком много места.
+            if len(body) > 350:
+
+                body = (
+                    body[:350]
+                    + "..."
+                )
+
+            text += (
+                f"{index}️⃣ "
+                f"{title}\n"
+            )
+
+            if body:
+
+                text += (
+                    f"{body}\n"
+                )
+
+            text += (
+                f"🔗 {url}\n\n"
+            )
+
+        # Telegram ограничивает размер
+        # одного текстового сообщения.
+        max_length = 4000
+
+        for start in range(
+            0,
+            len(text),
+            max_length
+        ):
+
+            bot.send_message(
+                chat_id,
+                text[
+                    start:
+                    start + max_length
+                ]
+            )
+
+        return
 
     if mode not in (
         "parts",
@@ -3634,6 +3848,14 @@ def handle_text(message):
             chat_id
         )
 
+        return
+
+    if text == "🌐 Поиск в интернете":
+
+        enter_web_mode(
+            chat_id
+        )
+    
         return
 
     if text == "❤️ Избранное":

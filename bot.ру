@@ -86,7 +86,7 @@ WHEELS_CSV = (
 )
 
 # ============================================================
-# AI WEB SEARCH
+# AI WEB SEARCH — AI TUNNEL
 # ============================================================
 
 try:
@@ -98,25 +98,29 @@ except ImportError:
     OpenAI = None
 
 
+# ------------------------------------------------------------
+# AI Tunnel API Key
+# ------------------------------------------------------------
+
 AI_TUNNEL_API_KEY = os.getenv(
     "AI_TUNNEL_API_KEY",
     ""
 ).strip()
+
+
+# ------------------------------------------------------------
+# Модель
+# ------------------------------------------------------------
 
 AI_WEB_MODEL = os.getenv(
     "AI_WEB_MODEL",
     "gpt-5-mini"
 ).strip()
 
-AI_WEB_ENABLED = bool(
-    AI_TUNNEL_API_KEY
-)
 
-AI_WEB_MODEL = os.getenv(
-    "AI_WEB_MODEL",
-    "gpt-6-astra"
-).strip()
-
+# ------------------------------------------------------------
+# Дополнительные настройки
+# ------------------------------------------------------------
 
 AI_WEB_REASONING = os.getenv(
     "AI_WEB_REASONING",
@@ -138,13 +142,24 @@ AI_WEB_MAX_SOURCES = int(
 )
 
 
+# ------------------------------------------------------------
+# AI WEB включён только если:
+# 1. установлен openai
+# 2. есть ключ AI Tunnel
+# ------------------------------------------------------------
+
 AI_WEB_ENABLED = bool(
-    OPENAI_API_KEY
+    AI_TUNNEL_API_KEY
     and OpenAI
 )
 
 
+# ------------------------------------------------------------
+# Клиент
+# ------------------------------------------------------------
+
 ai_client = None
+
 
 if AI_WEB_ENABLED:
 
@@ -168,6 +183,23 @@ if AI_WEB_ENABLED:
 
         ai_client = None
         AI_WEB_ENABLED = False
+
+else:
+
+    if not AI_TUNNEL_API_KEY:
+
+        print(
+            "⚠️ AI WEB disabled: "
+            "AI_TUNNEL_API_KEY is not set"
+        )
+
+    elif not OpenAI:
+
+        print(
+            "⚠️ AI WEB disabled: "
+            "openai package is not installed"
+        )
+
 # ------------------------------------------------------------
 # Файлы
 # ------------------------------------------------------------

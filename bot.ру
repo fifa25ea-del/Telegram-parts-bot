@@ -347,7 +347,7 @@ current_mode = {}
 web_results = {}
 web_index = {}
 web_query = {}
-
+web_ai_answers = {}
 # ============================================================
 # WEB SEARCH SETTINGS
 # ============================================================
@@ -5653,6 +5653,13 @@ def send_web_card(
         index
     ]
 
+    ai_answer = safe_text(
+        web_ai_answers.get(
+            chat_id,
+            ""
+        )
+    )
+
     result_type = result.get(
         "type",
         "web_source"
@@ -5882,16 +5889,30 @@ def send_web_card(
         )
     )
 
-    text = (
-        f"🌐 {title}\n\n"
-        f"🔎 Запрос:\n"
-        f"{query}\n\n"
-        f"📖 Фрагмент:\n"
-        f"{description}\n\n"
-        f"🌍 {domain or '-'}\n\n"
-        f"({index + 1}/"
-        f"{len(results)})"
-    )
+    if ai_answer:
+
+        text = (
+            f"🔎 Запрос:\n"
+            f"{query}\n\n"
+            f"💡 {ai_answer}\n\n"
+            f"🌍 {domain or '-'}\n\n"
+            f"({index + 1}/"
+            f"{len(results)})"
+        )
+    
+    else:
+    
+        text = (
+            f"🌐 {title}\n\n"
+            f"🔎 Запрос:\n"
+            f"{query}\n\n"
+            f"📖 Фрагмент:\n"
+            f"{description}\n\n"
+            f"🌍 {domain or '-'}\n\n"
+            f"({index + 1}/"
+            f"{len(results)})"
+        )
+
 
     keyboard = types.InlineKeyboardMarkup(
         row_width=2
@@ -7022,21 +7043,47 @@ def perform_search(
     
             results = []
     
+                        # ----------------------------------------------------
+            # Сначала настоящий AI Web Search.
+            # ----------------------------------------------------
+
+            results = []
+            answer = ""
+
             if AI_WEB_ENABLED:
-    
+
                 ai_result = ai_web_search(
-                    original_query,
-                    prepared_query
+                    query,
+                    search_query
                 )
-            
+
                 answer = ai_result.get(
                     "answer",
                     ""
                 )
-            
+
                 results = ai_result.get(
                     "results",
                     []
+                )
+
+
+            # ----------------------------------------------------
+            # Fallback:
+            # если AI недоступен или произошла ошибка,
+            # используем старый web_search().
+            # ----------------------------------------------------
+
+            if not results:
+
+                print(
+                    "⚠️ AI WEB unavailable. "
+                    "Using legacy web search."
+                )
+
+                results = web_search(
+                    search_query,
+                    max_results=WEB_MAX_RESULTS
                 )
 
     
@@ -7109,7 +7156,11 @@ def perform_search(
         web_results[
             chat_id
         ] = results
-    
+
+        web_ai_answers[
+            chat_id
+        ] = answer
+
         web_index[
             chat_id
         ] = 0
@@ -7123,10 +7174,7 @@ def perform_search(
             0
         )
     
-        return {
-            "answer": answer,
-            "results": results
-        }
+        return 
 
     # --------------------------------------------------------
     # PARTS

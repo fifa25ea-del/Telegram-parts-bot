@@ -1232,9 +1232,10 @@ def extract_web_page(
 
             return ""
 
-        html = decode_web_response(
-            response
-        )
+        html = response.content
+
+        if not html:
+            return ""
 
         if not html:
             return ""

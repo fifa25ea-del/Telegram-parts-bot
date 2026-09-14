@@ -4301,28 +4301,22 @@ def find_part_smart(
     - лево / право
     - верх / низ
     - частичные совпадения
-    - автомобильные термины
 
-    Логика двигателя:
+    ВАЖНО:
 
-        M112
-        112
-        112970
+    Кузов и двигатель разбираются ДО fix_a(),
+    чтобы fix_a() не мог склеить:
 
-    => одно семейство M112.
+        163 112
 
-    Если указан полный код двигателя:
+    в:
 
-        112970
-
-    то детали с точным 112970 получают
-    значительно больший приоритет,
-    чем другие двигатели семейства M112.
+        163112
     """
 
-    query = safe_text(query).strip()
+    original_query = safe_text(query).strip()
 
-    if not query:
+    if not original_query:
         return []
 
     with database_lock:
@@ -4378,22 +4372,6 @@ def find_part_smart(
         )
 
         # ====================================================
-        # НОРМАЛИЗАЦИЯ
-        # ====================================================
-
-        original_query = query
-
-        normalized_query = normalize(
-            fix_a(query)
-        )
-
-        normalized_query = (
-            normalized_query
-            .lower()
-            .replace("ё", "е")
-        )
-
-        # ====================================================
         # КУЗОВА
         # ====================================================
 
@@ -4407,6 +4385,9 @@ def find_part_smart(
             "w166": "w166",
             "166": "w166",
 
+            "w202": "w202",
+            "202": "w202",
+
             "w203": "w203",
             "203": "w203",
 
@@ -4415,6 +4396,15 @@ def find_part_smart(
 
             "w205": "w205",
             "205": "w205",
+
+            "w208": "w208",
+            "208": "w208",
+
+            "w209": "w209",
+            "209": "w209",
+
+            "w210": "w210",
+            "210": "w210",
 
             "w211": "w211",
             "211": "w211",
@@ -4425,6 +4415,9 @@ def find_part_smart(
             "w213": "w213",
             "213": "w213",
 
+            "w218": "w218",
+            "218": "w218",
+
             "w220": "w220",
             "220": "w220",
 
@@ -4434,33 +4427,18 @@ def find_part_smart(
             "w222": "w222",
             "222": "w222",
 
-            "w140": "w140",
-            "140": "w140",
-
-            "w210": "w210",
-            "210": "w210",
-
-            "w202": "w202",
-            "202": "w202",
-
-            "w208": "w208",
-            "208": "w208",
-
-            "w209": "w209",
-            "209": "w209",
-
-            "w218": "w218",
-            "218": "w218",
-
             "c215": "c215",
             "215": "c215",
 
             "c216": "c216",
             "216": "c216",
+
+            "w140": "w140",
+            "140": "w140",
         }
 
         # ====================================================
-        # СЕМЕЙСТВА ДВИГАТЕЛЕЙ
+        # ДВИГАТЕЛИ
         # ====================================================
 
         engine_families = {
@@ -4515,63 +4493,63 @@ def find_part_smart(
         # ====================================================
 
         front_words = {
+            "перед",
             "передний",
             "передняя",
             "переднее",
-            "перед",
             "front",
-            "f"
+            "f",
         }
 
         rear_words = {
+            "зад",
             "задний",
             "задняя",
             "заднее",
-            "зад",
             "rear",
             "back",
-            "b"
+            "b",
         }
 
         left_words = {
+            "лев",
             "левый",
             "левая",
             "левое",
-            "лев",
             "left",
-            "l"
+            "l",
         }
 
         right_words = {
+            "прав",
             "правый",
             "правая",
             "правое",
-            "прав",
             "right",
-            "r"
+            "r",
         }
 
         upper_words = {
+            "верх",
             "верхний",
             "верхняя",
             "верхнее",
-            "верх",
             "upper",
-            "u"
+            "u",
         }
 
         lower_words = {
+            "низ",
             "нижний",
             "нижняя",
             "нижнее",
-            "низ",
             "lower",
             "down",
-            "d"
+            "d",
         }
 
         # ====================================================
-        # НАЧАЛЬНЫЕ ПЕРЕМЕННЫЕ
+        # ПЕРЕМЕННЫЕ
         # ====================================================
 
         bodies = []
@@ -4589,38 +4567,59 @@ def find_part_smart(
         upper_lower = None
 
         # ====================================================
-        # РАЗДЕЛЯЕМ СКЛЕЕННЫЕ БУКВЫ И ЦИФРЫ
+        # НОРМАЛИЗАЦИЯ БЕЗ FIX_A
+        #
+        # Сначала только приводим к нижнему регистру.
+        #
+        # Это ВАЖНО:
+        #
+        # "163 112"
+        #
+        # остаётся:
+        #
+        # "163 112"
         # ====================================================
 
-        normalized_query = re.sub(
-            r"(?<=[a-zа-яё])(?=\d)",
-            " ",
-            normalized_query,
-            flags=re.IGNORECASE
+        raw_query = (
+            original_query
+            .lower()
+            .replace("ё", "е")
         )
 
-        normalized_query = re.sub(
-            r"(?<=\d)(?=[a-zа-яё])",
-            " ",
-            normalized_query,
-            flags=re.IGNORECASE
-        )
-
         # ====================================================
-        # WORDS
+        # РАЗБИВАЕМ ЗАПРОС
         # ====================================================
 
-        words = re.findall(
+        raw_words = re.findall(
             r"[a-zа-яё0-9]+",
-            normalized_query,
+            raw_query,
             flags=re.IGNORECASE
         )
 
         # ====================================================
-        # РАСПОЗНАВАНИЕ КУЗОВА / ДВИГАТЕЛЯ
+        # ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ
         # ====================================================
 
-        for word in words:
+        def compact_engine_word(word):
+
+            return (
+                safe_text(word)
+                .lower()
+                .replace(".", "")
+                .replace("-", "")
+                .replace("_", "")
+                .replace(" ", "")
+            )
+
+        # ====================================================
+        # РАСПОЗНАВАНИЕ
+        # ====================================================
+
+        consumed = set()
+
+        for index, raw_word in enumerate(raw_words):
+
+            word = raw_word.lower()
 
             # =================================================
             # КУЗОВ
@@ -4631,70 +4630,40 @@ def find_part_smart(
                 body = body_aliases[word]
 
                 if body not in bodies:
+
                     bodies.append(body)
 
-                continue
+                consumed.add(index)
 
-            # =================================================
-            # КУЗОВ ВНУТРИ СКЛЕЕННОГО СЛОВА
-            # =================================================
-
-            body_found_in_word = False
-
-            for body_alias, normalized_body in body_aliases.items():
-
-                if (
-                    word.endswith(body_alias)
-                    and word != body_alias
-                ):
-
-                    if normalized_body not in bodies:
-                        bodies.append(normalized_body)
-
-                    part_word_without_body = (
-                        word[:-len(body_alias)]
-                    )
-
-                    if part_word_without_body:
-
-                        part_words.append(
-                            part_word_without_body
-                        )
-
-                    body_found_in_word = True
-
-                    break
-
-            if body_found_in_word:
                 continue
 
             # =================================================
             # ДВИГАТЕЛЬ
             # =================================================
 
-            compact_word = (
+            compact_word = compact_engine_word(
                 word
-                .replace(".", "")
-                .replace("-", "")
-                .replace("_", "")
-                .replace(" ", "")
-                .lower()
             )
 
-            # =================================================
-            # ПОЛНЫЙ КОД ДВИГАТЕЛЯ
-            # =================================================
+            # -------------------------------------------------
+            # Полный код:
+            #
+            # 112970
+            # M112970
+            # 112.970
+            # M112.970
+            # -------------------------------------------------
 
-            engine_code_match = re.fullmatch(
+            engine_match = re.fullmatch(
                 r"(?:m|om)?(\d{6})",
                 compact_word,
                 flags=re.IGNORECASE
             )
 
-            if engine_code_match:
+            if engine_match:
 
                 code_digits = (
-                    engine_code_match.group(1)
+                    engine_match.group(1)
                 )
 
                 family_digits = (
@@ -4743,11 +4712,18 @@ def find_part_smart(
                             code_digits
                         )
 
+                    consumed.add(index)
+
                     continue
 
-            # =================================================
-            # СЕМЕЙСТВО ДВИГАТЕЛЯ
-            # =================================================
+            # -------------------------------------------------
+            # Семейство:
+            #
+            # 112
+            # M112
+            # OM642
+            # 642
+            # -------------------------------------------------
 
             if compact_word in engine_families:
 
@@ -4764,76 +4740,131 @@ def find_part_smart(
                         family
                     )
 
+                consumed.add(index)
+
                 continue
 
             # =================================================
-            # ПЕРЕД
+            # ПЕРЕД / ЗАД
             # =================================================
 
             if word in front_words:
 
                 front_rear = "F"
 
-                continue
+                consumed.add(index)
 
-            # =================================================
-            # ЗАД
-            # =================================================
+                continue
 
             if word in rear_words:
 
                 front_rear = "B"
 
+                consumed.add(index)
+
                 continue
 
             # =================================================
-            # ЛЕВО
+            # ЛЕВО / ПРАВО
             # =================================================
 
             if word in left_words:
 
                 left_right = "L"
 
-                continue
+                consumed.add(index)
 
-            # =================================================
-            # ПРАВО
-            # =================================================
+                continue
 
             if word in right_words:
 
                 left_right = "R"
 
+                consumed.add(index)
+
                 continue
 
             # =================================================
-            # ВЕРХ
+            # ВЕРХ / НИЗ
             # =================================================
 
             if word in upper_words:
 
                 upper_lower = "U"
 
-                continue
+                consumed.add(index)
 
-            # =================================================
-            # НИЗ
-            # =================================================
+                continue
 
             if word in lower_words:
 
                 upper_lower = "D"
 
+                consumed.add(index)
+
                 continue
 
-            # =================================================
-            # ОБЫЧНОЕ СЛОВО
-            # =================================================
+        # ====================================================
+        # ОСТАВШИЕСЯ СЛОВА = НАЗВАНИЕ ДЕТАЛИ
+        # ====================================================
 
-            part_words.append(word)
+        for index, raw_word in enumerate(raw_words):
+
+            if index in consumed:
+                continue
+
+            # -----------------------------------------------
+            # Теперь fix_a применяем только к отдельному
+            # слову, а не ко всему запросу.
+            # -----------------------------------------------
+
+            fixed_word = normalize(
+                fix_a(raw_word)
+            )
+
+            fixed_word = (
+                fixed_word
+                .lower()
+                .replace("ё", "е")
+                .strip()
+            )
+
+            if not fixed_word:
+                continue
+
+            # -----------------------------------------------
+            # Если fix_a испортил слово, сохраняем исходное.
+            # Например:
+            #
+            # редуктор -> peдyktop
+            #
+            # В таком случае ищем оба варианта.
+            # -----------------------------------------------
+
+            if fixed_word != raw_word:
+
+                if raw_word not in part_words:
+
+                    part_words.append(
+                        raw_word
+                    )
+
+                if fixed_word not in part_words:
+
+                    part_words.append(
+                        fixed_word
+                    )
+
+            else:
+
+                if fixed_word not in part_words:
+
+                    part_words.append(
+                        fixed_word
+                    )
 
         # ====================================================
-        # DEBUG РАЗОБРАННОГО ЗАПРОСА
+        # DEBUG
         # ====================================================
 
         print(
@@ -4883,11 +4914,8 @@ def find_part_smart(
             )
 
             if not value:
-                return None, None
 
-            # =============================================
-            # УБИРАЕМ M / OM
-            # =============================================
+                return None, None
 
             digits = re.sub(
                 r"^(?:m|om)",
@@ -4896,7 +4924,7 @@ def find_part_smart(
             )
 
             # =============================================
-            # ПОЛНЫЙ КОД ДВИГАТЕЛЯ
+            # ПОЛНЫЙ КОД
             # =============================================
 
             if re.fullmatch(
@@ -4928,7 +4956,7 @@ def find_part_smart(
                         )
 
             # =============================================
-            # СЕМЕЙСТВО ДВИГАТЕЛЯ
+            # СЕМЕЙСТВО
             # =============================================
 
             for family in set(
@@ -4965,6 +4993,7 @@ def find_part_smart(
                 part,
                 dict
             ):
+
                 continue
 
             # =================================================
@@ -5077,10 +5106,11 @@ def find_part_smart(
                         break
 
                 if not body_match:
+
                     continue
 
             # =================================================
-            # ИНФОРМАЦИЯ О ДВИГАТЕЛЕ
+            # ДВИГАТЕЛЬ
             # =================================================
 
             (
@@ -5091,7 +5121,7 @@ def find_part_smart(
             )
 
             # =================================================
-            # ФИЛЬТР СЕМЕЙСТВА ДВИГАТЕЛЯ
+            # ФИЛЬТР СЕМЕЙСТВА
             # =================================================
 
             if engine_families_requested:
@@ -5112,6 +5142,7 @@ def find_part_smart(
                         break
 
                 if not engine_match:
+
                     continue
 
             # =================================================
@@ -5195,52 +5226,64 @@ def find_part_smart(
 
             if part_words:
 
-                all_words_match = True
+                matched_part_words = 0
 
                 for search_word in part_words:
 
-                    if search_word not in name:
+                    if not search_word:
+                        continue
 
-                        if search_word not in comment:
+                    if search_word in name:
 
-                            all_words_match = False
+                        matched_part_words += 1
 
-                            break
+                    elif search_word in comment:
 
-                if all_words_match:
+                        matched_part_words += 0.5
+
+                # ---------------------------------------------
+                # Все слова нашли
+                # ---------------------------------------------
+
+                if (
+                    matched_part_words
+                    >= len(part_words)
+                ):
 
                     score += 500
 
-                else:
+                # ---------------------------------------------
+                # Частичное совпадение
+                # ---------------------------------------------
 
-                    partial_count = 0
-
-                    for search_word in part_words:
-
-                        if search_word in name:
-
-                            partial_count += 1
-
-                        elif search_word in comment:
-
-                            partial_count += 0.5
+                elif matched_part_words > 0:
 
                     score += int(
-                        partial_count * 100
+                        matched_part_words * 100
                     )
+
+                else:
+
+                    # Ни одного слова детали нет
+                    continue
 
             # =================================================
             # ТОЧНОЕ НАЗВАНИЕ
             # =================================================
 
             normalized_part_words = " ".join(
-                part_words
+                word
+                for word in part_words
+                if word
             ).strip()
 
             if (
                 normalized_part_words
                 and
-                name == normalized_part_words
+                (
+                    name
+                    == normalized_part_words
+                )
             ):
 
                 score += 150
@@ -5307,16 +5350,6 @@ def find_part_smart(
 
                     score += 700
 
-                else:
-
-                    # Если пользователь указал полный
-                    # код двигателя, но у детали только
-                    # другое исполнение того же семейства,
-                    # оставляем результат, но ставим его
-                    # ниже точного совпадения.
-
-                    score += 0
-
             # =================================================
             # ПЕРЕД / ЗАД
             # =================================================
@@ -5354,7 +5387,7 @@ def find_part_smart(
                     score += 50
 
             # =================================================
-            # ЕСЛИ НИЧЕГО НЕ СОВПАЛО
+            # ЕСЛИ ЕСТЬ РЕЗУЛЬТАТ
             # =================================================
 
             if score <= 0:

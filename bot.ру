@@ -4250,9 +4250,33 @@ def find_part(
     query,
     db=None
 ):
+    """
+    Умный поиск запчастей.
+
+    Ищет по:
+    - наименованию
+    - марке
+    - модели
+    - году
+    - кузову
+    - двигателю
+    - перед/зад
+    - лев/прав
+    - верх/низ
+    - цвету
+    - маркировке
+    - кросс-номерам
+    - номеру производителя
+    - производителю
+    - комментарию
+
+    Точный номер детали имеет максимальный приоритет.
+    """
+
+    original_query = safe_text(query)
 
     query = normalize(
-        fix_a(query)
+        fix_a(original_query)
     )
 
     if not query:
@@ -4267,199 +4291,488 @@ def find_part(
         )
 
         # ====================================================
-        # Сначала используем индекс
+        # НОРМАЛИЗАЦИЯ ЗАПРОСА
         # ====================================================
 
-        positions = []
+        query_text = query
 
-        if query in parts_index:
+        query_tokens = [
+            token
+            for token in re.split(
+                r"\s+",
+                query_text
+            )
+            if token
+        ]
 
-            positions = parts_index[
-                query
-            ]
+        if not query_tokens:
+            return []
 
-        elif len(query) >= 4:
+        # ====================================================
+        # СЛОВАРИ СИНОНИМОВ
+        # ====================================================
 
-            prefix = query[:4]
+        synonyms = {
+            "левый": "l",
+            "левая": "l",
+            "лев": "l",
+            "l": "l",
 
-            positions = parts_index.get(
-                prefix,
-                []
+            "правый": "r",
+            "правая": "r",
+            "прав": "r",
+            "r": "r",
+
+            "передний": "f",
+            "передняя": "f",
+            "перед": "f",
+            "front": "f",
+            "f": "f",
+
+            "задний": "b",
+            "задняя": "b",
+            "зад": "b",
+            "rear": "b",
+            "b": "b",
+
+            "верхний": "u",
+            "верхняя": "u",
+            "верх": "u",
+            "u": "u",
+
+            "нижний": "d",
+            "нижняя": "d",
+            "низ": "d",
+            "d": "d",
+        }
+
+        # ====================================================
+        # ПОЛЯ БАЗЫ
+        # ====================================================
+
+        field_keys = [
+            "Наименование",
+            "Марка",
+            "Модель",
+            "Год",
+            "Кузов",
+            "Двигатель",
+            "Перед/Зад (F/B)",
+            "Лев/Прав (L/R)",
+            "Верх/Низ (U/D)",
+            "Цвет",
+            "Маркировка",
+            "Кросс-номера",
+            "Номер производителя",
+            "Производитель",
+            "Комментарий"
+        ]
+
+        # ====================================================
+        # ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ
+        # ====================================================
+
+        def norm_value(value):
+
+            return normalize(
+                fix_a(
+                    safe_text(value)
+                )
             )
 
+        def contains_token(
+            token,
+            value
+        ):
+
+            if not value:
+                return False
+
+            return token in value
+
         # ====================================================
-        # Проверяем найденные позиции
+        # СНАЧАЛА ПРОВЕРЯЕМ:
+        # НЕ ЯВЛЯЕТСЯ ЛИ ЗАПРОС АРТИКУЛОМ
         # ====================================================
 
-        if positions:
+        query_compact = re.sub(
+            r"[^a-zа-яё0-9]",
+            "",
+            query_text
+        )
 
-            unique_positions = []
+        looks_like_number = (
+            bool(
+                re.search(
+                    r"\d",
+                    query_compact
+                )
+            )
+            and
+            len(query_compact) >= 5
+        )
 
-            seen = set()
+        # ====================================================
+        # ОЦЕНКА ТОВАРА
+        # ====================================================
 
-            for position in positions:
+        scored = []
 
-                if position in seen:
-                    continue
+        for position, part in enumerate(
+            database
+        ):
 
-                seen.add(position)
+            if not isinstance(
+                part,
+                dict
+            ):
+                continue
 
-                unique_positions.append(
-                    position
+            # ------------------------------------------------
+            # Собираем поля
+            # ------------------------------------------------
+
+            values = {}
+
+            for key in field_keys:
+
+                value = part.get(
+                    key,
+                    ""
                 )
 
-                if (
-                    len(unique_positions)
-                    >= MAX_RESULTS
-                ):
-                    break
+                values[key] = norm_value(
+                    value
+                )
 
-            results = []
+            # ------------------------------------------------
+            # Объединённый текст
+            # ------------------------------------------------
 
-            for position in unique_positions:
+            all_text = " ".join(
+                value
+                for value in values.values()
+                if value
+            )
 
-                if position >= len(database):
-                    continue
+            if not all_text:
+                continue
 
-                part = database[position]
+            score = 0
 
-                values = []
+            matched_tokens = 0
 
-                if cross_numbers_key:
+            # =================================================
+            # ТОЧНЫЕ НОМЕРА
+            # =================================================
 
-                    values.append(
-                        part.get(
-                            cross_numbers_key,
-                            ""
-                        )
-                    )
+            number_fields = [
+                "Кросс-номера",
+                "Номер производителя",
+                "Маркировка"
+            ]
 
-                if manufacturer_number_key:
+            if looks_like_number:
 
-                    values.append(
-                        part.get(
-                            manufacturer_number_key,
-                            ""
-                        )
-                    )
+                for key in number_fields:
 
-                found = False
-
-                for value in values:
-
-                    value = safe_text(
-                        value
+                    value = values.get(
+                        key,
+                        ""
                     )
 
                     if not value:
                         continue
 
-                    numbers = re.split(
-                        r"[,;/|\n]+",
+                    compact_value = re.sub(
+                        r"[^a-zа-яё0-9]",
+                        "",
                         value
                     )
 
-                    for number in numbers:
+                    if (
+                        query_compact
+                        and
+                        query_compact
+                        in compact_value
+                    ):
 
-                        number = normalize(
-                            fix_a(number)
-                        )
+                        score += 1000
 
-                        if (
-                            query
-                            in number
-                        ):
+                        matched_tokens += 1
 
-                            found = True
-                            break
+            # =================================================
+            # ОБЫЧНЫЕ СЛОВА
+            # =================================================
 
-                    if found:
-                        break
+            for token in query_tokens:
 
-                if found:
-
-                    results.append(
-                        part
-                    )
-
-            return results[
-                :MAX_RESULTS
-            ]
-
-        # ====================================================
-        # Fallback — прямой поиск
-        # ====================================================
-
-        results = []
-
-        for part in database:
-
-            values = []
-
-            if cross_numbers_key:
-
-                values.append(
-                    part.get(
-                        cross_numbers_key,
-                        ""
-                    )
-                )
-
-            if manufacturer_number_key:
-
-                values.append(
-                    part.get(
-                        manufacturer_number_key,
-                        ""
-                    )
-                )
-
-            found = False
-
-            for value in values:
-
-                value = safe_text(
-                    value
-                )
-
-                if not value:
+                if not token:
                     continue
 
-                numbers = re.split(
-                    r"[,;/|\n]+",
-                    value
+                normalized_token = synonyms.get(
+                    token,
+                    token
                 )
 
-                for number in numbers:
+                token_found = False
 
-                    number = normalize(
-                        fix_a(number)
+                # ---------------------------------------------
+                # Кузов
+                # ---------------------------------------------
+
+                body = values.get(
+                    "Кузов",
+                    ""
+                )
+
+                if (
+                    normalized_token
+                    and
+                    normalized_token in body
+                ):
+
+                    score += 80
+                    token_found = True
+
+                # ---------------------------------------------
+                # Двигатель
+                # ---------------------------------------------
+
+                engine = values.get(
+                    "Двигатель",
+                    ""
+                )
+
+                if (
+                    normalized_token
+                    and
+                    normalized_token in engine
+                ):
+
+                    score += 80
+                    token_found = True
+
+                # ---------------------------------------------
+                # Наименование
+                # ---------------------------------------------
+
+                name = values.get(
+                    "Наименование",
+                    ""
+                )
+
+                if (
+                    token in name
+                    or
+                    normalized_token in name
+                ):
+
+                    score += 70
+                    token_found = True
+
+                # ---------------------------------------------
+                # Модель
+                # ---------------------------------------------
+
+                model = values.get(
+                    "Модель",
+                    ""
+                )
+
+                if (
+                    token in model
+                    or
+                    normalized_token in model
+                ):
+
+                    score += 60
+                    token_found = True
+
+                # ---------------------------------------------
+                # Перед / зад
+                # ---------------------------------------------
+
+                front_back = values.get(
+                    "Перед/Зад (F/B)",
+                    ""
+                )
+
+                if (
+                    normalized_token in {
+                        "f",
+                        "b"
+                    }
+                    and
+                    normalized_token == front_back
+                ):
+
+                    score += 50
+                    token_found = True
+
+                # ---------------------------------------------
+                # Лево / право
+                # ---------------------------------------------
+
+                left_right = values.get(
+                    "Лев/Прав (L/R)",
+                    ""
+                )
+
+                if (
+                    normalized_token in {
+                        "l",
+                        "r"
+                    }
+                    and
+                    normalized_token == left_right
+                ):
+
+                    score += 50
+                    token_found = True
+
+                # ---------------------------------------------
+                # Верх / низ
+                # ---------------------------------------------
+
+                up_down = values.get(
+                    "Верх/Низ (U/D)",
+                    ""
+                )
+
+                if (
+                    normalized_token in {
+                        "u",
+                        "d"
+                    }
+                    and
+                    normalized_token == up_down
+                ):
+
+                    score += 50
+                    token_found = True
+
+                # ---------------------------------------------
+                # Остальные поля
+                # ---------------------------------------------
+
+                other_fields = [
+                    "Цвет",
+                    "Маркировка",
+                    "Кросс-номера",
+                    "Номер производителя",
+                    "Производитель",
+                    "Комментарий"
+                ]
+
+                for key in other_fields:
+
+                    value = values.get(
+                        key,
+                        ""
                     )
 
                     if (
-                        query
-                        in number
+                        token in value
+                        or
+                        normalized_token in value
                     ):
 
-                        found = True
+                        score += 20
+                        token_found = True
                         break
 
-                if found:
-                    break
+                if token_found:
 
-            if found:
+                    matched_tokens += 1
 
-                results.append(
-                    part
-                )
+            # =================================================
+            # ЕСЛИ НИ ОДНО СЛОВО НЕ НАШЛОСЬ
+            # =================================================
+
+            if matched_tokens == 0:
+
+                continue
+
+            # =================================================
+            # БОНУС ЗА ПОЛНОЕ СОВПАДЕНИЕ
+            # =================================================
 
             if (
-                len(results)
-                >= MAX_RESULTS
+                query_text
+                in all_text
             ):
-                break
 
-        return results
+                score += 30
+
+            # =================================================
+            # БОНУС ЗА СОВПАДЕНИЕ ВСЕХ СЛОВ
+            # =================================================
+
+            if (
+                matched_tokens
+                == len(query_tokens)
+            ):
+
+                score += 100
+
+            # =================================================
+            # Сохраняем результат
+            # =================================================
+
+            scored.append(
+                (
+                    score,
+                    position,
+                    part
+                )
+            )
+
+        # ====================================================
+        # СОРТИРОВКА
+        # ====================================================
+
+        scored.sort(
+            key=lambda item: (
+                item[0],
+                -item[1]
+            ),
+            reverse=True
+        )
+
+        # ====================================================
+        # ОТЛАДКА
+        # ====================================================
+
+        print(
+            f"[SMART SEARCH] "
+            f"query={original_query!r} "
+            f"candidates={len(scored)}"
+        )
+
+        for score, position, part in scored[:10]:
+
+            print(
+                f"[SMART SEARCH] "
+                f"score={score} "
+                f"position={position} "
+                f"name={part.get('Наименование', '')} "
+                f"body={part.get('Кузов', '')} "
+                f"engine={part.get('Двигатель', '')}"
+            )
+
+        # ====================================================
+        # ВОЗВРАЩАЕМ РЕЗУЛЬТАТЫ
+        # ====================================================
+
+        return [
+            part
+            for score, position, part
+            in scored[
+                :MAX_RESULTS
+            ]
+        ]
+
 
 # ============================================================
 # ПОИСК ДИСКОВ

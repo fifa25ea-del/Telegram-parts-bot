@@ -4241,6 +4241,34 @@ def delete_album(chat_id):
         chat_id
     ] = []
 
+def extract_vehicle_tokens(query):
+
+    query = normalize(
+        fix_a(query)
+    )
+
+    vehicle_tokens = set()
+
+    # W163 / w163
+    for match in re.findall(
+        r"\bw\d{3}\b",
+        query,
+        flags=re.IGNORECASE
+    ):
+        vehicle_tokens.add(
+            match.lower()
+        )
+
+    # Просто "163", "220", "203"
+    for match in re.findall(
+        r"\b\d{3}\b",
+        query
+    ):
+        vehicle_tokens.add(
+            "w" + match
+        )
+
+    return vehicle_tokens
 
 # ============================================================
 # ПОИСК ЗАПЧАСТЕЙ

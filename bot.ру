@@ -2229,7 +2229,83 @@ def extract_web_page(
         )
 
         return ""
+def is_russian_text(text):
 
+    text = safe_text(text)
+
+    if not text:
+        return False
+
+    cyrillic = len(
+        re.findall(
+            r"[А-Яа-яЁё]",
+            text
+        )
+    )
+
+    latin = len(
+        re.findall(
+            r"[A-Za-z]",
+            text
+        )
+    )
+
+    if cyrillic == 0:
+        return False
+
+    if latin > cyrillic * 1.5:
+        return False
+
+    return True
+
+
+def filter_russian_web_results(results):
+
+    filtered = []
+
+    for item in results:
+
+        if not isinstance(
+            item,
+            dict
+        ):
+            continue
+
+        # AI-ответ не является сайтом.
+        # Его не фильтруем по языку.
+        if item.get("type") == "ai_answer":
+
+            filtered.append(
+                item
+            )
+
+            continue
+
+        title = safe_text(
+            item.get("title")
+        )
+
+        description = safe_text(
+            item.get("description")
+            or item.get("body")
+        )
+
+        text = f"{title} {description}"
+
+        if not is_russian_text(text):
+
+            print(
+                f"🌐 [WEB] SKIP FOREIGN: "
+                f"{title}"
+            )
+
+            continue
+
+        filtered.append(
+            item
+        )
+
+    return filtered
 # ============================================================
 # WEB SEARCH
 # ============================================================
@@ -6623,207 +6699,311 @@ def ai_web_search(
             "answer": "",
             "results": []
         }
-    
+
     original_query = safe_text(original_query)
     prepared_query = safe_text(prepared_query)
-    
+
     if not original_query:
         return {
             "answer": "",
             "results": []
         }
-    
+
     if not prepared_query:
         prepared_query = original_query
-    
-    # Поиск только по русскоязычным источникам
-    search_query = f"{prepared_query} на русском языке"
-    
+
+    # Поисковый запрос на русском языке.
+    # Не добавляем "на русском языке" — язык лучше контролировать
+    # параметрами поискового API и фильтрацией результатов.
+    search_query = prepared_query
+
     print(
         "🤖 AI WEB SEARCH — ECONOMY MODE"
     )
-    
+
     print(
         f"[AI WEB] Query: {search_query}"
     )
 
 
-    # ========================================================
-    # 1. DDGS — дешёвый поиск
-    # ========================================================
+# ========================================================
+# 1. DDGS — дешёвый поиск
+# ========================================================
 
-    try:
+try:
 
-        from ddgs import DDGS
+    from ddgs import DDGS
+    import re
 
-        search_results = []
+    search_results = []
 
-        regions = web_region_candidates(
-            prepared_query
-        )
+    # Для русскоязычного бота используем русскую выдачу
+    # независимо от других кандидатов региона.
+    regions = ["ru-ru"]
 
-        for region in regions:
+    for region in regions:
 
-            try:
+        try:
 
-                with DDGS(
-                    timeout=WEB_SEARCH_TIMEOUT
-                ) as ddgs:
+            with DDGS(
+                timeout=WEB_SEARCH_TIMEOUT
+            ) as ddgs:
 
-                    results = list(
-                        ddgs.text(
-                            prepared_query,
-                            region=region,
-                            safesearch="moderate",
-                            max_results=max_results
-                        )
+                results = list(
+                    ddgs.text(
+                        prepared_query,
+                        region=region,
+                        safesearch="moderate",
+                        max_results=max_results * 3
                     )
-
-                if results:
-
-                    search_results.extend(
-                        results
-                    )
-
-            except Exception as e:
-
-                print(
-                    f"[DDGS] ERROR "
-                    f"{region}: {e}"
                 )
 
-        # ----------------------------------------------------
-        # Убираем дубли
-        # ----------------------------------------------------
+            if results:
+                search_results.extend(results)
 
-        unique_results = []
+        except Exception as e:
 
-        seen_urls = set()
+            print(
+                f"[DDGS] ERROR {region}: {e}"
+            )
 
-        for item in search_results:
 
-            if not isinstance(
+    # ====================================================
+    # Фильтр русскоязычных результатов
+    # ====================================================
+
+    def is_russian_result(title, description):
+
+        text = f"{title} {description}".strip()
+
+        if not text:
+            return False
+
+        cyrillic_count = len(
+            re.findall(
+                r"[А-Яа-яЁё]",
+                text
+            )
+        )
+
+        latin_count = len(
+            re.findall(
+                r"[A-Za-z]",
+                text
+            )
+        )
+
+        # Нет кириллицы вообще
+        if cyrillic_count == 0:
+            return False
+
+        # Явно преимущественно иностранный текст
+        if latin_count > cyrillic_count * 1.5:
+            return False
+
+        return True
+
+
+    # ====================================================
+    # Убираем дубли + иностранные результаты
+    # ====================================================
+
+    unique_results = []
+
+    seen_urls = set()
+
+    for item in search_results:
+
+        if not isinstance(
+            item,
+            dict
+        ):
+            continue
+
+        url = canonical_web_url(
+            item.get(
+                "href",
+                ""
+            )
+        )
+
+        if not url:
+            continue
+
+        if url in seen_urls:
+            continue
+
+        title = clean_web_text(
+            item.get(
+                "title",
+                ""
+            )
+        )
+
+        description = clean_web_text(
+            item.get(
+                "body",
+                ""
+            )
+        )
+
+        # ------------------------------------------------
+        # ОТБРАСЫВАЕМ ИНОЯЗЫЧНЫЕ СТРАНИЦЫ
+        # ------------------------------------------------
+
+        if not is_russian_result(
+            title,
+            description
+        ):
+            print(
+                f"🌐 [DDGS] SKIP FOREIGN: "
+                f"{title}"
+            )
+            continue
+
+        seen_urls.add(url)
+
+        unique_results.append(
+            {
+                "title": title,
+                "url": url,
+                "description": description
+            }
+        )
+
+
+    # ====================================================
+    # Сортируем ПОСЛЕ фильтрации
+    # ====================================================
+
+    unique_results.sort(
+        key=lambda item:
+            web_result_score(
                 item,
-                dict
-            ):
-                continue
+                prepared_query
+            ),
+        reverse=True
+    )
 
-            url = canonical_web_url(
-                item.get(
-                    "href",
-                    ""
-                )
-            )
 
-            if not url:
-                continue
+    # Берём TOP N уже из русскоязычных результатов
+    search_results = unique_results[
+        :max_results
+    ]
 
-            if url in seen_urls:
-                continue
 
-            seen_urls.add(url)
-
-            unique_results.append(
-                {
-                    "title": clean_web_text(
-                        item.get(
-                            "title",
-                            ""
-                        )
-                    ),
-                    "url": url,
-                    "description": clean_web_text(
-                        item.get(
-                            "body",
-                            ""
-                        )
-                    )
-                }
-            )
-
-        # ----------------------------------------------------
-        # Сортируем по релевантности
-        # ----------------------------------------------------
-
-        unique_results.sort(
-            key=lambda item:
-                web_result_score(
-                    item,
-                    prepared_query
-                ),
-            reverse=True
-        )
-
-        search_results = unique_results[
-            :max_results
-        ]
-
-    except Exception as e:
-
-        print(
-            f"❌ [DDGS] ERROR: {e}"
-        )
-    
-        return {
-            "answer": "",
-            "results": []
-        }
-
-    if not search_results:
-
-        print(
-            "[DDGS] No results"
-        )
-    
-        return {
-            "answer": "",
-            "results": []
-        }
+except Exception as e:
 
     print(
-        f"[DDGS] Found: "
-        f"{len(search_results)}"
+        f"❌ [DDGS] ERROR: {e}"
     )
+
+    return {
+        "answer": "",
+        "results": []
+    }
+
+
+if not search_results:
+
+    print(
+        "[DDGS] No Russian results"
+    )
+
+    return {
+        "answer": "",
+        "results": []
+    }
+
+
+print(
+    f"[DDGS] Found Russian: "
+    f"{len(search_results)}"
+)
+
 
     # ========================================================
     # 2. Формируем короткий контекст для AI
     # ========================================================
 
-    context_parts = []
 
-    for index, item in enumerate(
-        search_results[:5],
-        start=1
-    ):
+def is_russian_result(title, description):
+    """
+    Проверяет, является ли результат преимущественно русскоязычным.
+    """
 
-        title = safe_text(
-            item.get("title")
-        )
+    text = f"{title} {description}".strip()
 
-        description = safe_text(
-            item.get("description")
-        )
+    if not text:
+        return False
 
-        url = safe_text(
-            item.get("url")
-        )
-
-        if len(description) > 700:
-
-            description = (
-                description[:697]
-                + "..."
-            )
-
-        context_parts.append(
-            f"[{index}] {title}\n"
-            f"{description}\n"
-            f"URL: {url}"
-        )
-
-    context = "\n\n".join(
-        context_parts
+    cyrillic_count = len(
+        re.findall(r"[А-Яа-яЁё]", text)
     )
+
+    latin_count = len(
+        re.findall(r"[A-Za-z]", text)
+    )
+
+    # Полностью иностранный текст
+    if cyrillic_count == 0:
+        return False
+
+    # Явно преимущественно иностранный текст
+    if latin_count > cyrillic_count * 1.5:
+        return False
+
+    return True
+
+
+# ========================================================
+# Формирование context
+# ========================================================
+
+# ========================================================
+# Формирование context
+# ========================================================
+
+context_parts = []
+
+for index, item in enumerate(
+    search_results,
+    start=1
+):
+
+    title = safe_text(
+        item.get("title")
+    )
+
+    description = safe_text(
+        item.get("description")
+    )
+
+    url = safe_text(
+        item.get("url")
+    )
+
+    if not title and not description:
+        continue
+
+    if len(description) > 700:
+
+        description = (
+            description[:697]
+            + "..."
+        )
+
+    context_parts.append(
+        f"[{index}] {title}\n"
+        f"{description}\n"
+        f"URL: {url}"
+    )
+
+context = "\n\n".join(
+    context_parts
+)
+
+
 
     # ========================================================
     # 3. Очень короткий prompt
@@ -7233,59 +7413,107 @@ M272.960 — 8,0 л.
 """
 
 
-    # ========================================================
-    # 4. AI — только суммаризация
-    # ========================================================
+ # ========================================================
+# 4. AI — только извлечение ответа из результатов поиска
+# ========================================================
 
-    try:
+try:
 
-        response = ai_client.chat.completions.create(
+    extraction_prompt = f"""
+ВОПРОС ПОЛЬЗОВАТЕЛЯ:
+{original_query}
 
-            model=AI_WEB_MODEL,
+НАЙДЕННЫЕ РЕЗУЛЬТАТЫ:
+{context}
 
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "Ты автомобильный справочник. "
-                        "Твоя задача — найти конкретный ответ на вопрос "
-                        "по переданным результатам поиска. "
-                        "НЕ пересказывай название страницы. "
-                        "НЕ отвечай названием источника. "
-                        "НЕ считай заголовок статьи доказательством. "
-                        "Если источник содержит только название без "
-                        "фактических данных — игнорируй его. "
-                        "Извлекай конкретные значения: объем, мощность, "
-                        "год, номер детали и т.д. "
-                        "Если точного значения нет — так и скажи. "
-                        "Отвечай на русском. "
-                        "Максимум 2 коротких предложения. "
-                        "Без вступлений и лишнего текста. "
-                        "Не выдумывай."
 
-                    )
-                }
-            ],
+ТВОЯ ЗАДАЧА:
+Дай конкретный ответ на вопрос пользователя, используя ТОЛЬКО
+фактическую информацию из найденных результатов.
 
-            temperature=0.1,
+СТРОГИЕ ПРАВИЛА:
 
-            max_tokens=150
-        )
+1. Используй только русскоязычные результаты.
+2. Игнорируй англоязычные, немецкоязычные и другие иностранные страницы.
+3. Игнорируй результат, если он не содержит фактического ответа
+   на вопрос.
+4. Не считай название страницы или заголовок доказательством.
+5. Не используй собственные знания, которых нет в результатах.
+6. Не выдумывай отсутствующие значения.
+7. Не смешивай данные разных моделей, поколений, кузовов,
+   двигателей, годов или модификаций.
+8. Если несколько значений относятся к разным модификациям —
+   укажи их отдельно с соответствующей модификацией.
+9. Если значения противоречат друг другу и невозможно определить
+   правильное — напиши: "Точных данных нет."
+10. Если точного ответа в найденных данных нет —
+    напиши: "Точных данных нет."
+11. Если вопрос требует уточнения модификации для точного ответа —
+    попроси указать только один наиболее важный параметр.
+12. Не называй сайты, статьи или источники.
+13. Не описывай процесс поиска.
+14. Не пиши "согласно источнику", "по данным поиска",
+    "я нашёл" и подобные фразы.
+15. Максимум 2 коротких предложения для простого вопроса.
+16. Для технической диагностики допускается короткий список.
+17. Ответ только на русском языке.
 
-        answer = safe_text(
-            response.choices[0]
-            .message
-            .content
-        )
+ОСОБО ВАЖНО ДЛЯ ТЕХНИЧЕСКИХ ДАННЫХ:
 
-    except Exception as e:
+Если пользователь спрашивает объём масла, мощность, момент
+затяжки, каталожный номер, допуск, размер или другое конкретное
+значение — это значение должно быть прямо подтверждено найденными
+данными.
 
-        print(
-            f"❌ [AI WEB] API ERROR: "
-            f"{repr(e)}"
-        )
+Не подставляй значение из другой модификации.
 
-        answer = ""
+Если найдено только общее описание двигателя, но конкретного
+значения нет — напиши:
+"Точных данных нет."
+
+Теперь дай только готовый ответ пользователю.
+"""
+
+    response = ai_client.chat.completions.create(
+
+        model=AI_WEB_MODEL,
+
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Ты модуль извлечения точных технических фактов "
+                    "из результатов веб-поиска Mercedes-Benz. "
+                    "Не выдумывай данные. "
+                    "Используй только переданный контекст."
+                )
+            },
+            {
+                "role": "user",
+                "content": extraction_prompt
+            }
+        ],
+
+        temperature=0.1,
+
+        max_tokens=150
+    )
+
+    answer = safe_text(
+        response.choices[0]
+        .message
+        .content
+    )
+
+except Exception as e:
+
+    print(
+        f"❌ [AI WEB] API ERROR: "
+        f"{repr(e)}"
+    )
+
+    answer = ""
+
 
     # ========================================================
     # 5. ОЧИСТКА ОТВЕТА
@@ -7401,192 +7629,178 @@ def perform_search(
         chat_id
     )
 
-    # --------------------------------------------------------
-    # WEB SEARCH
-    # --------------------------------------------------------
+  # --------------------------------------------------------
+# WEB SEARCH
+# --------------------------------------------------------
 
-    if mode == "web":
+if mode == "web":
+
+    print(
+        f"🌐 WEB SEARCH: {query}"
+    )
+
+    log_search(
+        chat_id,
+        query,
+        "web"
+    )
+
+    show_loading_message(
+        chat_id,
+        "⏳ Пожалуйста, подождите...\n"
+        "🧠 Анализируем запрос и ищем информацию..."
+    )
+
+    try:
+
+        search_query = improve_web_query(
+            query
+        )
 
         print(
-            f"🌐 WEB SEARCH: {query}"
+            f"[WEB SEARCH] Original: "
+            f"{query}"
         )
-    
+
+        print(
+            f"[WEB SEARCH] Improved: "
+            f"{search_query}"
+        )
+
+        results = []
+        answer = ""
+
+        # ----------------------------------------------------
+        # AI WEB SEARCH
+        # ----------------------------------------------------
+
+        if AI_WEB_ENABLED:
+
+            ai_result = ai_web_search(
+                query,
+                search_query
+            )
+
+            answer = ai_result.get(
+                "answer",
+                ""
+            )
+
+            results = ai_result.get(
+                "results",
+                []
+            )
+
+            if answer:
+
+                results.insert(
+                    0,
+                    {
+                        "type": "ai_answer",
+                        "body": answer,
+                        "sources": results.copy()
+                    }
+                )
+
+        # ----------------------------------------------------
+        # FALLBACK
+        # ----------------------------------------------------
+
+        if not results:
+
+            print(
+                "⚠️ AI WEB unavailable. "
+                "Using legacy web search."
+            )
+
+            results = web_search(
+                search_query,
+                max_results=WEB_MAX_RESULTS
+            )
+
+        # ----------------------------------------------------
+        # Финальная фильтрация результатов
+        # ----------------------------------------------------
+        #
+        # Даже если результат пришёл из legacy web_search(),
+        # не показываем пользователю явно иностранные страницы.
+        #
+
+        results = filter_russian_web_results(
+            results
+        )
+
+    except Exception as e:
+
+        print(
+            f"[WEB SEARCH] Error: "
+            f"{repr(e)}"
+        )
+
+        try:
+
+            results = web_search(
+                query,
+                max_results=WEB_MAX_RESULTS
+            )
+
+            results = filter_russian_web_results(
+                results
+            )
+
+        except Exception as fallback_error:
+
+            print(
+                f"[WEB SEARCH FALLBACK] "
+                f"{repr(fallback_error)}"
+            )
+
+            results = []
+
+    hide_loading_message(
+        chat_id
+    )
+
+    if not results:
+
         log_search(
             chat_id,
             query,
-            "web"
+            "NOT_FOUND_WEB"
         )
-    
-        show_loading_message(
+
+        bot.send_message(
             chat_id,
-            "⏳ Пожалуйста, подождите...\n"
-            "🧠 Анализируем запрос и ищем информацию..."
+            "❌ В интернете ничего "
+            "подходящего не найдено.\n\n"
+            "Попробуйте изменить запрос."
         )
-    
-        try:
-    
-            search_query = improve_web_query(
-                query
-            )
-    
-            print(
-                f"[WEB SEARCH] Original: "
-                f"{query}"
-            )
-    
-            print(
-                f"[WEB SEARCH] Improved: "
-                f"{search_query}"
-            )
-    
-            # ----------------------------------------------------
-            # Сначала настоящий AI Web Search.
-            # ----------------------------------------------------
-    
-            results = []
-    
-                        # ----------------------------------------------------
-            # Сначала настоящий AI Web Search.
-            # ----------------------------------------------------
 
-            results = []
-            answer = ""
+        return
 
-            if AI_WEB_ENABLED:
+    web_results[
+        chat_id
+    ] = results
 
-                ai_result = ai_web_search(
-                    query,
-                    search_query
-                )
-            
-                answer = ai_result.get(
-                    "answer",
-                    ""
-                )
-            
-                results = ai_result.get(
-                    "results",
-                    []
-                )
-            
-                if answer:
-            
-                    results.insert(
-                        0,
-                        {
-                            "type": "ai_answer",
-                            "body": answer,
-                            "sources": results.copy()
-                        }
-                    )
+    web_ai_answers[
+        chat_id
+    ] = answer
 
-            # ----------------------------------------------------
-            # Fallback:
-            # если AI недоступен или произошла ошибка,
-            # используем старый web_search().
-            # ----------------------------------------------------
+    web_index[
+        chat_id
+    ] = 0
 
-            if not results:
+    web_query[
+        chat_id
+    ] = query
 
-                print(
-                    "⚠️ AI WEB unavailable. "
-                    "Using legacy web search."
-                )
+    send_web_card(
+        chat_id,
+        0
+    )
 
-                results = web_search(
-                    search_query,
-                    max_results=WEB_MAX_RESULTS
-                )
+    return
 
-    
-            # ----------------------------------------------------
-            # Fallback:
-            # если AI недоступен или произошла ошибка,
-            # используем твой старый web_search().
-            # ----------------------------------------------------
-    
-            if not results:
-    
-                print(
-                    "⚠️ AI WEB unavailable. "
-                    "Using legacy web search."
-                )
-    
-                results = web_search(
-                    search_query,
-                    max_results=WEB_MAX_RESULTS
-                )
-    
-        except Exception as e:
-    
-            print(
-                f"[WEB SEARCH] Error: "
-                f"{repr(e)}"
-            )
-    
-            # ----------------------------------------------------
-            # Последняя попытка — старый поиск.
-            # ----------------------------------------------------
-    
-            try:
-    
-                results = web_search(
-                    query,
-                    max_results=WEB_MAX_RESULTS
-                )
-    
-            except Exception as fallback_error:
-    
-                print(
-                    f"[WEB SEARCH FALLBACK] "
-                    f"{repr(fallback_error)}"
-                )
-    
-                results = []
-    
-        hide_loading_message(
-            chat_id
-        )
-    
-        if not results:
-    
-            log_search(
-                chat_id,
-                query,
-                "NOT_FOUND_WEB"
-            )
-    
-            bot.send_message(
-                chat_id,
-                "❌ В интернете ничего "
-                "подходящего не найдено.\n\n"
-                "Попробуйте изменить запрос."
-            )
-    
-            return
-    
-        web_results[
-            chat_id
-        ] = results
-
-        web_ai_answers[
-            chat_id
-        ] = answer
-
-        web_index[
-            chat_id
-        ] = 0
-    
-        web_query[
-            chat_id
-        ] = query
-    
-        send_web_card(
-            chat_id,
-            0
-        )
-    
-        return 
 
     # --------------------------------------------------------
     # PARTS

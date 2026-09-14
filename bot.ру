@@ -7050,7 +7050,7 @@ MB 229.71
             max_output_tokens=400,
 
             text={
-                "verbosity": "low"
+                "verbosity": "medium"
             },
 
             store=False

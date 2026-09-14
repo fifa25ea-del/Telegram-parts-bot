@@ -4279,6 +4279,10 @@ def extract_vehicle_tokens(query):
 # "дверь w220 правая"
 # ============================================================
 
+# ============================================================
+# УМНЫЙ ПОИСК ЗАПЧАСТЕЙ
+# ============================================================
+
 def find_part_smart(
     query,
     db=None
@@ -4302,48 +4306,38 @@ def find_part_smart(
         if not database:
             return []
 
-        # ----------------------------------------------------
-        # Нормализация запроса
-        # ----------------------------------------------------
+        # ====================================================
+        # Безопасная нормализация
+        # НЕ используем normalize() для русского текста
+        # ====================================================
 
-        normalized_query = normalize(
-            fix_a(
-                query_original
-            )
-        )
+        def norm(
+            value
+        ):
 
-        # ----------------------------------------------------
-        # Разбиваем запрос на слова
-        # ----------------------------------------------------
+            value = safe_text(
+                value
+            ).strip().lower()
 
-        raw_words = re.findall(
-            r"[A-Za-zА-Яа-яЁё0-9.+-]+",
-            normalized_query
-        )
-
-        words = []
-
-        for word in raw_words:
-
-            word = safe_text(
-                word
-            ).strip()
-
-            if not word:
-                continue
-
-            words.append(
-                word
+            value = value.replace(
+                "ё",
+                "е"
             )
 
-        # ----------------------------------------------------
-        # Результат поиска
-        # ----------------------------------------------------
+            value = re.sub(
+                r"\s+",
+                " ",
+                value
+            )
 
-        scored = []
+            return value
+
+        query_norm = norm(
+            query_original
+        )
 
         # ====================================================
-        # Словарь кузовов Mercedes
+        # Алиасы кузовов Mercedes
         # ====================================================
 
         body_aliases = {
@@ -4413,6 +4407,21 @@ def find_part_smart(
             "214": "w214",
             "w214": "w214",
 
+            "215": "c215",
+            "c215": "c215",
+
+            "216": "w216",
+            "w216": "w216",
+
+            "217": "w217",
+            "w217": "w217",
+
+            "218": "w218",
+            "w218": "w218",
+
+            "219": "c219",
+            "c219": "c219",
+
             "220": "w220",
             "w220": "w220",
 
@@ -4442,64 +4451,163 @@ def find_part_smart(
 
             "254": "w254",
             "w254": "w254",
-
-            "163": "w163",
-
-            "215": "c215",
-            "c215": "c215",
-
-            "219": "c219",
-            "c219": "c219",
-
-            "218": "w218",
-            "w218": "w218",
-
-            "216": "w216",
-            "w216": "w216",
-
-            "217": "w217",
-            "w217": "w217",
-
-            "222": "w222",
-            "w222": "w222",
         }
 
         # ====================================================
-        # Словарь двигателей
+        # Определяем реальные ключи твоей базы
         # ====================================================
+
+        sample = database[0]
+
+        if not isinstance(
+            sample,
+            dict
+        ):
+            return []
+
+        keys = list(
+            sample.keys()
+        )
+
+        key_map = {}
+
+        for key in keys:
+
+            key_map[
+                norm(key)
+            ] = key
+
+        def find_key(
+            *names
+        ):
+
+            for name in names:
+
+                name_norm = norm(
+                    name
+                )
+
+                if name_norm in key_map:
+
+                    return key_map[
+                        name_norm
+                    ]
+
+            return None
+
+        # ====================================================
+        # Твои поля из CSV
+        # ====================================================
+
+        name_key_local = find_key(
+            "Наименование",
+            "name",
+            "название"
+        )
+
+        body_key_local = find_key(
+            "Кузов",
+            "body",
+            "кузов"
+        )
+
+        engine_key_local = find_key(
+            "Двигатель",
+            "engine",
+            "двигатель"
+        )
+
+        front_rear_key_local = find_key(
+            "Перед/Зад (F/B)",
+            "Перед/Зад",
+            "front_rear",
+            "front/rear"
+        )
+
+        left_right_key_local = find_key(
+            "Лев/Прав (L/R)",
+            "Лев/Прав",
+            "left_right",
+            "left/right"
+        )
+
+        upper_lower_key_local = find_key(
+            "Верх/Низ (U/D)",
+            "Верх/Низ",
+            "upper_lower",
+            "upper/lower"
+        )
+
+        color_key_local = find_key(
+            "Цвет",
+            "color"
+        )
+
+        marking_key_local = find_key(
+            "Маркировка",
+            "marking"
+        )
+
+        comment_key_local = find_key(
+            "Комментарий",
+            "comment",
+            "описание"
+        )
+
+        manufacturer_key_local = find_key(
+            "Производитель",
+            "manufacturer"
+        )
+
+        # ====================================================
+        # Показываем один раз, какие поля реально найдены
+        # ====================================================
+
+        print(
+            "[SMART SEARCH] KEYS: "
+            f"name={name_key_local} "
+            f"body={body_key_local} "
+            f"engine={engine_key_local} "
+            f"front_rear={front_rear_key_local} "
+            f"left_right={left_right_key_local} "
+            f"upper_lower={upper_lower_key_local}"
+        )
+
+        # ====================================================
+        # Разбираем запрос
+        # ====================================================
+
+        raw_words = re.findall(
+            r"[A-Za-zА-Яа-яЁё0-9.+-]+",
+            query_original
+        )
+
+        requested_bodies = set()
+        requested_engines = set()
+
+        query_words = []
+
+        want_front = False
+        want_rear = False
+
+        want_left = False
+        want_right = False
+
+        want_upper = False
+        want_lower = False
 
         engine_pattern = re.compile(
             r"^(?:m|om)\d{3,4}[a-z0-9]*$",
             re.IGNORECASE
         )
 
-        # ====================================================
-        # Определяем фильтры из запроса
-        # ====================================================
+        for raw_word in raw_words:
 
-        requested_bodies = set()
-        requested_engines = set()
-
-        direction_front = False
-        direction_rear = False
-
-        direction_left = False
-        direction_right = False
-
-        direction_upper = False
-        direction_lower = False
-
-        query_words = []
-
-        for word in words:
-
-            clean_word = normalize(
-                fix_a(
-                    word
-                )
+            word = norm(
+                raw_word
             )
 
-            if not clean_word:
+            if not word:
                 continue
 
             # ----------------------------------------------
@@ -4507,7 +4615,7 @@ def find_part_smart(
             # ----------------------------------------------
 
             body = body_aliases.get(
-                clean_word
+                word
             )
 
             if body:
@@ -4523,46 +4631,46 @@ def find_part_smart(
             # ----------------------------------------------
 
             if engine_pattern.match(
-                clean_word
+                word
             ):
 
                 requested_engines.add(
-                    clean_word
+                    word
                 )
 
                 continue
 
             # ----------------------------------------------
-            # Направление
+            # Перед / зад
             # ----------------------------------------------
 
-            if clean_word in (
+            if word in (
+                "перед",
                 "передний",
                 "передняя",
-                "перед",
                 "front",
                 "f"
             ):
 
-                direction_front = True
+                want_front = True
                 continue
 
-            if clean_word in (
+            if word in (
+                "зад",
                 "задний",
                 "задняя",
-                "зад",
                 "rear",
-                "r",
+                "b"
             ):
 
-                direction_rear = True
+                want_rear = True
                 continue
 
             # ----------------------------------------------
-            # Сторона
+            # Лево / право
             # ----------------------------------------------
 
-            if clean_word in (
+            if word in (
                 "левый",
                 "левая",
                 "лево",
@@ -4570,10 +4678,10 @@ def find_part_smart(
                 "l"
             ):
 
-                direction_left = True
+                want_left = True
                 continue
 
-            if clean_word in (
+            if word in (
                 "правый",
                 "правая",
                 "право",
@@ -4581,41 +4689,41 @@ def find_part_smart(
                 "r"
             ):
 
-                direction_right = True
+                want_right = True
                 continue
 
             # ----------------------------------------------
             # Верх / низ
             # ----------------------------------------------
 
-            if clean_word in (
+            if word in (
+                "верх",
                 "верхний",
                 "верхняя",
-                "верх",
                 "upper",
                 "u"
             ):
 
-                direction_upper = True
+                want_upper = True
                 continue
 
-            if clean_word in (
+            if word in (
+                "низ",
                 "нижний",
                 "нижняя",
-                "низ",
                 "lower",
                 "d"
             ):
 
-                direction_lower = True
+                want_lower = True
                 continue
 
             query_words.append(
-                clean_word
+                word
             )
 
         print(
-            f"[SMART SEARCH] "
+            "[SMART SEARCH] "
             f"query='{query_original}' "
             f"bodies={list(requested_bodies)} "
             f"engines={list(requested_engines)} "
@@ -4623,109 +4731,70 @@ def find_part_smart(
         )
 
         # ====================================================
-        # Функция нормализации поля
+        # Нормализация кузова
         # ====================================================
 
-        def norm_value(
+        def normalize_body(
             value
         ):
 
-            return normalize(
-                fix_a(
-                    safe_text(
-                        value
-                    )
-                )
+            value = norm(
+                value
             )
 
-        # ====================================================
-        # Получаем значение кузова
-        # ====================================================
+            value = value.replace(
+                " ",
+                ""
+            ).replace(
+                "-",
+                ""
+            )
 
-        def get_body(
-            part
-        ):
-
-            value = ""
-
-            # Основное поле
-            if body_key:
-                value = part.get(
-                    body_key,
-                    ""
-                )
-
-            # Иногда кузов может быть записан
-            # в комментарии.
-            return norm_value(
+            return body_aliases.get(
+                value,
                 value
             )
 
         # ====================================================
-        # Получаем двигатель
+        # Проверка направления
         # ====================================================
 
-        def get_engine(
-            part
+        def direction_matches(
+            value,
+            wanted
         ):
 
-            if engine_key:
-
-                return norm_value(
-                    part.get(
-                        engine_key,
-                        ""
-                    )
-                )
-
-            return ""
-
-        # ====================================================
-        # Составляем текст детали
-        # ====================================================
-
-        def get_search_text(
-            part
-        ):
-
-            fields = []
-
-            possible_keys = [
-                name_key,
-                comment_key,
-                cross_numbers_key,
-                manufacturer_number_key,
-                manufacturer_key,
-                color_key,
-                marking_key,
-            ]
-
-            for key in possible_keys:
-
-                if not key:
-                    continue
-
-                value = safe_text(
-                    part.get(
-                        key,
-                        ""
-                    )
-                )
-
-                if value:
-                    fields.append(
-                        value
-                    )
-
-            return norm_value(
-                " ".join(
-                    fields
-                )
+            value = norm(
+                value
             )
 
+            if wanted == "front":
+
+                return value in (
+                    "f",
+                    "front",
+                    "перед",
+                    "передний",
+                    "передняя"
+                )
+
+            if wanted == "rear":
+
+                return value in (
+                    "b",
+                    "rear",
+                    "зад",
+                    "задний",
+                    "задняя"
+                )
+
+            return False
+
         # ====================================================
-        # Перебираем базу
+        # Основной поиск
         # ====================================================
+
+        scored = []
 
         for position, part in enumerate(
             database
@@ -4737,81 +4806,106 @@ def find_part_smart(
             ):
                 continue
 
-            score = 0
-
-            name = norm_value(
+            name = norm(
                 part.get(
-                    name_key,
+                    name_key_local,
                     ""
                 )
-            )
+            ) if name_key_local else ""
 
-            body = get_body(
-                part
-            )
+            body = normalize_body(
+                part.get(
+                    body_key_local,
+                    ""
+                )
+            ) if body_key_local else ""
 
-            engine = get_engine(
-                part
-            )
+            engine = norm(
+                part.get(
+                    engine_key_local,
+                    ""
+                )
+            ) if engine_key_local else ""
 
-            search_text = get_search_text(
-                part
+            comment = norm(
+                part.get(
+                    comment_key_local,
+                    ""
+                )
+            ) if comment_key_local else ""
+
+            color = norm(
+                part.get(
+                    color_key_local,
+                    ""
+                )
+            ) if color_key_local else ""
+
+            marking = norm(
+                part.get(
+                    marking_key_local,
+                    ""
+                )
+            ) if marking_key_local else ""
+
+            manufacturer = norm(
+                part.get(
+                    manufacturer_key_local,
+                    ""
+                )
+            ) if manufacturer_key_local else ""
+
+            cross_numbers = norm(
+                part.get(
+                    cross_numbers_key,
+                    ""
+                )
+            ) if cross_numbers_key else ""
+
+            manufacturer_number = norm(
+                part.get(
+                    manufacturer_number_key,
+                    ""
+                )
+            ) if manufacturer_number_key else ""
+
+            # Весь текст детали
+            search_text = " ".join(
+                value
+                for value in (
+                    name,
+                    comment,
+                    color,
+                    marking,
+                    manufacturer,
+                    cross_numbers,
+                    manufacturer_number,
+                    body,
+                    engine
+                )
+                if value
             )
 
             if not search_text:
                 continue
 
+            score = 0
+
             # =================================================
-            # КУЗОВ
+            # КУЗОВ — очень важный фильтр
             # =================================================
 
             if requested_bodies:
 
-                body_match = False
+                if body in requested_bodies:
 
-                for requested_body in requested_bodies:
-
-                    body_compact = (
-                        body
-                        .replace(
-                            "-",
-                            ""
-                        )
-                        .replace(
-                            " ",
-                            ""
-                        )
-                    )
-
-                    requested_compact = (
-                        requested_body
-                        .replace(
-                            "-",
-                            ""
-                        )
-                        .replace(
-                            " ",
-                            ""
-                        )
-                    )
-
-                    if (
-                        body_compact
-                        == requested_compact
-                    ):
-
-                        body_match = True
-                        break
-
-                if body_match:
-
-                    score += 120
+                    score += 250
 
                 else:
 
-                    # Если пользователь явно указал кузов,
-                    # чужой кузов сильно понижаем.
-                    score -= 100
+                    # Если кузов явно указан пользователем,
+                    # чужой кузов НЕ должен быть выше.
+                    score -= 150
 
             # =================================================
             # ДВИГАТЕЛЬ
@@ -4841,17 +4935,15 @@ def find_part_smart(
 
                 if engine_match:
 
-                    score += 100
+                    score += 220
 
                 else:
 
-                    score -= 50
+                    score -= 100
 
             # =================================================
-            # СЛОВА ЗАПРОСА
+            # СЛОВА
             # =================================================
-
-            all_words_match = True
 
             matched_words = 0
 
@@ -4860,256 +4952,218 @@ def find_part_smart(
                 if not word:
                     continue
 
-                # ---------------------------------------------
-                # Полное слово
-                # ---------------------------------------------
+                # Точное вхождение в название
+                if word in name:
 
-                if word in search_text:
-
+                    score += 180
                     matched_words += 1
-
-                    # Совпадение в названии важнее
-                    if word in name:
-
-                        score += 100
-
-                    else:
-
-                        score += 35
-
                     continue
 
-                # ---------------------------------------------
-                # Небольшое совпадение
-                # ---------------------------------------------
+                # В описании
+                if word in comment:
 
-                if (
-                    len(word) >= 4
-                    and any(
+                    score += 70
+                    matched_words += 1
+                    continue
+
+                # В остальных полях
+                if word in search_text:
+
+                    score += 40
+                    matched_words += 1
+                    continue
+
+                # Частичное совпадение
+                if len(word) >= 4:
+
+                    tokens = re.findall(
+                        r"[a-zа-яё0-9]+",
+                        search_text
+                    )
+
+                    if any(
                         token.startswith(
                             word
                         )
-                        for token in re.findall(
-                            r"[a-zа-яё0-9]+",
-                            search_text
-                        )
-                    )
-                ):
+                        for token in tokens
+                    ):
 
-                    matched_words += 1
-                    score += 25
+                        score += 35
+                        matched_words += 1
+
+            # Если вообще ни одного слова
+            # не совпало — кандидат не нужен.
+            if query_words:
+
+                if matched_words == 0:
 
                     continue
 
-                all_words_match = False
-
-            # =================================================
-            # Если запрос состоит из нескольких слов,
-            # желательно чтобы совпали все.
-            # =================================================
-
-            if query_words:
-
+                # Все слова совпали
                 if matched_words == len(
                     query_words
                 ):
 
-                    score += 80
-
-                elif matched_words == 0:
-
-                    continue
+                    score += 100
 
                 else:
 
                     score -= (
                         len(query_words)
                         - matched_words
-                    ) * 20
+                    ) * 30
 
             # =================================================
             # ПЕРЕД / ЗАД
             # =================================================
 
-            part_direction = ""
-
-            if front_rear_key:
-
-                part_direction = norm_value(
-                    part.get(
-                        front_rear_key,
-                        ""
-                    )
+            part_direction = norm(
+                part.get(
+                    front_rear_key_local,
+                    ""
                 )
+            ) if front_rear_key_local else ""
 
-            if direction_front:
+            if want_front:
 
-                if part_direction in (
-                    "f",
-                    "front",
-                    "перед",
-                    "передний"
+                if direction_matches(
+                    part_direction,
+                    "front"
                 ):
 
-                    score += 60
+                    score += 100
 
                 elif part_direction:
 
-                    score -= 30
+                    score -= 60
 
-            if direction_rear:
+            if want_rear:
 
-                if part_direction in (
-                    "b",
-                    "rear",
-                    "зад",
-                    "задний"
+                if direction_matches(
+                    part_direction,
+                    "rear"
                 ):
 
-                    score += 60
+                    score += 100
 
                 elif part_direction:
 
-                    score -= 30
+                    score -= 60
 
             # =================================================
             # ЛЕВО / ПРАВО
             # =================================================
 
-            part_side = ""
-
-            if left_right_key:
-
-                part_side = norm_value(
-                    part.get(
-                        left_right_key,
-                        ""
-                    )
+            part_side = norm(
+                part.get(
+                    left_right_key_local,
+                    ""
                 )
+            ) if left_right_key_local else ""
 
-            if direction_left:
+            if want_left:
 
                 if part_side in (
                     "l",
                     "left",
                     "лево",
-                    "левый"
+                    "левый",
+                    "левая"
                 ):
 
-                    score += 60
+                    score += 100
 
                 elif part_side:
 
-                    score -= 30
+                    score -= 60
 
-            if direction_right:
+            if want_right:
 
                 if part_side in (
                     "r",
                     "right",
                     "право",
-                    "правый"
+                    "правый",
+                    "правая"
                 ):
 
-                    score += 60
+                    score += 100
 
                 elif part_side:
 
-                    score -= 30
+                    score -= 60
 
             # =================================================
             # ВЕРХ / НИЗ
             # =================================================
 
-            part_position = ""
-
-            if upper_lower_key:
-
-                part_position = norm_value(
-                    part.get(
-                        upper_lower_key,
-                        ""
-                    )
+            part_position = norm(
+                part.get(
+                    upper_lower_key_local,
+                    ""
                 )
+            ) if upper_lower_key_local else ""
 
-            if direction_upper:
+            if want_upper:
 
                 if part_position in (
                     "u",
                     "upper",
                     "верх",
-                    "верхний"
+                    "верхний",
+                    "верхняя"
                 ):
 
-                    score += 50
+                    score += 80
 
                 elif part_position:
 
-                    score -= 25
+                    score -= 40
 
-            if direction_lower:
+            if want_lower:
 
                 if part_position in (
                     "d",
                     "lower",
                     "низ",
-                    "нижний"
+                    "нижний",
+                    "нижняя"
                 ):
 
-                    score += 50
+                    score += 80
 
                 elif part_position:
 
-                    score -= 25
+                    score -= 40
 
             # =================================================
-            # Точное совпадение всей фразы
+            # Точное название
             # =================================================
 
-            if normalized_query in name:
+            if query_norm == name:
 
-                score += 150
-
-            # =================================================
-            # Артикул / номер детали
-            # =================================================
-
-            number_fields = []
-
-            if cross_numbers_key:
-
-                number_fields.append(
-                    norm_value(
-                        part.get(
-                            cross_numbers_key,
-                            ""
-                        )
-                    )
-                )
-
-            if manufacturer_number_key:
-
-                number_fields.append(
-                    norm_value(
-                        part.get(
-                            manufacturer_number_key,
-                            ""
-                        )
-                    )
-                )
-
-            for number_value in number_fields:
-
-                if not number_value:
-                    continue
-
-                if normalized_query in number_value:
-
-                    score += 250
-                    break
+                score += 250
 
             # =================================================
-            # Если score положительный — кандидат
+            # Артикул
+            # =================================================
+
+            if (
+                query_norm
+                and query_norm in cross_numbers
+            ):
+
+                score += 400
+
+            if (
+                query_norm
+                and query_norm in manufacturer_number
+            ):
+
+                score += 400
+
+            # =================================================
+            # Добавляем кандидата
             # =================================================
 
             if score > 0:
@@ -5134,11 +5188,11 @@ def find_part_smart(
         )
 
         # ====================================================
-        # Логи
+        # Лог
         # ====================================================
 
         print(
-            f"[SMART SEARCH] "
+            "[SMART SEARCH] "
             f"candidates={len(scored)}"
         )
 
@@ -5148,14 +5202,10 @@ def find_part_smart(
                 "[SMART SEARCH] "
                 f"score={score} "
                 f"position={position} "
-                f"name={safe_text(part.get(name_key, ''))} "
-                f"body={safe_text(part.get(body_key, ''))} "
-                f"engine={safe_text(part.get(engine_key, ''))}"
+                f"name={safe_text(part.get(name_key_local, ''))} "
+                f"body={safe_text(part.get(body_key_local, ''))} "
+                f"engine={safe_text(part.get(engine_key_local, ''))}"
             )
-
-        # ====================================================
-        # Возвращаем максимум MAX_RESULTS
-        # ====================================================
 
         return [
             item[2]

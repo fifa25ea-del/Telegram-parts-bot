@@ -6697,37 +6697,37 @@ OEM-номер и т.д.), это значение должно быть
 
     try:
 
-    response = ai_client.responses.create(
-
-        model=AI_WEB_MODEL,
-
-        instructions=AI_WEB_INSTRUCTIONS,
-
-        input=prompt,
-
-        tools=[
-            {
-                "type": "web_search",
-
-                "search_context_size": "medium"
-            }
-        ],
-
-        tool_choice="auto",
-
-        include=[
-            "web_search_call.action.sources"
-        ],
-
-        max_output_tokens=300,
-
-        text={
-            "verbosity": "low"
-        },
-
-        store=False
-    )
-
+        response = ai_client.responses.create(
+    
+            model=AI_WEB_MODEL,
+    
+            instructions=AI_WEB_INSTRUCTIONS,
+    
+            input=prompt,
+    
+            tools=[
+                {
+                    "type": "web_search",
+    
+                    "search_context_size": "medium"
+                }
+            ],
+    
+            tool_choice="auto",
+    
+            include=[
+                "web_search_call.action.sources"
+            ],
+    
+            max_output_tokens=300,
+    
+            text={
+                "verbosity": "low"
+            },
+    
+            store=False
+        )
+    
 
 
     # --------------------------------------------------------

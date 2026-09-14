@@ -4621,11 +4621,66 @@ words = re.findall(
                 body = body_aliases[word]
 
                 if body not in bodies:
+                    bodies.append(body)
 
-                    bodies.append(
-                        body
+                continue
+
+            # ====================================================
+            # ЕСЛИ NORMALIZE / FIX_A СКЛЕИЛИ СЛОВО С КУЗОВОМ
+            #
+            # Например:
+            #
+            # "Редуктор 163"
+            #
+            # может превратиться в:
+            #
+            # "редуктор163"
+            #
+            # Поэтому дополнительно ищем W163 / 163
+            # внутри слова.
+            # ====================================================
+
+            body_found_in_word = False
+
+            for body_alias, normalized_body in body_aliases.items():
+
+                if (
+                    word.endswith(body_alias)
+                    and word != body_alias
+                ):
+
+                    if normalized_body not in bodies:
+
+                        bodies.append(
+                            normalized_body
+                        )
+
+                    # Удаляем только найденный кузов
+                    # из конца слова.
+                    #
+                    # Например:
+                    #
+                    # редуктор163
+                    #
+                    # превращается обратно в:
+                    #
+                    # редуктор
+                    #
+                    part_word_without_body = (
+                        word[:-len(body_alias)]
                     )
 
+                    if part_word_without_body:
+
+                        part_words.append(
+                            part_word_without_body
+                        )
+
+                    body_found_in_word = True
+
+                    break
+
+            if body_found_in_word:
                 continue
 
             # ====================================================
@@ -5000,10 +5055,6 @@ words = re.findall(
                 )
             )
 
-            engine = normalize(
-                engine_raw
-            ).lower()
-
             # =================================================
             # НАЗВАНИЕ
             # =================================================
@@ -5279,7 +5330,6 @@ words = re.findall(
 
             if engine_families_requested:
 
-                # Совпадение семейства.
                 score += 200
 
                 for requested_family in (
@@ -5318,17 +5368,6 @@ words = re.findall(
 
                 if exact_match:
 
-                    # Сильный приоритет полного кода.
-                    #
-                    # Например:
-                    #
-                    # запрос: 112970
-                    #
-                    # 112970 -> +700
-                    # 112942 -> +0
-                    #
-                    # При этом оба остаются
-                    # результатами семейства M112.
                     score += 700
 
             # =================================================

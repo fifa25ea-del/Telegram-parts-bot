@@ -4271,6 +4271,900 @@ def extract_vehicle_tokens(query):
     return vehicle_tokens
 
 # ============================================================
+# УМНЫЙ ПОИСК ЗАПЧАСТЕЙ
+# Поиск в стиле Avito:
+# "редуктор 163"
+# "редуктор w163"
+# "редуктор w163 m112"
+# "дверь w220 правая"
+# ============================================================
+
+def find_part_smart(
+    query,
+    db=None
+):
+
+    query_original = safe_text(
+        query
+    ).strip()
+
+    if not query_original:
+        return []
+
+    with database_lock:
+
+        database = (
+            parts_db
+            if db is None
+            else db
+        )
+
+        if not database:
+            return []
+
+        # ----------------------------------------------------
+        # Нормализация запроса
+        # ----------------------------------------------------
+
+        normalized_query = normalize(
+            fix_a(
+                query_original
+            )
+        )
+
+        # ----------------------------------------------------
+        # Разбиваем запрос на слова
+        # ----------------------------------------------------
+
+        raw_words = re.findall(
+            r"[A-Za-zА-Яа-яЁё0-9.+-]+",
+            normalized_query
+        )
+
+        words = []
+
+        for word in raw_words:
+
+            word = safe_text(
+                word
+            ).strip()
+
+            if not word:
+                continue
+
+            words.append(
+                word
+            )
+
+        # ----------------------------------------------------
+        # Результат поиска
+        # ----------------------------------------------------
+
+        scored = []
+
+        # ====================================================
+        # Словарь кузовов Mercedes
+        # ====================================================
+
+        body_aliases = {
+            "163": "w163",
+            "w163": "w163",
+
+            "164": "w164",
+            "w164": "w164",
+
+            "166": "x166",
+            "x166": "x166",
+
+            "167": "x167",
+            "x167": "x167",
+
+            "168": "w168",
+            "w168": "w168",
+
+            "169": "w169",
+            "w169": "w169",
+
+            "176": "w176",
+            "w176": "w176",
+
+            "177": "w177",
+            "w177": "w177",
+
+            "190": "w190",
+            "w190": "w190",
+
+            "202": "w202",
+            "w202": "w202",
+
+            "203": "w203",
+            "w203": "w203",
+
+            "204": "w204",
+            "w204": "w204",
+
+            "205": "w205",
+            "w205": "w205",
+
+            "206": "w206",
+            "w206": "w206",
+
+            "207": "c207",
+            "c207": "c207",
+
+            "208": "c208",
+            "c208": "c208",
+
+            "209": "c209",
+            "c209": "c209",
+
+            "210": "w210",
+            "w210": "w210",
+
+            "211": "w211",
+            "w211": "w211",
+
+            "212": "w212",
+            "w212": "w212",
+
+            "213": "w213",
+            "w213": "w213",
+
+            "214": "w214",
+            "w214": "w214",
+
+            "220": "w220",
+            "w220": "w220",
+
+            "221": "w221",
+            "w221": "w221",
+
+            "222": "w222",
+            "w222": "w222",
+
+            "223": "w223",
+            "w223": "w223",
+
+            "230": "r230",
+            "r230": "r230",
+
+            "245": "w245",
+            "w245": "w245",
+
+            "246": "w246",
+            "w246": "w246",
+
+            "251": "r251",
+            "r251": "r251",
+
+            "253": "w253",
+            "w253": "w253",
+
+            "254": "w254",
+            "w254": "w254",
+
+            "163": "w163",
+
+            "215": "c215",
+            "c215": "c215",
+
+            "219": "c219",
+            "c219": "c219",
+
+            "218": "w218",
+            "w218": "w218",
+
+            "216": "w216",
+            "w216": "w216",
+
+            "217": "w217",
+            "w217": "w217",
+
+            "222": "w222",
+            "w222": "w222",
+        }
+
+        # ====================================================
+        # Словарь двигателей
+        # ====================================================
+
+        engine_pattern = re.compile(
+            r"^(?:m|om)\d{3,4}[a-z0-9]*$",
+            re.IGNORECASE
+        )
+
+        # ====================================================
+        # Определяем фильтры из запроса
+        # ====================================================
+
+        requested_bodies = set()
+        requested_engines = set()
+
+        direction_front = False
+        direction_rear = False
+
+        direction_left = False
+        direction_right = False
+
+        direction_upper = False
+        direction_lower = False
+
+        query_words = []
+
+        for word in words:
+
+            clean_word = normalize(
+                fix_a(
+                    word
+                )
+            )
+
+            if not clean_word:
+                continue
+
+            # ----------------------------------------------
+            # Кузов
+            # ----------------------------------------------
+
+            body = body_aliases.get(
+                clean_word
+            )
+
+            if body:
+
+                requested_bodies.add(
+                    body
+                )
+
+                continue
+
+            # ----------------------------------------------
+            # Двигатель
+            # ----------------------------------------------
+
+            if engine_pattern.match(
+                clean_word
+            ):
+
+                requested_engines.add(
+                    clean_word
+                )
+
+                continue
+
+            # ----------------------------------------------
+            # Направление
+            # ----------------------------------------------
+
+            if clean_word in (
+                "передний",
+                "передняя",
+                "перед",
+                "front",
+                "f"
+            ):
+
+                direction_front = True
+                continue
+
+            if clean_word in (
+                "задний",
+                "задняя",
+                "зад",
+                "rear",
+                "r",
+            ):
+
+                direction_rear = True
+                continue
+
+            # ----------------------------------------------
+            # Сторона
+            # ----------------------------------------------
+
+            if clean_word in (
+                "левый",
+                "левая",
+                "лево",
+                "left",
+                "l"
+            ):
+
+                direction_left = True
+                continue
+
+            if clean_word in (
+                "правый",
+                "правая",
+                "право",
+                "right",
+                "r"
+            ):
+
+                direction_right = True
+                continue
+
+            # ----------------------------------------------
+            # Верх / низ
+            # ----------------------------------------------
+
+            if clean_word in (
+                "верхний",
+                "верхняя",
+                "верх",
+                "upper",
+                "u"
+            ):
+
+                direction_upper = True
+                continue
+
+            if clean_word in (
+                "нижний",
+                "нижняя",
+                "низ",
+                "lower",
+                "d"
+            ):
+
+                direction_lower = True
+                continue
+
+            query_words.append(
+                clean_word
+            )
+
+        print(
+            f"[SMART SEARCH] "
+            f"query='{query_original}' "
+            f"bodies={list(requested_bodies)} "
+            f"engines={list(requested_engines)} "
+            f"words={query_words}"
+        )
+
+        # ====================================================
+        # Функция нормализации поля
+        # ====================================================
+
+        def norm_value(
+            value
+        ):
+
+            return normalize(
+                fix_a(
+                    safe_text(
+                        value
+                    )
+                )
+            )
+
+        # ====================================================
+        # Получаем значение кузова
+        # ====================================================
+
+        def get_body(
+            part
+        ):
+
+            value = ""
+
+            # Основное поле
+            if body_key:
+                value = part.get(
+                    body_key,
+                    ""
+                )
+
+            # Иногда кузов может быть записан
+            # в комментарии.
+            return norm_value(
+                value
+            )
+
+        # ====================================================
+        # Получаем двигатель
+        # ====================================================
+
+        def get_engine(
+            part
+        ):
+
+            if engine_key:
+
+                return norm_value(
+                    part.get(
+                        engine_key,
+                        ""
+                    )
+                )
+
+            return ""
+
+        # ====================================================
+        # Составляем текст детали
+        # ====================================================
+
+        def get_search_text(
+            part
+        ):
+
+            fields = []
+
+            possible_keys = [
+                name_key,
+                comment_key,
+                cross_numbers_key,
+                manufacturer_number_key,
+                manufacturer_key,
+                color_key,
+                marking_key,
+            ]
+
+            for key in possible_keys:
+
+                if not key:
+                    continue
+
+                value = safe_text(
+                    part.get(
+                        key,
+                        ""
+                    )
+                )
+
+                if value:
+                    fields.append(
+                        value
+                    )
+
+            return norm_value(
+                " ".join(
+                    fields
+                )
+            )
+
+        # ====================================================
+        # Перебираем базу
+        # ====================================================
+
+        for position, part in enumerate(
+            database
+        ):
+
+            if not isinstance(
+                part,
+                dict
+            ):
+                continue
+
+            score = 0
+
+            name = norm_value(
+                part.get(
+                    name_key,
+                    ""
+                )
+            )
+
+            body = get_body(
+                part
+            )
+
+            engine = get_engine(
+                part
+            )
+
+            search_text = get_search_text(
+                part
+            )
+
+            if not search_text:
+                continue
+
+            # =================================================
+            # КУЗОВ
+            # =================================================
+
+            if requested_bodies:
+
+                body_match = False
+
+                for requested_body in requested_bodies:
+
+                    body_compact = (
+                        body
+                        .replace(
+                            "-",
+                            ""
+                        )
+                        .replace(
+                            " ",
+                            ""
+                        )
+                    )
+
+                    requested_compact = (
+                        requested_body
+                        .replace(
+                            "-",
+                            ""
+                        )
+                        .replace(
+                            " ",
+                            ""
+                        )
+                    )
+
+                    if (
+                        body_compact
+                        == requested_compact
+                    ):
+
+                        body_match = True
+                        break
+
+                if body_match:
+
+                    score += 120
+
+                else:
+
+                    # Если пользователь явно указал кузов,
+                    # чужой кузов сильно понижаем.
+                    score -= 100
+
+            # =================================================
+            # ДВИГАТЕЛЬ
+            # =================================================
+
+            if requested_engines:
+
+                engine_match = False
+
+                for requested_engine in requested_engines:
+
+                    if (
+                        requested_engine
+                        == engine
+                    ):
+
+                        engine_match = True
+                        break
+
+                    if (
+                        requested_engine
+                        in search_text
+                    ):
+
+                        engine_match = True
+                        break
+
+                if engine_match:
+
+                    score += 100
+
+                else:
+
+                    score -= 50
+
+            # =================================================
+            # СЛОВА ЗАПРОСА
+            # =================================================
+
+            all_words_match = True
+
+            matched_words = 0
+
+            for word in query_words:
+
+                if not word:
+                    continue
+
+                # ---------------------------------------------
+                # Полное слово
+                # ---------------------------------------------
+
+                if word in search_text:
+
+                    matched_words += 1
+
+                    # Совпадение в названии важнее
+                    if word in name:
+
+                        score += 100
+
+                    else:
+
+                        score += 35
+
+                    continue
+
+                # ---------------------------------------------
+                # Небольшое совпадение
+                # ---------------------------------------------
+
+                if (
+                    len(word) >= 4
+                    and any(
+                        token.startswith(
+                            word
+                        )
+                        for token in re.findall(
+                            r"[a-zа-яё0-9]+",
+                            search_text
+                        )
+                    )
+                ):
+
+                    matched_words += 1
+                    score += 25
+
+                    continue
+
+                all_words_match = False
+
+            # =================================================
+            # Если запрос состоит из нескольких слов,
+            # желательно чтобы совпали все.
+            # =================================================
+
+            if query_words:
+
+                if matched_words == len(
+                    query_words
+                ):
+
+                    score += 80
+
+                elif matched_words == 0:
+
+                    continue
+
+                else:
+
+                    score -= (
+                        len(query_words)
+                        - matched_words
+                    ) * 20
+
+            # =================================================
+            # ПЕРЕД / ЗАД
+            # =================================================
+
+            part_direction = ""
+
+            if front_rear_key:
+
+                part_direction = norm_value(
+                    part.get(
+                        front_rear_key,
+                        ""
+                    )
+                )
+
+            if direction_front:
+
+                if part_direction in (
+                    "f",
+                    "front",
+                    "перед",
+                    "передний"
+                ):
+
+                    score += 60
+
+                elif part_direction:
+
+                    score -= 30
+
+            if direction_rear:
+
+                if part_direction in (
+                    "b",
+                    "rear",
+                    "зад",
+                    "задний"
+                ):
+
+                    score += 60
+
+                elif part_direction:
+
+                    score -= 30
+
+            # =================================================
+            # ЛЕВО / ПРАВО
+            # =================================================
+
+            part_side = ""
+
+            if left_right_key:
+
+                part_side = norm_value(
+                    part.get(
+                        left_right_key,
+                        ""
+                    )
+                )
+
+            if direction_left:
+
+                if part_side in (
+                    "l",
+                    "left",
+                    "лево",
+                    "левый"
+                ):
+
+                    score += 60
+
+                elif part_side:
+
+                    score -= 30
+
+            if direction_right:
+
+                if part_side in (
+                    "r",
+                    "right",
+                    "право",
+                    "правый"
+                ):
+
+                    score += 60
+
+                elif part_side:
+
+                    score -= 30
+
+            # =================================================
+            # ВЕРХ / НИЗ
+            # =================================================
+
+            part_position = ""
+
+            if upper_lower_key:
+
+                part_position = norm_value(
+                    part.get(
+                        upper_lower_key,
+                        ""
+                    )
+                )
+
+            if direction_upper:
+
+                if part_position in (
+                    "u",
+                    "upper",
+                    "верх",
+                    "верхний"
+                ):
+
+                    score += 50
+
+                elif part_position:
+
+                    score -= 25
+
+            if direction_lower:
+
+                if part_position in (
+                    "d",
+                    "lower",
+                    "низ",
+                    "нижний"
+                ):
+
+                    score += 50
+
+                elif part_position:
+
+                    score -= 25
+
+            # =================================================
+            # Точное совпадение всей фразы
+            # =================================================
+
+            if normalized_query in name:
+
+                score += 150
+
+            # =================================================
+            # Артикул / номер детали
+            # =================================================
+
+            number_fields = []
+
+            if cross_numbers_key:
+
+                number_fields.append(
+                    norm_value(
+                        part.get(
+                            cross_numbers_key,
+                            ""
+                        )
+                    )
+                )
+
+            if manufacturer_number_key:
+
+                number_fields.append(
+                    norm_value(
+                        part.get(
+                            manufacturer_number_key,
+                            ""
+                        )
+                    )
+                )
+
+            for number_value in number_fields:
+
+                if not number_value:
+                    continue
+
+                if normalized_query in number_value:
+
+                    score += 250
+                    break
+
+            # =================================================
+            # Если score положительный — кандидат
+            # =================================================
+
+            if score > 0:
+
+                scored.append(
+                    (
+                        score,
+                        position,
+                        part
+                    )
+                )
+
+        # ====================================================
+        # Сортировка
+        # ====================================================
+
+        scored.sort(
+            key=lambda item: (
+                -item[0],
+                item[1]
+            )
+        )
+
+        # ====================================================
+        # Логи
+        # ====================================================
+
+        print(
+            f"[SMART SEARCH] "
+            f"candidates={len(scored)}"
+        )
+
+        for score, position, part in scored[:10]:
+
+            print(
+                "[SMART SEARCH] "
+                f"score={score} "
+                f"position={position} "
+                f"name={safe_text(part.get(name_key, ''))} "
+                f"body={safe_text(part.get(body_key, ''))} "
+                f"engine={safe_text(part.get(engine_key, ''))}"
+            )
+
+        # ====================================================
+        # Возвращаем максимум MAX_RESULTS
+        # ====================================================
+
+        return [
+            item[2]
+            for item in scored[
+                :MAX_RESULTS
+            ]
+        ]
+
+# ============================================================
 # ПОИСК ЗАПЧАСТЕЙ
 # ============================================================
 
@@ -7335,60 +8229,61 @@ def perform_search(
     # --------------------------------------------------------
 
     if mode == "parts":
-
+    
         print(
             f"🔥 SEARCH PARTS: {query}"
         )
-
+    
         log_search(
             chat_id,
             query,
             "parts"
         )
-
-        results = find_part(
+    
+        results = find_part_smart(
             query
         )
-
+    
         if not results:
-
+    
             print(
                 f"❌ NOT FOUND PARTS: "
                 f"{query}"
             )
-
+    
             log_search(
                 chat_id,
                 query,
                 "NOT_FOUND"
             )
-
+    
             bot.send_message(
                 chat_id,
                 "❌ Ничего не найдено.\n\n"
-                "Проверьте номер детали."
+                "Попробуйте описать деталь иначе."
             )
-
+    
             return
 
-        user_results[
-            chat_id
-        ] = results
+    user_results[
+        chat_id
+    ] = results
 
-        user_index[
-            chat_id
-        ] = 0
+    user_index[
+        chat_id
+    ] = 0
 
-        user_photo_index[
-            chat_id
-        ] = 0
+    user_photo_index[
+        chat_id
+    ] = 0
 
-        send_part_card(
-            chat_id,
-            0
-        )
+    send_part_card(
+        chat_id,
+        0
+    )
 
-        return
+    return
+
 
     # --------------------------------------------------------
     # WHEELS

@@ -6430,7 +6430,6 @@ def ai_web_search(
 ):
 
     if not AI_WEB_ENABLED:
-
         return []
 
     original_query = safe_text(
@@ -6442,11 +6441,9 @@ def ai_web_search(
     )
 
     if not original_query:
-
         return []
 
     if not prepared_query:
-
         prepared_query = original_query
 
     print(
@@ -6463,299 +6460,145 @@ def ai_web_search(
         f"{prepared_query}"
     )
 
-    # ========================================================
-    # DDGS — поиск русскоязычных источников
-    # ========================================================
+    prompt = f"""
+Вопрос пользователя:
+
+{original_query}
+
+Поисковый запрос:
+
+{prepared_query}
+
+Найди точный ответ на вопрос пользователя
+с помощью web-поиска.
+
+ОСОБЫЕ ПРАВИЛА:
+
+- Ответ нужен именно на заданный вопрос.
+- Не давай общий обзор темы.
+- Если указан Mercedes-Benz, обязательно учитывай
+  модель, кузов, двигатель и код двигателя.
+- Не смешивай разные двигатели, кузова и модификации.
+- Если спрашивается конкретное число, найди именно это число.
+- Для объёма масла ищи именно объём моторного масла
+  после замены/с фильтром, если это указано.
+- Не путай объём двигателя в литрах с объёмом моторного масла.
+- Для допуска масла ищи именно MB-Approval,
+  а не просто вязкость.
+- Если разные источники дают разные значения,
+  проверь, не относятся ли они к разным автомобилям,
+  двигателям или кузовам.
+- Не используй собственные знания вместо результатов поиска.
+- Не выдумывай отсутствующие данные.
+- Если точного ответа действительно нет:
+  «Точных данных нет.»
+- Используй преимущественно русскоязычные источники.
+- Не называй сайты и источники в ответе.
+- Не описывай процесс поиска.
+- Не задавай уточняющий вопрос, если можно самостоятельно
+  найти наиболее подходящий вариант.
+- Ответ только на русском языке.
+- Максимум 2 коротких предложения.
+- Сначала дай непосредственно ответ.
+
+Дай только готовый ответ пользователю.
+"""
 
     try:
 
-        from ddgs import DDGS
+        response = ai_client.responses.create(
+            model=AI_WEB_MODEL,
 
-        search_results = []
+            instructions=(
+                "Ты точный технический помощник "
+                "по автомобилям Mercedes-Benz. "
+                "Перед ответом обязательно используй "
+                "web search. "
+                "Проверяй соответствие кузова, двигателя "
+                "и модификации. "
+                "Не выдумывай технические значения."
+            ),
 
-        with DDGS(
-            timeout=WEB_SEARCH_TIMEOUT
-        ) as ddgs:
+            input=prompt,
 
-            raw_results = list(
-                ddgs.text(
-                    prepared_query,
-                    region="ru-ru",
-                    safesearch="moderate",
-                    max_results=5
-                )
-            )
-
-        for item in raw_results:
-
-            if not isinstance(item, dict):
-                continue
-
-            title = clean_web_text(
-                item.get("title", "")
-            )
-
-            description = clean_web_text(
-                item.get("body", "")
-            )
-
-            url = canonical_web_url(
-                item.get("href", "")
-            )
-
-            if not url:
-                continue
-
-            # Проверяем язык сниппета
-            text = f"{title} {description}"
-
-            cyrillic_count = len(
-                re.findall(
-                    r"[А-Яа-яЁё]",
-                    text
-                )
-            )
-
-            latin_count = len(
-                re.findall(
-                    r"[A-Za-z]",
-                    text
-                )
-            )
-
-            if cyrillic_count == 0:
-                print(
-                    f"🌐 [DDGS] FOREIGN: {title}"
-                )
-                continue
-
-            if latin_count > cyrillic_count * 1.5:
-                print(
-                    f"🌐 [DDGS] FOREIGN: {title}"
-                )
-                continue
-
-            search_results.append(
+            tools=[
                 {
-                    "title": title,
-                    "description": description,
-                    "url": url
+                    "type": "web_search",
+                    "search_context_size": "low"
                 }
-            )
+            ],
 
-        print(
-            f"[DDGS] Russian results: "
-            f"{len(search_results)}"
+            tool_choice="required",
+
+            max_output_tokens=300,
+
+            text={
+                "verbosity": "low"
+            },
+
+            store=False
         )
 
     except Exception as e:
 
         print(
-            f"❌ [DDGS] ERROR: "
+            f"❌ [AI WEB] API ERROR: "
             f"{repr(e)}"
-        )
-
-        search_results = []
-
-
-    # ========================================================
-    # Формируем короткий context
-    # ========================================================
-
-    context_parts = []
-
-    for index, item in enumerate(
-        search_results[:5],
-        start=1
-    ):
-
-        title = safe_text(
-            item.get("title")
-        )
-
-        description = safe_text(
-            item.get("description")
-        )
-
-        if len(description) > 600:
-
-            description = (
-                description[:597]
-                + "..."
-            )
-
-        if not title and not description:
-            continue
-
-        context_parts.append(
-            f"[{index}] {title}\n"
-            f"{description}"
-        )
-
-    context = "\n\n".join(
-        context_parts
-    )
-
-    print(
-        f"[AI WEB] Context: "
-        f"{len(context_parts)} results"
-    )
-
-
-    # ========================================================
-    # Если русскоязычных данных нет
-    # ========================================================
-
-    if not context:
-
-        print(
-            "[AI WEB] No Russian context"
         )
 
         return []
 
-
-    prompt = f"""
-ВОПРОС:
-{original_query}
-
-НАЙДЕННЫЕ РЕЗУЛЬТАТЫ:
-{context}
-
-Ты — модуль извлечения технической информации Mercedes-Benz.
-
-Ответь на вопрос, используя ТОЛЬКО факты из найденных результатов.
-
-ПРАВИЛА:
-
-1. Учитывай модель, кузов, двигатель, код двигателя, год и модификацию.
-2. Если указан код двигателя — используй именно его.
-3. Если указан кузов — учитывай именно этот кузов.
-4. Не смешивай данные разных модификаций.
-5. Конкретные числа должны быть прямо подтверждены найденными данными.
-6. Не путай рабочий объём двигателя с объёмом моторного масла.
-7. Не путай допуск масла с вязкостью.
-8. Заголовок страницы не является доказательством.
-9. Если несколько результатов подтверждают одно значение — используй его.
-10. Если значения отличаются — выбери только относящееся к нужной модификации.
-11. Если точного ответа нет — напиши: «Точных данных нет.»
-12. Не используй собственные знания вне найденных результатов.
-13. Не называй сайты и источники.
-14. Не объясняй процесс поиска.
-15. Ответ только на русском языке.
-16. Максимум 2 коротких предложения.
-
-Дай только готовый ответ пользователю.
-"""
-
-
-# ========================================================
-# AI — ИЗВЛЕЧЕНИЕ ОТВЕТА
-# ========================================================
-
-try:
-
-    response = ai_client.chat.completions.create(
-        model=AI_WEB_MODEL,
-
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "Ты извлекаешь точные технические данные "
-                    "Mercedes-Benz из переданного контекста. "
-                    "Используй только найденные данные. "
-                    "Не выдумывай."
-                )
-            },
-            {
-                "role": "user",
-                "content": prompt
-            }
-        ],
-
-        temperature=0.1,
-        max_tokens=120
-    )
-
-except Exception as e:
-
-    print(
-        f"❌ [AI WEB] API ERROR: "
-        f"{repr(e)}"
-    )
-
-    return []
-
-
-# ========================================================
-# ОТВЕТ AI
-# ========================================================
-
-answer = ""
-
-try:
-
-    answer = safe_text(
-        response.choices[0]
-        .message
-        .content
-    )
-
-except Exception as e:
-
-    print(
-        f"❌ [AI WEB] OUTPUT ERROR: "
-        f"{repr(e)}"
-    )
-
     answer = ""
 
+    try:
 
-answer = clean_web_text(
-    answer
-)
+        answer = safe_text(
+            response.output_text
+        )
 
-answer = repair_web_mojibake(
-    answer
-)
+    except Exception as e:
 
-answer = _truncate_ai_text(
-    answer
-)
+        print(
+            f"❌ [AI WEB] OUTPUT ERROR: "
+            f"{repr(e)}"
+        )
 
-print(
-    f"[AI WEB] Answer: "
-    f"{answer[:300]}"
-)
+        answer = ""
 
+    answer = clean_web_text(
+        answer
+    )
 
-# ========================================================
-# ЕСЛИ AI НЕ ДАЛ ОТВЕТ
-# ========================================================
+    answer = repair_web_mojibake(
+        answer
+    )
 
-if not answer:
+    answer = _truncate_ai_text(
+        answer,
+        max_length=700
+    )
 
-    answer = "Точных данных нет."
+    print(
+        f"[AI WEB] Answer: "
+        f"{answer[:300]}"
+    )
 
+    if not answer:
 
-# ========================================================
-# ОДНА КАРТОЧКА
-# ========================================================
+        answer = "Точных данных нет."
 
-results = [
-    {
-        "type": "ai_answer",
-        "title": "AI-поиск",
-        "url": "",
-        "body": answer,
-        "excerpt": answer,
-        "sources": [],
-        "query": original_query
-    }
-]
+    return [
+        {
+            "type": "ai_answer",
+            "title": "AI-поиск",
+            "url": "",
+            "body": answer,
+            "excerpt": answer,
+            "sources": [],
+            "query": original_query
+        }
+    ]
 
-return results
 
 # ============================================================
 # SEARCH
@@ -6792,127 +6635,144 @@ def perform_search(
         print(
             f"🌐 WEB SEARCH: {query}"
         )
-    
+
         log_search(
             chat_id,
             query,
             "web"
         )
-    
+
         show_loading_message(
             chat_id,
             "⏳ Пожалуйста, подождите...\n"
-            "🧠 Анализируем запрос и ищем информацию..."
+            "🧠 Ищем информацию..."
         )
-    
+
+        answer = ""
+
         try:
 
-            # Используем исходный запрос без дополнительного усложнения
-            search_query = query
-        
+            search_query = improve_web_query(
+                query
+            )
+
             print(
-                f"[WEB SEARCH] Query: "
+                f"[WEB SEARCH] Original: "
+                f"{query}"
+            )
+
+            print(
+                f"[WEB SEARCH] Improved: "
                 f"{search_query}"
             )
 
-    
-            # ----------------------------------------------------
-            # Сначала настоящий AI Web Search.
-            # ----------------------------------------------------
-    
             results = []
-    
+
             if AI_WEB_ENABLED:
-    
-                results = ai_web_search(
+
+                ai_result = ai_web_search(
                     query,
-                    search_query,
-                    max_results=WEB_MAX_RESULTS
+                    search_query
                 )
-    
-            # ----------------------------------------------------
-            # Fallback:
-            # если AI недоступен или произошла ошибка,
-            # используем твой старый web_search().
-            # ----------------------------------------------------
-    
+
+                results = ai_result
+
+                if results:
+
+                    answer = safe_text(
+                        results[0].get(
+                            "body",
+                            ""
+                        )
+                    )
+
+            # ------------------------------------------------
+            # FALLBACK
+            # ------------------------------------------------
+
             if not results:
-    
+
                 print(
                     "⚠️ AI WEB unavailable. "
                     "Using legacy web search."
                 )
-    
+
                 results = web_search(
                     search_query,
                     max_results=WEB_MAX_RESULTS
                 )
-    
+
+                results = filter_russian_web_results(
+                    results
+                )
+
         except Exception as e:
-    
+
             print(
                 f"[WEB SEARCH] Error: "
                 f"{repr(e)}"
             )
-    
-            # ----------------------------------------------------
-            # Последняя попытка — старый поиск.
-            # ----------------------------------------------------
-    
+
             try:
-    
+
                 results = web_search(
                     query,
                     max_results=WEB_MAX_RESULTS
                 )
-    
+
+                results = filter_russian_web_results(
+                    results
+                )
+
             except Exception as fallback_error:
-    
+
                 print(
                     f"[WEB SEARCH FALLBACK] "
                     f"{repr(fallback_error)}"
                 )
-    
+
                 results = []
-    
+
         hide_loading_message(
             chat_id
         )
-    
+
         if not results:
-    
+
             log_search(
                 chat_id,
                 query,
                 "NOT_FOUND_WEB"
             )
-    
+
             bot.send_message(
                 chat_id,
-                "❌ В интернете ничего "
-                "подходящего не найдено.\n\n"
-                "Попробуйте изменить запрос."
+                "❌ Не удалось найти точный ответ."
             )
-    
+
             return
-    
+
         web_results[
             chat_id
         ] = results
-    
+
+        web_ai_answers[
+            chat_id
+        ] = answer
+
         web_index[
             chat_id
         ] = 0
-    
+
         web_query[
             chat_id
         ] = query
-    
+
         send_web_card(
             chat_id,
             0
         )
-    
+
         return
 
     # --------------------------------------------------------

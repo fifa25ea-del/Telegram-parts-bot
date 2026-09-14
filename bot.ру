@@ -4601,55 +4601,49 @@ def find_part_smart(
 
         for word in words:
 
-            # ------------------------------------------------
-            # Кузов
-            # ------------------------------------------------
+                        # ====================================================
+            # КУЗОВ
+            # ====================================================
 
             if word in body_aliases:
 
                 body = body_aliases[word]
 
                 if body not in bodies:
-                    bodies.append(body)
 
-                continue
-
-            # ------------------------------------------------
-            # Двигатель
-            # ------------------------------------------------
-
-            # Сначала проверяем семейство:
-            #
-            # m112
-            # 112
-            # om642
-            # 642
-            #
-            if word in engine_families:
-
-                family = engine_families[word]
-
-                if family not in engine_families_requested:
-                    engine_families_requested.append(
-                        family
+                    bodies.append(
+                        body
                     )
 
                 continue
 
-            # ------------------------------------------------
-            # Полный код двигателя
+            # ====================================================
+            # ДВИГАТЕЛЬ
             #
-            # Например:
+            # Поддерживаем:
+            #
+            # M112
+            # 112
+            # 112970
+            # 112.970
+            # M112970
+            # OM642
+            # 642
+            # 642920
+            #
+            # Полный код двигателя:
             #
             # 112970
-            # 112942
-            # 612963
-            # 113960
             #
-            # Важный момент:
-            # код должен начинаться с известного
-            # семейства двигателя.
-            # ------------------------------------------------
+            # превращается в:
+            #
+            # family = m112
+            # exact  = 112970
+            #
+            # Поэтому запрос 112970
+            # покажет всё семейство M112,
+            # но 112970 будет выше.
+            # ====================================================
 
             compact_word = (
                 word
@@ -4657,38 +4651,49 @@ def find_part_smart(
                 .replace("-", "")
                 .replace("_", "")
                 .replace(" ", "")
+                .lower()
             )
 
-            if re.fullmatch(
-                r"(?:m|om)?\d{6}",
+            # ====================================================
+            # ПОЛНЫЙ КОД ДВИГАТЕЛЯ
+            # ====================================================
+
+            engine_code_match = re.fullmatch(
+                r"(?:m|om)?(\d{6})",
                 compact_word,
                 flags=re.IGNORECASE
-            ):
+            )
 
-                code_digits = re.sub(
-                    r"^(?:m|om)",
-                    "",
-                    compact_word,
-                    flags=re.IGNORECASE
+            if engine_code_match:
+
+                code_digits = (
+                    engine_code_match.group(1)
                 )
 
-                family_digits = code_digits[:3]
+                family_digits = (
+                    code_digits[:3]
+                )
 
                 possible_family = None
 
-                for family in engine_families.values():
+                for family in set(
+                    engine_families.values()
+                ):
 
                     family_digits_known = re.sub(
                         r"^(?:m|om)",
                         "",
-                        family
+                        family,
+                        flags=re.IGNORECASE
                     )
 
                     if (
                         family_digits
                         == family_digits_known
                     ):
+
                         possible_family = family
+
                         break
 
                 if possible_family:
@@ -4697,6 +4702,7 @@ def find_part_smart(
                         possible_family
                         not in engine_families_requested
                     ):
+
                         engine_families_requested.append(
                             possible_family
                         )
@@ -4705,11 +4711,40 @@ def find_part_smart(
                         code_digits
                         not in exact_engine_codes
                     ):
+
                         exact_engine_codes.append(
                             code_digits
                         )
 
                     continue
+
+            # ====================================================
+            # СЕМЕЙСТВО ДВИГАТЕЛЯ
+            #
+            # M112
+            # 112
+            # OM642
+            # 642
+            # ====================================================
+
+            if compact_word in engine_families:
+
+                family = engine_families[
+                    compact_word
+                ]
+
+                if (
+                    family
+                    not in engine_families_requested
+                ):
+
+                    engine_families_requested.append(
+                        family
+                    )
+
+                continue
+
+    
 
             # ------------------------------------------------
             # Перед / зад

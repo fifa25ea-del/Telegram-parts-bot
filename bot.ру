@@ -137,7 +137,7 @@ AI_WEB_CONTEXT = os.getenv(
 AI_WEB_MAX_SOURCES = int(
     os.getenv(
         "AI_WEB_MAX_SOURCES",
-        "4"
+        "8"
     )
 )
 
@@ -347,19 +347,19 @@ current_mode = {}
 web_results = {}
 web_index = {}
 web_query = {}
-web_ai_answers = {}
+
 # ============================================================
 # WEB SEARCH SETTINGS
 # ============================================================
 
-WEB_MAX_RESULTS = 5
+WEB_MAX_RESULTS = 8
 
 # Получаем больше результатов, чем показываем,
 # чтобы потом отфильтровать мусор.
-WEB_RAW_RESULTS = 6
+WEB_RAW_RESULTS = 14
 
 # Сколько лучших страниц реально открываем.
-WEB_EXTRACT_COUNT = 3
+WEB_EXTRACT_COUNT = 5
 
 WEB_SEARCH_TIMEOUT = 15
 WEB_EXTRACT_TIMEOUT = 12
@@ -2229,83 +2229,7 @@ def extract_web_page(
         )
 
         return ""
-def is_russian_text(text):
 
-    text = safe_text(text)
-
-    if not text:
-        return False
-
-    cyrillic = len(
-        re.findall(
-            r"[А-Яа-яЁё]",
-            text
-        )
-    )
-
-    latin = len(
-        re.findall(
-            r"[A-Za-z]",
-            text
-        )
-    )
-
-    if cyrillic == 0:
-        return False
-
-    if latin > cyrillic * 1.5:
-        return False
-
-    return True
-
-
-def filter_russian_web_results(results):
-
-    filtered = []
-
-    for item in results:
-
-        if not isinstance(
-            item,
-            dict
-        ):
-            continue
-
-        # AI-ответ не является сайтом.
-        # Его не фильтруем по языку.
-        if item.get("type") == "ai_answer":
-
-            filtered.append(
-                item
-            )
-
-            continue
-
-        title = safe_text(
-            item.get("title")
-        )
-
-        description = safe_text(
-            item.get("description")
-            or item.get("body")
-        )
-
-        text = f"{title} {description}"
-
-        if not is_russian_text(text):
-
-            print(
-                f"🌐 [WEB] SKIP FOREIGN: "
-                f"{title}"
-            )
-
-            continue
-
-        filtered.append(
-            item
-        )
-
-    return filtered
 # ============================================================
 # WEB SEARCH
 # ============================================================
@@ -5729,13 +5653,6 @@ def send_web_card(
         index
     ]
 
-    ai_answer = safe_text(
-        web_ai_answers.get(
-            chat_id,
-            ""
-        )
-    )
-
     result_type = result.get(
         "type",
         "web_source"
@@ -5965,30 +5882,16 @@ def send_web_card(
         )
     )
 
-    if ai_answer:
-
-        text = (
-            f"🔎 Запрос:\n"
-            f"{query}\n\n"
-            f"💡 {ai_answer}\n\n"
-            f"🌍 {domain or '-'}\n\n"
-            f"({index + 1}/"
-            f"{len(results)})"
-        )
-    
-    else:
-    
-        text = (
-            f"🌐 {title}\n\n"
-            f"🔎 Запрос:\n"
-            f"{query}\n\n"
-            f"📖 Фрагмент:\n"
-            f"{description}\n\n"
-            f"🌍 {domain or '-'}\n\n"
-            f"({index + 1}/"
-            f"{len(results)})"
-        )
-
+    text = (
+        f"🌐 {title}\n\n"
+        f"🔎 Запрос:\n"
+        f"{query}\n\n"
+        f"📖 Фрагмент:\n"
+        f"{description}\n\n"
+        f"🌍 {domain or '-'}\n\n"
+        f"({index + 1}/"
+        f"{len(results)})"
+    )
 
     keyboard = types.InlineKeyboardMarkup(
         row_width=2
@@ -6691,14 +6594,12 @@ def _extract_ai_sources(
 def ai_web_search(
     original_query,
     prepared_query=None,
-    max_results=5
+    max_results=10
 ):
 
     if not AI_WEB_ENABLED:
-        return {
-            "answer": "",
-            "results": []
-        }
+
+        return []
 
     original_query = safe_text(
         original_query
@@ -6709,309 +6610,111 @@ def ai_web_search(
     )
 
     if not original_query:
-        return {
-            "answer": "",
-            "results": []
-        }
+
+        return []
 
     if not prepared_query:
+
         prepared_query = original_query
 
     print(
-        "🤖 AI WEB SEARCH — RUSSIAN SOURCES"
+        "🤖 AI WEB SEARCH"
     )
 
     print(
-        f"[AI WEB] Query: {prepared_query}"
+        f"[AI WEB] Original: "
+        f"{original_query}"
     )
-
-    # ========================================================
-    # 1. DDGS SEARCH
-    # ========================================================
-
-    try:
-
-        from ddgs import DDGS
-        import re
-
-        search_results = []
-
-        with DDGS(
-            timeout=WEB_SEARCH_TIMEOUT
-        ) as ddgs:
-
-            raw_results = list(
-                ddgs.text(
-                    prepared_query,
-                    region="ru-ru",
-                    safesearch="moderate",
-                    max_results=max_results * 4
-                )
-            )
-
-        # ====================================================
-        # 2. Фильтрация
-        # ====================================================
-
-        seen_urls = set()
-
-        for item in raw_results:
-
-            if not isinstance(
-                item,
-                dict
-            ):
-                continue
-
-            url = canonical_web_url(
-                item.get(
-                    "href",
-                    ""
-                )
-            )
-
-            if not url:
-                continue
-
-            if url in seen_urls:
-                continue
-
-            title = clean_web_text(
-                item.get(
-                    "title",
-                    ""
-                )
-            )
-
-            description = clean_web_text(
-                item.get(
-                    "body",
-                    ""
-                )
-            )
-
-            text = (
-                f"{title} {description}"
-            ).strip()
-
-            if not text:
-                continue
-
-            # ------------------------------------------------
-            # Проверяем наличие кириллицы
-            # ------------------------------------------------
-
-            cyrillic = len(
-                re.findall(
-                    r"[А-Яа-яЁё]",
-                    text
-                )
-            )
-
-            latin = len(
-                re.findall(
-                    r"[A-Za-z]",
-                    text
-                )
-            )
-
-            # Полностью иностранная страница
-            if cyrillic == 0:
-
-                print(
-                    f"🌐 [DDGS] FOREIGN: {title}"
-                )
-
-                continue
-
-            # Слишком много латиницы
-            if latin > cyrillic * 1.5:
-
-                print(
-                    f"🌐 [DDGS] FOREIGN: {title}"
-                )
-
-                continue
-
-            seen_urls.add(url)
-
-            search_results.append(
-                {
-                    "title": title,
-                    "url": url,
-                    "description": description
-                }
-            )
-
-            if len(search_results) >= max_results:
-                break
-
-
-    except Exception as e:
-
-        print(
-            f"❌ [DDGS] ERROR: "
-            f"{repr(e)}"
-        )
-
-        return {
-            "answer": "",
-            "results": []
-        }
-
-
-    # ========================================================
-    # 3. Проверяем результаты
-    # ========================================================
-
-    if not search_results:
-
-        print(
-            "[DDGS] No suitable Russian results"
-        )
-
-        return {
-            "answer": "",
-            "results": []
-        }
-
 
     print(
-        f"[DDGS] Russian results: "
-        f"{len(search_results)}"
+        f"[AI WEB] Prepared: "
+        f"{prepared_query}"
     )
-
-
-    # ========================================================
-    # 4. Формируем context
-    # ========================================================
-
-    context_parts = []
-
-    for index, item in enumerate(
-        search_results,
-        start=1
-    ):
-
-        title = safe_text(
-            item.get(
-                "title",
-                ""
-            )
-        )
-
-        description = safe_text(
-            item.get(
-                "description",
-                ""
-            )
-        )
-
-        if len(description) > 1000:
-
-            description = (
-                description[:997]
-                + "..."
-            )
-
-        context_parts.append(
-            f"[{index}] {title}\n"
-            f"{description}"
-        )
-
-    context = "\n\n".join(
-        context_parts
-    )
-
-
-    # ========================================================
-    # 5. AI
-    # ========================================================
 
     prompt = f"""
-Ты — технический справочник Mercedes-Benz.
+Пользовательский запрос:
 
-ВОПРОС:
 {original_query}
 
-НАЙДЕННЫЕ РУССКОЯЗЫЧНЫЕ ДАННЫЕ:
-{context}
+Предварительно нормализованный запрос:
 
-Отвечай ТОЛЬКО на основании найденных данных.
+{prepared_query}
 
-Не используй собственные знания.
+Проведи полноценное web-исследование.
 
-Не выдумывай отсутствующие значения.
+Сначала самостоятельно определи смысл запроса.
 
-Не смешивай разные модели, поколения,
-двигатели и модификации.
+Если это автомобильный запрос — определи автомобиль,
+кузов, двигатель, модификацию и техническую тему.
 
-Если вопрос касается конкретного значения
-(например объёма масла), это значение должно
-быть прямо указано в найденных данных.
+Если в запросе есть код кузова, двигателя, ошибки,
+номер детали или размер — обязательно учитывай его
+как важный поисковый идентификатор.
 
-ВАЖНО:
+Проведи поиск по нескольким релевантным источникам.
 
-Рабочий объём двигателя 1.6 или 2.0 литра
-НЕ является объёмом моторного масла.
+Сравни найденные данные.
 
-Если в найденных данных нет точного ответа,
-напиши:
+Если информация зависит от года, двигателя,
+рестайлинга или конкретной модификации —
+обязательно учитывай это.
 
-«Точных данных нет.»
+Если пользователь ожидает конкретное значение,
+дай его в начале ответа.
 
-Не называй сайты.
+Ответ дай на русском языке.
 
-Не называй статьи.
+Не придумывай отсутствующие данные.
+Не копируй большие фрагменты исходных веб-страниц.
 
-Не описывай поиск.
+Не выводи HTML, служебный текст сайта,
+кракозябры или повреждённую кодировку.
 
-Не пиши:
-«согласно источнику»,
-«по данным поиска»,
-«я нашёл».
+Если текст какого-либо источника отображается
+некорректно или содержит нечитаемые символы,
+игнорируй этот источник и используй другой.
 
-Для простого вопроса максимум 2 коротких
-предложения.
+Ответ формируй своими словами на основе
+найденных данных.
 
-Ответ только на русском языке.
+Не показывай пользователю сырой текст страницы.
 
-Теперь дай готовый ответ пользователю.
+
+Не задавай уточняющий вопрос, если можно сделать
+разумный поиск самостоятельно.
+
+Не вставляй длинные URL в текст.
+Источники будут показаны Telegram-кнопками.
+
+Максимально полезный ответ:
+не больше примерно 2500-3000 символов.
 """
-
 
     try:
 
-        response = ai_client.chat.completions.create(
-
+        response = ai_client.responses.create(
             model=AI_WEB_MODEL,
 
-            messages=[
+            instructions=AI_WEB_INSTRUCTIONS,
+
+            input=prompt,
+
+            tools=[
                 {
-                    "role": "system",
-                    "content": (
-                        "Извлекай только факты "
-                        "из переданного контекста. "
-                        "Не выдумывай."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": prompt
+                    "type": "web_search"
                 }
             ],
 
-            temperature=0.1,
+            tool_choice="auto",
 
-            max_tokens=150
+            max_output_tokens=6000,
+
+            text={
+                "verbosity": "medium"
+            },
+
+            store=False
         )
-
-        answer = safe_text(
-            response.choices[0]
-            .message
-            .content
-        )
-
 
     except Exception as e:
 
@@ -7020,79 +6723,111 @@ def ai_web_search(
             f"{repr(e)}"
         )
 
+        return []
+
+    answer = ""
+
+    try:
+
+        answer = response.output_text
+
+    except Exception:
+
         answer = ""
 
-
-    # ========================================================
-    # 6. Очистка
-    # ========================================================
-
-    answer = clean_web_text(
+    answer = _truncate_ai_text(
         answer
     )
 
-    answer = repair_web_mojibake(
-        answer
-    )
-
-
-    if len(answer) > 400:
-
-        answer = (
-            answer[:397]
-            + "..."
-        )
-
-
-    # ========================================================
-    # 7. Результаты
-    # ========================================================
-
-    results = []
-
-    for item in search_results:
-
-        results.append(
-            {
-                "title": safe_text(
-                    item.get(
-                        "title",
-                        ""
-                    )
-                ),
-                "url": safe_text(
-                    item.get(
-                        "url",
-                        ""
-                    )
-                ),
-                "description": safe_text(
-                    item.get(
-                        "description",
-                        ""
-                    )
-                )
-            }
-        )
-
-
-    print(
-        f"[AI WEB] Answer: "
-        f"{answer[:200]}"
+    sources = _extract_ai_sources(
+        response
     )
 
     print(
         f"[AI WEB] Sources: "
-        f"{len(results)}"
+        f"{len(sources)}"
     )
 
+    if not answer:
 
-    return {
-        "answer": answer,
-        "results": results
-    }
+        answer = (
+            "❌ Не удалось сформировать "
+            "ответ по найденной информации."
+        )
+
+    results = []
 
 
+    # --------------------------------------------------------
+    # ПЕРВАЯ КАРТОЧКА — AI ОТВЕТ
+    # --------------------------------------------------------
+
+    results.append(
+        {
+            "type": "ai_answer",
+
+            "title": (
+                "AI-поиск"
+            ),
+
+            "url": (
+                sources[0]["url"]
+                if sources
+                else ""
+            ),
+
+            "body": answer,
+
+            "excerpt": answer,
+
+            "sources": sources,
+
+            "query": original_query
+        }
+    )
+
+    # --------------------------------------------------------
+    # ДАЛЬШЕ — ОТДЕЛЬНЫЕ ИСТОЧНИКИ
+    # --------------------------------------------------------
+
+    for source in sources:
+
+        if len(results) >= max_results:
+
+            break
+
+        results.append(
+            {
+                "type":
+                    "web_source",
+
+                "title":
+                    source.get(
+                        "title",
+                        "Источник"
+                    ),
+
+                "url":
+                    source.get(
+                        "url",
+                        ""
+                    ),
+
+                "body":
+                    source.get(
+                        "description",
+                        ""
+                    ),
+
+                "excerpt":
+                    source.get(
+                        "description",
+                        ""
+                    )
+            }
+        )
+
+    return results
 
 # ============================================================
 # SEARCH
@@ -7120,12 +6855,12 @@ def perform_search(
         chat_id
     )
 
-      # --------------------------------------------------------
+    # --------------------------------------------------------
     # WEB SEARCH
     # --------------------------------------------------------
-    
+
     if mode == "web":
-    
+
         print(
             f"🌐 WEB SEARCH: {query}"
         )
@@ -7158,43 +6893,24 @@ def perform_search(
                 f"{search_query}"
             )
     
-            results = []
-            answer = ""
+            # ----------------------------------------------------
+            # Сначала настоящий AI Web Search.
+            # ----------------------------------------------------
     
-            # ----------------------------------------------------
-            # AI WEB SEARCH
-            # ----------------------------------------------------
+            results = []
     
             if AI_WEB_ENABLED:
     
-                ai_result = ai_web_search(
+                results = ai_web_search(
                     query,
-                    search_query
+                    search_query,
+                    max_results=WEB_MAX_RESULTS
                 )
-    
-                answer = ai_result.get(
-                    "answer",
-                    ""
-                )
-    
-                results = ai_result.get(
-                    "results",
-                    []
-                )
-    
-                if answer:
-    
-                    results.insert(
-                        0,
-                        {
-                            "type": "ai_answer",
-                            "body": answer,
-                            "sources": results.copy()
-                        }
-                    )
     
             # ----------------------------------------------------
-            # FALLBACK
+            # Fallback:
+            # если AI недоступен или произошла ошибка,
+            # используем твой старый web_search().
             # ----------------------------------------------------
     
             if not results:
@@ -7209,18 +6925,6 @@ def perform_search(
                     max_results=WEB_MAX_RESULTS
                 )
     
-            # ----------------------------------------------------
-            # Финальная фильтрация результатов
-            # ----------------------------------------------------
-            #
-            # Даже если результат пришёл из legacy web_search(),
-            # не показываем пользователю явно иностранные страницы.
-            #
-    
-            results = filter_russian_web_results(
-                results
-            )
-    
         except Exception as e:
     
             print(
@@ -7228,15 +6932,15 @@ def perform_search(
                 f"{repr(e)}"
             )
     
+            # ----------------------------------------------------
+            # Последняя попытка — старый поиск.
+            # ----------------------------------------------------
+    
             try:
     
                 results = web_search(
                     query,
                     max_results=WEB_MAX_RESULTS
-                )
-    
-                results = filter_russian_web_results(
-                    results
                 )
     
             except Exception as fallback_error:
@@ -7273,10 +6977,6 @@ def perform_search(
             chat_id
         ] = results
     
-        web_ai_answers[
-            chat_id
-        ] = answer
-    
         web_index[
             chat_id
         ] = 0
@@ -7291,7 +6991,6 @@ def perform_search(
         )
     
         return
-
 
     # --------------------------------------------------------
     # PARTS

@@ -4606,14 +4606,13 @@ words = re.findall(
     normalized_query,
     flags=re.IGNORECASE
 )
-
         # ====================================================
         # РАСПОЗНАВАНИЕ КУЗОВА И ДВИГАТЕЛЯ
         # ====================================================
 
         for word in words:
 
-                        # ====================================================
+            # ====================================================
             # КУЗОВ
             # ====================================================
 
@@ -4756,55 +4755,61 @@ words = re.findall(
 
                 continue
 
-    
-
-            # ------------------------------------------------
-            # Перед / зад
-            # ------------------------------------------------
+            # ====================================================
+            # ПЕРЕД / ЗАД
+            # ====================================================
 
             if word in front_words:
 
                 front_rear = "F"
+
                 continue
 
             if word in rear_words:
 
                 front_rear = "B"
+
                 continue
 
-            # ------------------------------------------------
-            # Лево / право
-            # ------------------------------------------------
+            # ====================================================
+            # ЛЕВО / ПРАВО
+            # ====================================================
 
             if word in left_words:
 
                 left_right = "L"
+
                 continue
 
             if word in right_words:
 
                 left_right = "R"
+
                 continue
 
-            # ------------------------------------------------
-            # Верх / низ
-            # ------------------------------------------------
+            # ====================================================
+            # ВЕРХ / НИЗ
+            # ====================================================
 
             if word in upper_words:
 
                 upper_lower = "U"
+
                 continue
 
             if word in lower_words:
 
                 upper_lower = "D"
+
                 continue
 
-            # ------------------------------------------------
-            # Обычное слово
-            # ------------------------------------------------
+            # ====================================================
+            # ОБЫЧНОЕ СЛОВО
+            # ====================================================
 
-            part_words.append(word)
+            part_words.append(
+                word
+            )
 
         print(
             "[SMART SEARCH] "
@@ -4821,7 +4826,9 @@ words = re.findall(
 
         def normalize_engine_value(value):
 
-            value = safe_text(value)
+            value = safe_text(
+                value
+            )
 
             value = normalize(
                 fix_a(value)
@@ -4847,7 +4854,7 @@ words = re.findall(
                 family
                 exact_code
 
-            Например:
+            Примеры:
 
                 M112
                     -> m112, None
@@ -4861,9 +4868,17 @@ words = re.findall(
                 112.970
                     -> m112, 112970
 
-                M112 970
-                    -> зависит от исходного значения,
-                       базово определяем по цифрам.
+                M112970
+                    -> m112, 112970
+
+                OM642
+                    -> om642, None
+
+                642
+                    -> om642, None
+
+                642920
+                    -> om642, 642920
             """
 
             value = normalize_engine_value(
@@ -4871,56 +4886,72 @@ words = re.findall(
             )
 
             if not value:
+
                 return None, None
 
-            # Убираем M / OM
+            # =================================================
+            # УБИРАЕМ M / OM
+            # =================================================
+
             digits = re.sub(
                 r"^(?:m|om)",
                 "",
                 value
             )
 
-            # ------------------------------------------------
-            # Полный код
-            # ------------------------------------------------
+            # =================================================
+            # ПОЛНЫЙ КОД ДВИГАТЕЛЯ
+            # =================================================
 
             if re.fullmatch(
                 r"\d{6}",
                 digits
             ):
 
-                family_digits = digits[:3]
+                family_digits = (
+                    digits[:3]
+                )
 
-                for family in engine_families.values():
+                for family in set(
+                    engine_families.values()
+                ):
 
                     known_digits = re.sub(
                         r"^(?:m|om)",
                         "",
-                        family
+                        family,
+                        flags=re.IGNORECASE
                     )
 
                     if (
                         family_digits
                         == known_digits
                     ):
+
                         return (
                             family,
                             digits
                         )
 
-            # ------------------------------------------------
-            # Семейство
-            # ------------------------------------------------
+            # =================================================
+            # СЕМЕЙСТВО ДВИГАТЕЛЯ
+            # =================================================
 
-            for family in engine_families.values():
+            for family in set(
+                engine_families.values()
+            ):
 
                 known_digits = re.sub(
                     r"^(?:m|om)",
                     "",
-                    family
+                    family,
+                    flags=re.IGNORECASE
                 )
 
-                if digits == known_digits:
+                if (
+                    digits
+                    == known_digits
+                ):
 
                     return (
                         family,
@@ -4935,10 +4966,19 @@ words = re.findall(
 
         candidates = []
 
-        for position, part in enumerate(database):
+        for position, part in enumerate(
+            database
+        ):
 
-            if not isinstance(part, dict):
+            if not isinstance(
+                part,
+                dict
+            ):
                 continue
+
+            # =================================================
+            # КУЗОВ
+            # =================================================
 
             body = normalize(
                 safe_text(
@@ -4948,6 +4988,10 @@ words = re.findall(
                     )
                 )
             ).lower()
+
+            # =================================================
+            # ДВИГАТЕЛЬ
+            # =================================================
 
             engine_raw = safe_text(
                 part.get(
@@ -4960,6 +5004,10 @@ words = re.findall(
                 engine_raw
             ).lower()
 
+            # =================================================
+            # НАЗВАНИЕ
+            # =================================================
+
             name = normalize(
                 safe_text(
                     part.get(
@@ -4968,6 +5016,10 @@ words = re.findall(
                     )
                 )
             ).lower()
+
+            # =================================================
+            # КОММЕНТАРИЙ
+            # =================================================
 
             comment = normalize(
                 safe_text(
@@ -4978,6 +5030,10 @@ words = re.findall(
                 )
             ).lower()
 
+            # =================================================
+            # ПЕРЕД / ЗАД
+            # =================================================
+
             front = normalize(
                 safe_text(
                     part.get(
@@ -4987,6 +5043,10 @@ words = re.findall(
                 )
             ).upper()
 
+            # =================================================
+            # ЛЕВО / ПРАВО
+            # =================================================
+
             side = normalize(
                 safe_text(
                     part.get(
@@ -4995,6 +5055,10 @@ words = re.findall(
                     )
                 )
             ).upper()
+
+            # =================================================
+            # ВЕРХ / НИЗ
+            # =================================================
 
             upper = normalize(
                 safe_text(
@@ -5006,7 +5070,7 @@ words = re.findall(
             ).upper()
 
             # =================================================
-            # КУЗОВ
+            # ФИЛЬТР КУЗОВА
             # =================================================
 
             if bodies:
@@ -5021,13 +5085,15 @@ words = re.findall(
                     ):
 
                         body_match = True
+
                         break
 
                 if not body_match:
+
                     continue
 
             # =================================================
-            # ДВИГАТЕЛЬ
+            # ИНФОРМАЦИЯ О ДВИГАТЕЛЕ
             # =================================================
 
             candidate_family, candidate_code = (
@@ -5035,6 +5101,10 @@ words = re.findall(
                     engine_raw
                 )
             )
+
+            # =================================================
+            # ФИЛЬТР СЕМЕЙСТВА ДВИГАТЕЛЯ
+            # =================================================
 
             if engine_families_requested:
 
@@ -5050,9 +5120,11 @@ words = re.findall(
                     ):
 
                         engine_match = True
+
                         break
 
                 if not engine_match:
+
                     continue
 
             # =================================================
@@ -5068,6 +5140,7 @@ words = re.findall(
                         and "перед" not in name
                         and "front" not in name
                     ):
+
                         continue
 
                     if (
@@ -5075,6 +5148,7 @@ words = re.findall(
                         and "зад" not in name
                         and "rear" not in name
                     ):
+
                         continue
 
             # =================================================
@@ -5089,12 +5163,14 @@ words = re.findall(
                         left_right == "L"
                         and "лев" not in name
                     ):
+
                         continue
 
                     if (
                         left_right == "R"
                         and "прав" not in name
                     ):
+
                         continue
 
             # =================================================
@@ -5109,6 +5185,7 @@ words = re.findall(
                         upper_lower == "U"
                         and "верх" not in name
                     ):
+
                         continue
 
                     if (
@@ -5116,6 +5193,7 @@ words = re.findall(
                         and "ниж" not in name
                         and "низ" not in name
                     ):
+
                         continue
 
             # =================================================
@@ -5132,13 +5210,14 @@ words = re.findall(
 
                 all_words_match = True
 
-                for word in part_words:
+                for search_word in part_words:
 
-                    if word not in name:
+                    if search_word not in name:
 
-                        if word not in comment:
+                        if search_word not in comment:
 
                             all_words_match = False
+
                             break
 
                 if all_words_match:
@@ -5149,13 +5228,13 @@ words = re.findall(
 
                     partial_count = 0
 
-                    for word in part_words:
+                    for search_word in part_words:
 
-                        if word in name:
+                        if search_word in name:
 
                             partial_count += 1
 
-                        elif word in comment:
+                        elif search_word in comment:
 
                             partial_count += 0.5
 
@@ -5192,13 +5271,15 @@ words = re.findall(
 
                         score += 100
 
+                        break
+
             # =================================================
-            # ДВИГАТЕЛЬ
+            # СЕМЕЙСТВО ДВИГАТЕЛЯ
             # =================================================
 
             if engine_families_requested:
 
-                # Сам факт совпадения семейства
+                # Совпадение семейства.
                 score += 200
 
                 for requested_family in (
@@ -5210,7 +5291,6 @@ words = re.findall(
                         == requested_family
                     ):
 
-                        # Точное совпадение семейства
                         score += 150
 
                         break
@@ -5233,29 +5313,23 @@ words = re.findall(
                     ):
 
                         exact_match = True
+
                         break
 
                 if exact_match:
 
-                    # Большой бонус за полный код.
+                    # Сильный приоритет полного кода.
                     #
                     # Например:
                     #
+                    # запрос: 112970
+                    #
                     # 112970 -> +700
+                    # 112942 -> +0
                     #
-                    # поэтому 112970 будет выше
-                    # 112942.
-                    #
+                    # При этом оба остаются
+                    # результатами семейства M112.
                     score += 700
-
-                else:
-
-                    # Это всё ещё правильное семейство
-                    # двигателя, но код другой.
-                    #
-                    # Не удаляем результат полностью,
-                    # просто ставим ниже точного.
-                    score += 0
 
             # =================================================
             # ПЕРЕД / ЗАД
@@ -5298,6 +5372,7 @@ words = re.findall(
             # =================================================
 
             if score <= 0:
+
                 continue
 
             candidates.append(
@@ -5321,7 +5396,7 @@ words = re.findall(
         )
 
         print(
-            f"[SMART SEARCH] "
+            "[SMART SEARCH] "
             f"candidates={len(candidates)}"
         )
 
@@ -5329,7 +5404,9 @@ words = re.findall(
         # DEBUG TOP
         # ====================================================
 
-        for score, position, part in candidates[:10]:
+        for score, position, part in (
+            candidates[:10]
+        ):
 
             print(
                 "[SMART SEARCH] "

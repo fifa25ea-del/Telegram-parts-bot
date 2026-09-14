@@ -4301,22 +4301,40 @@ def find_part_smart(
     - лево / право
     - верх / низ
     - частичные совпадения
+    - автомобильные термины
 
-    ВАЖНО:
+    Примеры:
 
-    Кузов и двигатель разбираются ДО fix_a(),
-    чтобы fix_a() не мог склеить:
+        редуктор 163
+        редуктор w163
+        редуктор 163 112
+        редуктор 164 m273
+        редуктор 164 272
+        редуктор 164 112970
+        редуктор передний 163
+        редуктор задний 163
+        редуктор левый 163
+        редуктор правый 163
 
-        163 112
+    Логика двигателя:
 
-    в:
+        M112
+        112
+        112970
 
-        163112
+    => одно семейство M112.
+
+    Но если указан полный код:
+
+        112970
+
+    то детали с точным 112970 получают
+    значительно больший приоритет.
     """
 
-    original_query = safe_text(query).strip()
+    query = safe_text(query).strip()
 
-    if not original_query:
+    if not query:
         return []
 
     with database_lock:
@@ -4372,6 +4390,36 @@ def find_part_smart(
         )
 
         # ====================================================
+        # НОРМАЛИЗАЦИЯ
+        # ====================================================
+
+        original_query = query
+
+        normalized_query = normalize(
+            fix_a(query)
+        )
+
+        normalized_query = (
+            safe_text(normalized_query)
+            .lower()
+            .replace("ё", "е")
+        )
+
+        # ====================================================
+        # ВАЖНО:
+        # fix_a() может портить русские слова.
+        #
+        # Поэтому отдельно сохраняем исходный запрос
+        # и делаем дополнительный вариант БЕЗ fix_a().
+        # ====================================================
+
+        raw_normalized_query = (
+            normalize(query)
+            .lower()
+            .replace("ё", "е")
+        )
+
+        # ====================================================
         # КУЗОВА
         # ====================================================
 
@@ -4385,9 +4433,6 @@ def find_part_smart(
             "w166": "w166",
             "166": "w166",
 
-            "w202": "w202",
-            "202": "w202",
-
             "w203": "w203",
             "203": "w203",
 
@@ -4396,15 +4441,6 @@ def find_part_smart(
 
             "w205": "w205",
             "205": "w205",
-
-            "w208": "w208",
-            "208": "w208",
-
-            "w209": "w209",
-            "209": "w209",
-
-            "w210": "w210",
-            "210": "w210",
 
             "w211": "w211",
             "211": "w211",
@@ -4415,9 +4451,6 @@ def find_part_smart(
             "w213": "w213",
             "213": "w213",
 
-            "w218": "w218",
-            "218": "w218",
-
             "w220": "w220",
             "220": "w220",
 
@@ -4427,18 +4460,33 @@ def find_part_smart(
             "w222": "w222",
             "222": "w222",
 
+            "w140": "w140",
+            "140": "w140",
+
+            "w210": "w210",
+            "210": "w210",
+
+            "w202": "w202",
+            "202": "w202",
+
+            "w208": "w208",
+            "208": "w208",
+
+            "w209": "w209",
+            "209": "w209",
+
+            "w218": "w218",
+            "218": "w218",
+
             "c215": "c215",
             "215": "c215",
 
             "c216": "c216",
             "216": "c216",
-
-            "w140": "w140",
-            "140": "w140",
         }
 
         # ====================================================
-        # ДВИГАТЕЛИ
+        # СЕМЕЙСТВА ДВИГАТЕЛЕЙ
         # ====================================================
 
         engine_families = {
@@ -4493,63 +4541,63 @@ def find_part_smart(
         # ====================================================
 
         front_words = {
-            "перед",
             "передний",
             "передняя",
             "переднее",
+            "перед",
             "front",
-            "f",
+            "f"
         }
 
         rear_words = {
-            "зад",
             "задний",
             "задняя",
             "заднее",
+            "зад",
             "rear",
             "back",
-            "b",
+            "b"
         }
 
         left_words = {
-            "лев",
             "левый",
             "левая",
             "левое",
+            "лев",
             "left",
-            "l",
+            "l"
         }
 
         right_words = {
-            "прав",
             "правый",
             "правая",
             "правое",
+            "прав",
             "right",
-            "r",
+            "r"
         }
 
         upper_words = {
-            "верх",
             "верхний",
             "верхняя",
             "верхнее",
+            "верх",
             "upper",
-            "u",
+            "u"
         }
 
         lower_words = {
-            "низ",
             "нижний",
             "нижняя",
             "нижнее",
+            "низ",
             "lower",
             "down",
-            "d",
+            "d"
         }
 
         # ====================================================
-        # ПЕРЕМЕННЫЕ
+        # СОСТОЯНИЕ ЗАПРОСА
         # ====================================================
 
         bodies = []
@@ -4561,65 +4609,98 @@ def find_part_smart(
         part_words = []
 
         front_rear = None
-
         left_right = None
-
         upper_lower = None
 
         # ====================================================
-        # НОРМАЛИЗАЦИЯ БЕЗ FIX_A
+        # РАЗБИВАЕМ ЗАПРОС
         #
-        # Сначала только приводим к нижнему регистру.
+        # Используем И raw_normalized_query, И вариант
+        # после fix_a().
         #
-        # Это ВАЖНО:
+        # Это позволяет не терять:
         #
-        # "163 112"
+        # редуктор
+        # peдyktop
         #
-        # остаётся:
-        #
-        # "163 112"
         # ====================================================
 
-        raw_query = (
-            original_query
-            .lower()
-            .replace("ё", "е")
+        parse_query = raw_normalized_query
+
+        # Приводим склейки:
+        #
+        # редуктор163 -> редуктор 163
+        # m273 -> m273
+        # 164m273 -> 164 m273
+
+        parse_query = re.sub(
+            r"(?<=[a-zа-яё])(?=\d)",
+            " ",
+            parse_query,
+            flags=re.IGNORECASE
         )
 
-        # ====================================================
-        # РАЗБИВАЕМ ЗАПРОС
-        # ====================================================
+        parse_query = re.sub(
+            r"(?<=\d)(?=[a-zа-яё])",
+            " ",
+            parse_query,
+            flags=re.IGNORECASE
+        )
 
-        raw_words = re.findall(
+        words = re.findall(
             r"[a-zа-яё0-9]+",
-            raw_query,
+            parse_query,
             flags=re.IGNORECASE
         )
 
         # ====================================================
-        # ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ
+        # ДОПОЛНИТЕЛЬНО БЕРЁМ ТОКЕНЫ ИЗ fix_a()
+        #
+        # Нужны для случаев, когда fix_a() исправляет
+        # латиницу/транслит.
         # ====================================================
 
-        def compact_engine_word(word):
+        fixed_parse_query = normalized_query
 
-            return (
-                safe_text(word)
-                .lower()
-                .replace(".", "")
-                .replace("-", "")
-                .replace("_", "")
-                .replace(" ", "")
-            )
+        fixed_parse_query = re.sub(
+            r"(?<=[a-zа-яё])(?=\d)",
+            " ",
+            fixed_parse_query,
+            flags=re.IGNORECASE
+        )
+
+        fixed_parse_query = re.sub(
+            r"(?<=\d)(?=[a-zа-яё])",
+            " ",
+            fixed_parse_query,
+            flags=re.IGNORECASE
+        )
+
+        fixed_words = re.findall(
+            r"[a-zа-яё0-9]+",
+            fixed_parse_query,
+            flags=re.IGNORECASE
+        )
 
         # ====================================================
-        # РАСПОЗНАВАНИЕ
+        # НОРМАЛИЗУЕМ ТЕКСТОВЫЕ ТОКЕНЫ
+        #
+        # Если fix_a() сделал:
+        #
+        # редуктор -> peдyktop
+        #
+        # оставляем правильный русский вариант.
         # ====================================================
 
-        consumed = set()
+        words_for_parts = []
 
-        for index, raw_word in enumerate(raw_words):
+        # ====================================================
+        # РАСПОЗНАВАНИЕ КУЗОВА И ДВИГАТЕЛЯ
+        # ====================================================
 
-            word = raw_word.lower()
+        for word in words:
+
+            word = word.lower()
 
             # =================================================
             # КУЗОВ
@@ -4630,40 +4711,85 @@ def find_part_smart(
                 body = body_aliases[word]
 
                 if body not in bodies:
-
                     bodies.append(body)
 
-                consumed.add(index)
+                continue
 
+            # =================================================
+            # КУЗОВ ВНУТРИ СКЛЕЕННОГО СЛОВА
+            #
+            # редуктор163
+            # =================================================
+
+            body_found_in_word = False
+
+            # Сначала длинные алиасы,
+            # чтобы w163 проверялся раньше 163.
+            body_alias_items = sorted(
+                body_aliases.items(),
+                key=lambda item: len(item[0]),
+                reverse=True
+            )
+
+            for body_alias, normalized_body in body_alias_items:
+
+                if (
+                    word.endswith(body_alias)
+                    and word != body_alias
+                ):
+
+                    if normalized_body not in bodies:
+                        bodies.append(
+                            normalized_body
+                        )
+
+                    part_word_without_body = (
+                        word[:-len(body_alias)]
+                    )
+
+                    if part_word_without_body:
+
+                        words_for_parts.append(
+                            part_word_without_body
+                        )
+
+                    body_found_in_word = True
+                    break
+
+            if body_found_in_word:
                 continue
 
             # =================================================
             # ДВИГАТЕЛЬ
             # =================================================
 
-            compact_word = compact_engine_word(
+            compact_word = (
                 word
+                .replace(".", "")
+                .replace("-", "")
+                .replace("_", "")
+                .replace(" ", "")
+                .lower()
             )
 
-            # -------------------------------------------------
-            # Полный код:
+            # =================================================
+            # ПОЛНЫЙ КОД ДВИГАТЕЛЯ
             #
             # 112970
-            # M112970
-            # 112.970
-            # M112.970
-            # -------------------------------------------------
+            # m112970
+            # om642970
+            # =================================================
 
-            engine_match = re.fullmatch(
+            engine_code_match = re.fullmatch(
                 r"(?:m|om)?(\d{6})",
                 compact_word,
                 flags=re.IGNORECASE
             )
 
-            if engine_match:
+            if engine_code_match:
 
                 code_digits = (
-                    engine_match.group(1)
+                    engine_code_match.group(1)
                 )
 
                 family_digits = (
@@ -4689,7 +4815,6 @@ def find_part_smart(
                     ):
 
                         possible_family = family
-
                         break
 
                 if possible_family:
@@ -4712,18 +4837,11 @@ def find_part_smart(
                             code_digits
                         )
 
-                    consumed.add(index)
-
                     continue
 
-            # -------------------------------------------------
-            # Семейство:
-            #
-            # 112
-            # M112
-            # OM642
-            # 642
-            # -------------------------------------------------
+            # =================================================
+            # СЕМЕЙСТВО ДВИГАТЕЛЯ
+            # =================================================
 
             if compact_word in engine_families:
 
@@ -4740,8 +4858,6 @@ def find_part_smart(
                         family
                     )
 
-                consumed.add(index)
-
                 continue
 
             # =================================================
@@ -4751,17 +4867,11 @@ def find_part_smart(
             if word in front_words:
 
                 front_rear = "F"
-
-                consumed.add(index)
-
                 continue
 
             if word in rear_words:
 
                 front_rear = "B"
-
-                consumed.add(index)
-
                 continue
 
             # =================================================
@@ -4771,17 +4881,11 @@ def find_part_smart(
             if word in left_words:
 
                 left_right = "L"
-
-                consumed.add(index)
-
                 continue
 
             if word in right_words:
 
                 left_right = "R"
-
-                consumed.add(index)
-
                 continue
 
             # =================================================
@@ -4791,81 +4895,103 @@ def find_part_smart(
             if word in upper_words:
 
                 upper_lower = "U"
-
-                consumed.add(index)
-
                 continue
 
             if word in lower_words:
 
                 upper_lower = "D"
-
-                consumed.add(index)
-
                 continue
 
+            # =================================================
+            # ОБЫЧНОЕ СЛОВО
+            # =================================================
+
+            words_for_parts.append(word)
+
         # ====================================================
-        # ОСТАВШИЕСЯ СЛОВА = НАЗВАНИЕ ДЕТАЛИ
+        # УДАЛЯЕМ МУСОРНЫЕ ТОКЕНЫ ОТ FIX_A
+        #
+        # Например:
+        #
+        # peдyktop
+        #
+        # если рядом уже есть нормальное:
+        #
+        # редуктор
+        #
         # ====================================================
 
-        for index, raw_word in enumerate(raw_words):
+        cleaned_part_words = []
 
-            if index in consumed:
+        for word in words_for_parts:
+
+            if not word:
                 continue
 
-            # -----------------------------------------------
-            # Теперь fix_a применяем только к отдельному
-            # слову, а не ко всему запросу.
-            # -----------------------------------------------
+            # Явные варианты, которые может дать fix_a().
+            broken_word_aliases = {
+                "peдyktop": "редуктор",
+                "peдyktopa": "редуктора",
+                "peдyktopу": "редуктору",
+                "peдyktopом": "редуктором",
+                "peдyktopы": "редукторы",
+            }
 
-            fixed_word = normalize(
-                fix_a(raw_word)
+            word = broken_word_aliases.get(
+                word,
+                word
             )
 
-            fixed_word = (
-                fixed_word
-                .lower()
-                .replace("ё", "е")
-                .strip()
+            if word not in cleaned_part_words:
+
+                cleaned_part_words.append(
+                    word
+                )
+
+        part_words = cleaned_part_words
+
+        # ====================================================
+        # ДОПОЛНИТЕЛЬНО:
+        # ЕСЛИ RAW-РАЗБОР НЕ УВИДЕЛ ДЕТАЛЬ,
+        # ПРОБУЕМ TOKENS ИЗ FIX_A.
+        #
+        # НО НЕ ДОБАВЛЯЕМ СЛОМАННЫЕ TOKENS,
+        # КОТОРЫЕ ЯВНО ЯВЛЯЮТСЯ АВТОЗАМЕНОЙ.
+        # ====================================================
+
+        fixed_to_original = {
+            "peдyktop": "редуктор",
+            "peдyktopa": "редуктора",
+            "peдyktopу": "редуктору",
+            "peдyktopом": "редуктором",
+            "peдyktopы": "редукторы",
+        }
+
+        for fixed_word in fixed_words:
+
+            fixed_word = fixed_word.lower()
+
+            if fixed_word in fixed_to_original:
+
+                original_word = fixed_to_original[
+                    fixed_word
+                ]
+
+                if original_word not in part_words:
+
+                    part_words.append(
+                        original_word
+                    )
+
+        # ====================================================
+        # УБИРАЕМ ДУБЛИКАТЫ
+        # ====================================================
+
+        part_words = list(
+            dict.fromkeys(
+                part_words
             )
-
-            if not fixed_word:
-                continue
-
-            # -----------------------------------------------
-            # Если fix_a испортил слово, сохраняем исходное.
-            # Например:
-            #
-            # редуктор -> peдyktop
-            #
-            # В таком случае ищем оба варианта.
-            # -----------------------------------------------
-
-            if fixed_word != raw_word:
-
-                if raw_word not in part_words:
-
-                    part_words.append(
-                        raw_word
-                    )
-
-                if fixed_word not in part_words:
-
-                    part_words.append(
-                        fixed_word
-                    )
-
-            else:
-
-                if fixed_word not in part_words:
-
-                    part_words.append(
-                        fixed_word
-                    )
-
-        # ====================================================
-        # DEBUG
-        # ====================================================
+        )
 
         print(
             "[SMART SEARCH] "
@@ -4874,12 +5000,13 @@ def find_part_smart(
             f"engine_families={engine_families_requested} "
             f"exact_engines={exact_engine_codes} "
             f"words={part_words} "
-            f"front_rear={front_rear} "
-            f"left_right={left_right} "
-            f"upper_lower={upper_lower}"
+            f"front={front_rear} "
+            f"side={left_right} "
+            f"upper={upper_lower}"
         )
 
         # ====================================================
+        # ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ:
         # НОРМАЛИЗАЦИЯ ДВИГАТЕЛЯ
         # ====================================================
 
@@ -4914,8 +5041,16 @@ def find_part_smart(
             )
 
             if not value:
-
                 return None, None
+
+            # ------------------------------------------------
+            # Иногда в базе может быть:
+            #
+            # M273
+            # 273
+            # 272967
+            # M272.967
+            # ------------------------------------------------
 
             digits = re.sub(
                 r"^(?:m|om)",
@@ -4923,9 +5058,9 @@ def find_part_smart(
                 value
             )
 
-            # =============================================
+            # =================================================
             # ПОЛНЫЙ КОД
-            # =============================================
+            # =================================================
 
             if re.fullmatch(
                 r"\d{6}",
@@ -4955,9 +5090,9 @@ def find_part_smart(
                             digits
                         )
 
-            # =============================================
+            # =================================================
             # СЕМЕЙСТВО
-            # =============================================
+            # =================================================
 
             for family in set(
                 engine_families.values()
@@ -4993,7 +5128,6 @@ def find_part_smart(
                 part,
                 dict
             ):
-
                 continue
 
             # =================================================
@@ -5008,6 +5142,14 @@ def find_part_smart(
                     )
                 )
             ).lower()
+
+            # Нормализуем кузов:
+            # W164 -> w164
+            body_compact = re.sub(
+                r"[^a-z0-9]",
+                "",
+                body
+            )
 
             # =================================================
             # ДВИГАТЕЛЬ
@@ -5095,33 +5237,45 @@ def find_part_smart(
 
                 for requested_body in bodies:
 
+                    requested_body_compact = (
+                        requested_body
+                        .replace("w", "")
+                        .replace("c", "")
+                    )
+
+                    candidate_body_compact = (
+                        body_compact
+                        .replace("w", "")
+                        .replace("c", "")
+                    )
+
                     if (
                         body == requested_body
                         or
                         requested_body in body
+                        or
+                        requested_body_compact
+                        == candidate_body_compact
                     ):
 
                         body_match = True
-
                         break
 
                 if not body_match:
-
                     continue
 
             # =================================================
-            # ДВИГАТЕЛЬ
+            # ИНФОРМАЦИЯ О ДВИГАТЕЛЕ
             # =================================================
 
-            (
-                candidate_family,
-                candidate_code
-            ) = engine_info(
-                engine_raw
+            candidate_family, candidate_code = (
+                engine_info(
+                    engine_raw
+                )
             )
 
             # =================================================
-            # ФИЛЬТР СЕМЕЙСТВА
+            # ФИЛЬТР СЕМЕЙСТВА ДВИГАТЕЛЯ
             # =================================================
 
             if engine_families_requested:
@@ -5138,11 +5292,9 @@ def find_part_smart(
                     ):
 
                         engine_match = True
-
                         break
 
                 if not engine_match:
-
                     continue
 
             # =================================================
@@ -5158,7 +5310,6 @@ def find_part_smart(
                         and "перед" not in name
                         and "front" not in name
                     ):
-
                         continue
 
                     if (
@@ -5166,7 +5317,6 @@ def find_part_smart(
                         and "зад" not in name
                         and "rear" not in name
                     ):
-
                         continue
 
             # =================================================
@@ -5181,14 +5331,12 @@ def find_part_smart(
                         left_right == "L"
                         and "лев" not in name
                     ):
-
                         continue
 
                     if (
                         left_right == "R"
                         and "прав" not in name
                     ):
-
                         continue
 
             # =================================================
@@ -5203,7 +5351,6 @@ def find_part_smart(
                         upper_lower == "U"
                         and "верх" not in name
                     ):
-
                         continue
 
                     if (
@@ -5211,7 +5358,6 @@ def find_part_smart(
                         and "ниж" not in name
                         and "низ" not in name
                     ):
-
                         continue
 
             # =================================================
@@ -5226,64 +5372,51 @@ def find_part_smart(
 
             if part_words:
 
-                matched_part_words = 0
+                all_words_match = True
 
                 for search_word in part_words:
 
-                    if not search_word:
-                        continue
+                    if search_word not in name:
 
-                    if search_word in name:
+                        if search_word not in comment:
 
-                        matched_part_words += 1
+                            all_words_match = False
+                            break
 
-                    elif search_word in comment:
-
-                        matched_part_words += 0.5
-
-                # ---------------------------------------------
-                # Все слова нашли
-                # ---------------------------------------------
-
-                if (
-                    matched_part_words
-                    >= len(part_words)
-                ):
+                if all_words_match:
 
                     score += 500
 
-                # ---------------------------------------------
-                # Частичное совпадение
-                # ---------------------------------------------
-
-                elif matched_part_words > 0:
-
-                    score += int(
-                        matched_part_words * 100
-                    )
-
                 else:
 
-                    # Ни одного слова детали нет
-                    continue
+                    partial_count = 0
+
+                    for search_word in part_words:
+
+                        if search_word in name:
+
+                            partial_count += 1
+
+                        elif search_word in comment:
+
+                            partial_count += 0.5
+
+                    score += int(
+                        partial_count * 100
+                    )
 
             # =================================================
             # ТОЧНОЕ НАЗВАНИЕ
             # =================================================
 
             normalized_part_words = " ".join(
-                word
-                for word in part_words
-                if word
+                part_words
             ).strip()
 
             if (
                 normalized_part_words
                 and
-                (
-                    name
-                    == normalized_part_words
-                )
+                name == normalized_part_words
             ):
 
                 score += 150
@@ -5298,10 +5431,27 @@ def find_part_smart(
 
                 for requested_body in bodies:
 
-                    if body == requested_body:
+                    requested_body_compact = (
+                        requested_body
+                        .replace("w", "")
+                        .replace("c", "")
+                    )
+
+                    candidate_body_compact = (
+                        body_compact
+                        .replace("w", "")
+                        .replace("c", "")
+                    )
+
+                    if (
+                        body
+                        == requested_body
+                        or
+                        requested_body_compact
+                        == candidate_body_compact
+                    ):
 
                         score += 100
-
                         break
 
             # =================================================
@@ -5322,7 +5472,6 @@ def find_part_smart(
                     ):
 
                         score += 150
-
                         break
 
             # =================================================
@@ -5343,12 +5492,20 @@ def find_part_smart(
                     ):
 
                         exact_match = True
-
                         break
 
                 if exact_match:
 
                     score += 700
+
+                else:
+
+                    # Детали того же семейства,
+                    # но другого полного двигателя
+                    # оставляем, однако ниже точного
+                    # совпадения.
+
+                    score += 0
 
             # =================================================
             # ПЕРЕД / ЗАД
@@ -5387,7 +5544,7 @@ def find_part_smart(
                     score += 50
 
             # =================================================
-            # ЕСЛИ ЕСТЬ РЕЗУЛЬТАТ
+            # ЕСЛИ НИЧЕГО НЕ СОВПАЛО
             # =================================================
 
             if score <= 0:
@@ -5414,20 +5571,18 @@ def find_part_smart(
             reverse=True
         )
 
-        # ====================================================
-        # DEBUG
-        # ====================================================
-
         print(
             "[SMART SEARCH] "
             f"candidates={len(candidates)}"
         )
 
-        for (
-            score,
-            position,
-            part
-        ) in candidates[:10]:
+        # ====================================================
+        # DEBUG TOP
+        # ====================================================
+
+        for score, position, part in (
+            candidates[:10]
+        ):
 
             print(
                 "[SMART SEARCH] "
@@ -5445,8 +5600,11 @@ def find_part_smart(
         return [
             part
             for score, position, part
-            in candidates[:MAX_RESULTS]
+            in candidates[
+                :MAX_RESULTS
+            ]
         ]
+
 
 # ============================================================
 # ПОИСК ДИСКОВ

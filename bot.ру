@@ -6660,155 +6660,127 @@ def ai_web_search(
 
 
 
-       try:
+    try:
 
-            response = ai_client.responses.create(
-                model=AI_WEB_MODEL,
-    
-                instructions=AI_WEB_INSTRUCTIONS,
-    
-                input=prompt,
-    
-                tools=[
-                    {
-                        "type": "web_search",
-                        "search_context_size": "low"
-                    }
-                ],
-    
-                # Для технических вопросов обязательно используем поиск
-                tool_choice="required",
-    
-                # Нам нужен короткий ответ, а не исследовательский отчёт
-                max_output_tokens=600,
-    
-                text={
-                    "verbosity": "low"
-                },
-    
-                # Источники получаем технически,
-                # но пользователю пока не показываем
-                include=[
-                    "web_search_call.action.sources"
-                ],
-    
-                store=False
-            )
-    
-        except Exception as e:
-    
-            print(
-                f"❌ [AI WEB] API ERROR: "
-                f"{repr(e)}"
-            )
-    
-            return []
-    
-        # --------------------------------------------------------
-        # ОТВЕТ AI
-        # --------------------------------------------------------
-    
+        response = ai_client.responses.create(
+            model=AI_WEB_MODEL,
+
+            instructions=AI_WEB_INSTRUCTIONS,
+
+            input=prompt,
+
+            tools=[
+                {
+                    "type": "web_search",
+                    "search_context_size": "low"
+                }
+            ],
+
+            # Обязательно заставляем AI использовать web
+            tool_choice="required",
+
+            # Короткий ответ = меньше стоимость
+            max_output_tokens=400,
+
+            text={
+                "verbosity": "low"
+            },
+
+            # Источники получаем технически,
+            # но пользователю отдельно НЕ показываем
+            include=[
+                "web_search_call.action.sources"
+            ],
+
+            store=False
+        )
+
+    except Exception as e:
+
+        print(
+            f"❌ [AI WEB] API ERROR: "
+            f"{repr(e)}"
+        )
+
+        return []
+
+    # ========================================================
+    # AI ОТВЕТ
+    # ========================================================
+
+    answer = ""
+
+    try:
+
+        answer = safe_text(
+            response.output_text
+        )
+
+    except Exception as e:
+
+        print(
+            f"❌ [AI WEB] OUTPUT ERROR: "
+            f"{repr(e)}"
+        )
+
         answer = ""
-    
-        try:
-    
-            answer = safe_text(
-                response.output_text
-            )
-    
-        except Exception as e:
-    
-            print(
-                f"❌ [AI WEB] OUTPUT ERROR: "
-                f"{repr(e)}"
-            )
-    
-            answer = ""
-    
-        # --------------------------------------------------------
-        # ОТЛАДКА
-        # --------------------------------------------------------
-    
-        print(
-            f"[AI WEB] Answer: "
-            f"{answer[:500]}"
-        )
-    
-        try:
-    
-            print(
-                f"[AI WEB] Output items: "
-                f"{len(response.output)}"
-            )
-    
-            for item in response.output:
-    
-                print(
-                    f"[AI WEB] OUTPUT TYPE: "
-                    f"{getattr(item, 'type', None)}"
-                )
-    
-        except Exception as e:
-    
-            print(
-                f"[AI WEB] OUTPUT DEBUG ERROR: "
-                f"{repr(e)}"
-            )
-    
-        # --------------------------------------------------------
-        # ИСТОЧНИКИ
-        # --------------------------------------------------------
-    
-        sources = _extract_ai_sources(
-            response
-        )
-    
-        print(
-            f"[AI WEB] Sources: "
-            f"{len(sources)}"
-        )
-    
-        # --------------------------------------------------------
-        # Если AI не дал ответ
-        # --------------------------------------------------------
-    
-        if not answer:
-    
-            answer = (
-                "Точных данных нет."
-            )
-    
-        answer = _truncate_ai_text(
-            answer
-        )
-    
-        # --------------------------------------------------------
-        # ОДНА КАРТОЧКА
-        # --------------------------------------------------------
-    
-        results = [
-            {
-                "type": "ai_answer",
-    
-                "title": "AI-поиск",
-    
-                "url": "",
-    
-                "body": answer,
-    
-                "excerpt": answer,
-    
-                # Источники сохраняем технически,
-                # но отдельные карточки НЕ создаём
-                "sources": sources,
-    
-                "query": original_query
-            }
-        ]
-    
-        return results
-        
-    
+
+    answer = clean_web_text(
+        answer
+    )
+
+    answer = repair_web_mojibake(
+        answer
+    )
+
+    answer = _truncate_ai_text(
+        answer
+    )
+
+    print(
+        f"[AI WEB] Answer: "
+        f"{answer[:300]}"
+    )
+
+    # ========================================================
+    # ИСТОЧНИКИ
+    # ========================================================
+
+    sources = _extract_ai_sources(
+        response
+    )
+
+    print(
+        f"[AI WEB] Sources: "
+        f"{len(sources)}"
+    )
+
+    # ========================================================
+    # ЕСЛИ AI НЕ ДАЛ ОТВЕТ
+    # ========================================================
+
+    if not answer:
+
+        answer = "Точных данных нет."
+
+    # ========================================================
+    # ОДНА ЕДИНСТВЕННАЯ КАРТОЧКА
+    # ========================================================
+
+    results = [
+        {
+            "type": "ai_answer",
+            "title": "AI-поиск",
+            "url": "",
+            "body": answer,
+            "excerpt": answer,
+            "sources": sources,
+            "query": original_query
+        }
+    ]
+
+    return results
+
 
 # ============================================================
 # SEARCH

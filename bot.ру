@@ -4606,865 +4606,686 @@ words = re.findall(
     normalized_query,
     flags=re.IGNORECASE
 )
-        # ====================================================
-        # РАСПОЗНАВАНИЕ КУЗОВА И ДВИГАТЕЛЯ
-        # ====================================================
 
-        for word in words:
+# ====================================================
+# РАСПОЗНАВАНИЕ КУЗОВА И ДВИГАТЕЛЯ
+# ====================================================
 
-            # ====================================================
-            # КУЗОВ
-            # ====================================================
+for word in words:
 
-            if word in body_aliases:
+    # ====================================================
+    # КУЗОВ
+    # ====================================================
 
-                body = body_aliases[word]
+    if word in body_aliases:
 
-                if body not in bodies:
-                    bodies.append(body)
+        body = body_aliases[word]
 
-                continue
+        if body not in bodies:
+            bodies.append(body)
 
-            # ====================================================
-            # ЕСЛИ NORMALIZE / FIX_A СКЛЕИЛИ СЛОВО С КУЗОВОМ
-            #
-            # Например:
-            #
-            # "Редуктор 163"
-            #
-            # может превратиться в:
-            #
-            # "редуктор163"
-            #
-            # Поэтому дополнительно ищем W163 / 163
-            # внутри слова.
-            # ====================================================
+        continue
 
-            body_found_in_word = False
+    # ====================================================
+    # ЕСЛИ NORMALIZE / FIX_A СКЛЕИЛИ СЛОВО С КУЗОВОМ
+    #
+    # Например:
+    #
+    # "Редуктор 163"
+    #
+    # может превратиться в:
+    #
+    # "редуктор163"
+    #
+    # Поэтому дополнительно ищем W163 / 163
+    # внутри слова.
+    # ====================================================
 
-            for body_alias, normalized_body in body_aliases.items():
+    body_found_in_word = False
 
-                if (
-                    word.endswith(body_alias)
-                    and word != body_alias
-                ):
+    for body_alias, normalized_body in body_aliases.items():
 
-                    if normalized_body not in bodies:
+        if (
+            word.endswith(body_alias)
+            and word != body_alias
+        ):
 
-                        bodies.append(
-                            normalized_body
-                        )
+            if normalized_body not in bodies:
+                bodies.append(normalized_body)
 
-                    # Удаляем только найденный кузов
-                    # из конца слова.
-                    #
-                    # Например:
-                    #
-                    # редуктор163
-                    #
-                    # превращается обратно в:
-                    #
-                    # редуктор
-                    #
-                    part_word_without_body = (
-                        word[:-len(body_alias)]
-                    )
-
-                    if part_word_without_body:
-
-                        part_words.append(
-                            part_word_without_body
-                        )
-
-                    body_found_in_word = True
-
-                    break
-
-            if body_found_in_word:
-                continue
-
-            # ====================================================
-            # ДВИГАТЕЛЬ
-            #
-            # Поддерживаем:
-            #
-            # M112
-            # 112
-            # 112970
-            # 112.970
-            # M112970
-            # OM642
-            # 642
-            # 642920
-            #
-            # Полный код двигателя:
-            #
-            # 112970
-            #
-            # превращается в:
-            #
-            # family = m112
-            # exact  = 112970
-            #
-            # Поэтому запрос 112970
-            # покажет всё семейство M112,
-            # но 112970 будет выше.
-            # ====================================================
-
-            compact_word = (
-                word
-                .replace(".", "")
-                .replace("-", "")
-                .replace("_", "")
-                .replace(" ", "")
-                .lower()
+            part_word_without_body = (
+                word[:-len(body_alias)]
             )
 
-            # ====================================================
-            # ПОЛНЫЙ КОД ДВИГАТЕЛЯ
-            # ====================================================
+            if part_word_without_body:
+                part_words.append(
+                    part_word_without_body
+                )
 
-            engine_code_match = re.fullmatch(
-                r"(?:m|om)?(\d{6})",
-                compact_word,
+            body_found_in_word = True
+            break
+
+    if body_found_in_word:
+        continue
+
+    # ====================================================
+    # ДВИГАТЕЛЬ
+    # ====================================================
+
+    compact_word = (
+        word
+        .replace(".", "")
+        .replace("-", "")
+        .replace("_", "")
+        .replace(" ", "")
+        .lower()
+    )
+
+    # ====================================================
+    # ПОЛНЫЙ КОД ДВИГАТЕЛЯ
+    # ====================================================
+
+    engine_code_match = re.fullmatch(
+        r"(?:m|om)?(\d{6})",
+        compact_word,
+        flags=re.IGNORECASE
+    )
+
+    if engine_code_match:
+
+        code_digits = engine_code_match.group(1)
+        family_digits = code_digits[:3]
+
+        possible_family = None
+
+        for family in set(engine_families.values()):
+
+            family_digits_known = re.sub(
+                r"^(?:m|om)",
+                "",
+                family,
                 flags=re.IGNORECASE
             )
 
-            if engine_code_match:
+            if family_digits == family_digits_known:
 
-                code_digits = (
-                    engine_code_match.group(1)
+                possible_family = family
+                break
+
+        if possible_family:
+
+            if possible_family not in engine_families_requested:
+                engine_families_requested.append(
+                    possible_family
                 )
 
-                family_digits = (
-                    code_digits[:3]
+            if code_digits not in exact_engine_codes:
+                exact_engine_codes.append(
+                    code_digits
                 )
 
-                possible_family = None
+            continue
 
-                for family in set(
-                    engine_families.values()
-                ):
+    # ====================================================
+    # СЕМЕЙСТВО ДВИГАТЕЛЯ
+    # ====================================================
 
-                    family_digits_known = re.sub(
-                        r"^(?:m|om)",
-                        "",
-                        family,
-                        flags=re.IGNORECASE
-                    )
+    if compact_word in engine_families:
 
-                    if (
-                        family_digits
-                        == family_digits_known
-                    ):
+        family = engine_families[compact_word]
 
-                        possible_family = family
+        if family not in engine_families_requested:
+            engine_families_requested.append(family)
 
-                        break
+        continue
 
-                if possible_family:
+    # ====================================================
+    # ПЕРЕД / ЗАД
+    # ====================================================
 
-                    if (
-                        possible_family
-                        not in engine_families_requested
-                    ):
+    if word in front_words:
+        front_rear = "F"
+        continue
 
-                        engine_families_requested.append(
-                            possible_family
-                        )
+    if word in rear_words:
+        front_rear = "B"
+        continue
 
-                    if (
-                        code_digits
-                        not in exact_engine_codes
-                    ):
+    # ====================================================
+    # ЛЕВО / ПРАВО
+    # ====================================================
 
-                        exact_engine_codes.append(
-                            code_digits
-                        )
+    if word in left_words:
+        left_right = "L"
+        continue
 
-                    continue
+    if word in right_words:
+        left_right = "R"
+        continue
 
-            # ====================================================
-            # СЕМЕЙСТВО ДВИГАТЕЛЯ
-            #
-            # M112
-            # 112
-            # OM642
-            # 642
-            # ====================================================
+    # ====================================================
+    # ВЕРХ / НИЗ
+    # ====================================================
 
-            if compact_word in engine_families:
+    if word in upper_words:
+        upper_lower = "U"
+        continue
 
-                family = engine_families[
-                    compact_word
-                ]
+    if word in lower_words:
+        upper_lower = "D"
+        continue
 
-                if (
-                    family
-                    not in engine_families_requested
-                ):
+    # ====================================================
+    # ОБЫЧНОЕ СЛОВО
+    # ====================================================
 
-                    engine_families_requested.append(
-                        family
-                    )
+    part_words.append(word)
 
-                continue
+print(
+    "[SMART SEARCH] "
+    f"query='{original_query}' "
+    f"bodies={bodies} "
+    f"engine_families={engine_families_requested} "
+    f"exact_engines={exact_engine_codes} "
+    f"words={part_words}"
+)
 
-            # ====================================================
-            # ПЕРЕД / ЗАД
-            # ====================================================
+# ====================================================
+# ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ДВИГАТЕЛЯ
+# ====================================================
 
-            if word in front_words:
+def normalize_engine_value(value):
 
-                front_rear = "F"
+    value = safe_text(value)
 
-                continue
+    value = normalize(
+        fix_a(value)
+    )
 
-            if word in rear_words:
+    value = (
+        value
+        .lower()
+        .replace("ё", "е")
+        .replace(".", "")
+        .replace("-", "")
+        .replace("_", "")
+        .replace(" ", "")
+    )
 
-                front_rear = "B"
+    return value
 
-                continue
 
-            # ====================================================
-            # ЛЕВО / ПРАВО
-            # ====================================================
+def engine_info(value):
 
-            if word in left_words:
+    value = normalize_engine_value(value)
 
-                left_right = "L"
+    if not value:
+        return None, None
 
-                continue
+    # =================================================
+    # УБИРАЕМ M / OM
+    # =================================================
 
-            if word in right_words:
+    digits = re.sub(
+        r"^(?:m|om)",
+        "",
+        value
+    )
 
-                left_right = "R"
+    # =================================================
+    # ПОЛНЫЙ КОД ДВИГАТЕЛЯ
+    # =================================================
 
-                continue
+    if re.fullmatch(r"\d{6}", digits):
 
-            # ====================================================
-            # ВЕРХ / НИЗ
-            # ====================================================
+        family_digits = digits[:3]
 
-            if word in upper_words:
+        for family in set(engine_families.values()):
 
-                upper_lower = "U"
-
-                continue
-
-            if word in lower_words:
-
-                upper_lower = "D"
-
-                continue
-
-            # ====================================================
-            # ОБЫЧНОЕ СЛОВО
-            # ====================================================
-
-            part_words.append(
-                word
-            )
-
-        print(
-            "[SMART SEARCH] "
-            f"query='{original_query}' "
-            f"bodies={bodies} "
-            f"engine_families={engine_families_requested} "
-            f"exact_engines={exact_engine_codes} "
-            f"words={part_words}"
-        )
-
-        # ====================================================
-        # ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ДВИГАТЕЛЯ
-        # ====================================================
-
-        def normalize_engine_value(value):
-
-            value = safe_text(
-                value
-            )
-
-            value = normalize(
-                fix_a(value)
-            )
-
-            value = (
-                value
-                .lower()
-                .replace("ё", "е")
-                .replace(".", "")
-                .replace("-", "")
-                .replace("_", "")
-                .replace(" ", "")
-            )
-
-            return value
-
-        def engine_info(value):
-
-            """
-            Возвращает:
-
-                family
-                exact_code
-
-            Примеры:
-
-                M112
-                    -> m112, None
-
-                112
-                    -> m112, None
-
-                112970
-                    -> m112, 112970
-
-                112.970
-                    -> m112, 112970
-
-                M112970
-                    -> m112, 112970
-
-                OM642
-                    -> om642, None
-
-                642
-                    -> om642, None
-
-                642920
-                    -> om642, 642920
-            """
-
-            value = normalize_engine_value(
-                value
-            )
-
-            if not value:
-
-                return None, None
-
-            # =================================================
-            # УБИРАЕМ M / OM
-            # =================================================
-
-            digits = re.sub(
+            known_digits = re.sub(
                 r"^(?:m|om)",
                 "",
-                value
+                family,
+                flags=re.IGNORECASE
             )
 
-            # =================================================
-            # ПОЛНЫЙ КОД ДВИГАТЕЛЯ
-            # =================================================
+            if family_digits == known_digits:
 
-            if re.fullmatch(
-                r"\d{6}",
-                digits
-            ):
-
-                family_digits = (
-                    digits[:3]
-                )
-
-                for family in set(
-                    engine_families.values()
-                ):
-
-                    known_digits = re.sub(
-                        r"^(?:m|om)",
-                        "",
-                        family,
-                        flags=re.IGNORECASE
-                    )
-
-                    if (
-                        family_digits
-                        == known_digits
-                    ):
-
-                        return (
-                            family,
-                            digits
-                        )
-
-            # =================================================
-            # СЕМЕЙСТВО ДВИГАТЕЛЯ
-            # =================================================
-
-            for family in set(
-                engine_families.values()
-            ):
-
-                known_digits = re.sub(
-                    r"^(?:m|om)",
-                    "",
+                return (
                     family,
-                    flags=re.IGNORECASE
-                )
-
-                if (
                     digits
-                    == known_digits
-                ):
-
-                    return (
-                        family,
-                        None
-                    )
-
-            return None, None
-
-        # ====================================================
-        # КАНДИДАТЫ
-        # ====================================================
-
-        candidates = []
-
-        for position, part in enumerate(
-            database
-        ):
-
-            if not isinstance(
-                part,
-                dict
-            ):
-                continue
-
-            # =================================================
-            # КУЗОВ
-            # =================================================
-
-            body = normalize(
-                safe_text(
-                    part.get(
-                        body_key,
-                        ""
-                    )
                 )
-            ).lower()
 
-            # =================================================
-            # ДВИГАТЕЛЬ
-            # =================================================
+    # =================================================
+    # СЕМЕЙСТВО ДВИГАТЕЛЯ
+    # =================================================
 
-            engine_raw = safe_text(
-                part.get(
-                    engine_key,
-                    ""
-                )
+    for family in set(engine_families.values()):
+
+        known_digits = re.sub(
+            r"^(?:m|om)",
+            "",
+            family,
+            flags=re.IGNORECASE
+        )
+
+        if digits == known_digits:
+
+            return (
+                family,
+                None
             )
 
-            # =================================================
-            # НАЗВАНИЕ
-            # =================================================
+    return None, None
 
-            name = normalize(
-                safe_text(
-                    part.get(
-                        name_key,
-                        ""
-                    )
-                )
-            ).lower()
 
-            # =================================================
-            # КОММЕНТАРИЙ
-            # =================================================
+# ====================================================
+# КАНДИДАТЫ
+# ====================================================
 
-            comment = normalize(
-                safe_text(
-                    part.get(
-                        "Комментарий",
-                        ""
-                    )
-                )
-            ).lower()
+candidates = []
 
-            # =================================================
-            # ПЕРЕД / ЗАД
-            # =================================================
+for position, part in enumerate(database):
 
-            front = normalize(
-                safe_text(
-                    part.get(
-                        front_rear_key,
-                        ""
-                    )
-                )
-            ).upper()
+    if not isinstance(part, dict):
+        continue
 
-            # =================================================
-            # ЛЕВО / ПРАВО
-            # =================================================
+    # =================================================
+    # КУЗОВ
+    # =================================================
 
-            side = normalize(
-                safe_text(
-                    part.get(
-                        left_right_key,
-                        ""
-                    )
-                )
-            ).upper()
-
-            # =================================================
-            # ВЕРХ / НИЗ
-            # =================================================
-
-            upper = normalize(
-                safe_text(
-                    part.get(
-                        upper_lower_key,
-                        ""
-                    )
-                )
-            ).upper()
-
-            # =================================================
-            # ФИЛЬТР КУЗОВА
-            # =================================================
-
-            if bodies:
-
-                body_match = False
-
-                for requested_body in bodies:
-
-                    if (
-                        body == requested_body
-                        or requested_body in body
-                    ):
-
-                        body_match = True
-
-                        break
-
-                if not body_match:
-
-                    continue
-
-            # =================================================
-            # ИНФОРМАЦИЯ О ДВИГАТЕЛЕ
-            # =================================================
-
-            candidate_family, candidate_code = (
-                engine_info(
-                    engine_raw
-                )
+    body = normalize(
+        safe_text(
+            part.get(
+                body_key,
+                ""
             )
+        )
+    ).lower()
 
-            # =================================================
-            # ФИЛЬТР СЕМЕЙСТВА ДВИГАТЕЛЯ
-            # =================================================
+    # =================================================
+    # ДВИГАТЕЛЬ
+    # =================================================
 
-            if engine_families_requested:
+    engine_raw = safe_text(
+        part.get(
+            engine_key,
+            ""
+        )
+    )
 
-                engine_match = False
+    # =================================================
+    # НАЗВАНИЕ
+    # =================================================
 
-                for requested_family in (
-                    engine_families_requested
-                ):
+    name = normalize(
+        safe_text(
+            part.get(
+                name_key,
+                ""
+            )
+        )
+    ).lower()
 
-                    if (
-                        candidate_family
-                        == requested_family
-                    ):
+    # =================================================
+    # КОММЕНТАРИЙ
+    # =================================================
 
-                        engine_match = True
+    comment = normalize(
+        safe_text(
+            part.get(
+                "Комментарий",
+                ""
+            )
+        )
+    ).lower()
 
-                        break
+    # =================================================
+    # ПЕРЕД / ЗАД
+    # =================================================
 
-                if not engine_match:
+    front = normalize(
+        safe_text(
+            part.get(
+                front_rear_key,
+                ""
+            )
+        )
+    ).upper()
 
-                    continue
+    # =================================================
+    # ЛЕВО / ПРАВО
+    # =================================================
 
-            # =================================================
-            # ПЕРЕД / ЗАД
-            # =================================================
+    side = normalize(
+        safe_text(
+            part.get(
+                left_right_key,
+                ""
+            )
+        )
+    ).upper()
 
-            if front_rear:
+    # =================================================
+    # ВЕРХ / НИЗ
+    # =================================================
 
-                if front_rear != front:
+    upper = normalize(
+        safe_text(
+            part.get(
+                upper_lower_key,
+                ""
+            )
+        )
+    ).upper()
 
-                    if (
-                        front_rear == "F"
-                        and "перед" not in name
-                        and "front" not in name
-                    ):
+    # =================================================
+    # ФИЛЬТР КУЗОВА
+    # =================================================
 
-                        continue
+    if bodies:
 
-                    if (
-                        front_rear == "B"
-                        and "зад" not in name
-                        and "rear" not in name
-                    ):
+        body_match = False
 
-                        continue
-
-            # =================================================
-            # ЛЕВО / ПРАВО
-            # =================================================
-
-            if left_right:
-
-                if left_right != side:
-
-                    if (
-                        left_right == "L"
-                        and "лев" not in name
-                    ):
-
-                        continue
-
-                    if (
-                        left_right == "R"
-                        and "прав" not in name
-                    ):
-
-                        continue
-
-            # =================================================
-            # ВЕРХ / НИЗ
-            # =================================================
-
-            if upper_lower:
-
-                if upper_lower != upper:
-
-                    if (
-                        upper_lower == "U"
-                        and "верх" not in name
-                    ):
-
-                        continue
-
-                    if (
-                        upper_lower == "D"
-                        and "ниж" not in name
-                        and "низ" not in name
-                    ):
-
-                        continue
-
-            # =================================================
-            # SCORE
-            # =================================================
-
-            score = 0
-
-            # =================================================
-            # НАЗВАНИЕ
-            # =================================================
-
-            if part_words:
-
-                all_words_match = True
-
-                for search_word in part_words:
-
-                    if search_word not in name:
-
-                        if search_word not in comment:
-
-                            all_words_match = False
-
-                            break
-
-                if all_words_match:
-
-                    score += 500
-
-                else:
-
-                    partial_count = 0
-
-                    for search_word in part_words:
-
-                        if search_word in name:
-
-                            partial_count += 1
-
-                        elif search_word in comment:
-
-                            partial_count += 0.5
-
-                    score += int(
-                        partial_count * 100
-                    )
-
-            # =================================================
-            # ТОЧНОЕ НАЗВАНИЕ
-            # =================================================
-
-            normalized_part_words = " ".join(
-                part_words
-            ).strip()
+        for requested_body in bodies:
 
             if (
-                normalized_part_words
-                and name == normalized_part_words
+                body == requested_body
+                or requested_body in body
             ):
 
-                score += 150
+                body_match = True
+                break
 
-            # =================================================
-            # КУЗОВ
-            # =================================================
+        if not body_match:
+            continue
 
-            if bodies:
+    # =================================================
+    # ИНФОРМАЦИЯ О ДВИГАТЕЛЕ
+    # =================================================
 
-                score += 200
+    candidate_family, candidate_code = engine_info(
+        engine_raw
+    )
 
-                for requested_body in bodies:
+    # =================================================
+    # ФИЛЬТР СЕМЕЙСТВА ДВИГАТЕЛЯ
+    # =================================================
 
-                    if body == requested_body:
+    if engine_families_requested:
 
-                        score += 100
+        engine_match = False
 
-                        break
+        for requested_family in engine_families_requested:
 
-            # =================================================
-            # СЕМЕЙСТВО ДВИГАТЕЛЯ
-            # =================================================
+            if candidate_family == requested_family:
 
-            if engine_families_requested:
+                engine_match = True
+                break
 
-                score += 200
+        if not engine_match:
+            continue
 
-                for requested_family in (
-                    engine_families_requested
-                ):
+    # =================================================
+    # ПЕРЕД / ЗАД
+    # =================================================
 
-                    if (
-                        candidate_family
-                        == requested_family
-                    ):
+    if front_rear:
 
-                        score += 150
+        if front_rear != front:
 
-                        break
-
-            # =================================================
-            # ТОЧНЫЙ КОД ДВИГАТЕЛЯ
-            # =================================================
-
-            if exact_engine_codes:
-
-                exact_match = False
-
-                for requested_code in (
-                    exact_engine_codes
-                ):
-
-                    if (
-                        candidate_code
-                        == requested_code
-                    ):
-
-                        exact_match = True
-
-                        break
-
-                if exact_match:
-
-                    score += 700
-
-            # =================================================
-            # ПЕРЕД / ЗАД
-            # =================================================
-
-            if front_rear:
-
-                score += 100
-
-                if front == front_rear:
-
-                    score += 50
-
-            # =================================================
-            # ЛЕВО / ПРАВО
-            # =================================================
-
-            if left_right:
-
-                score += 100
-
-                if side == left_right:
-
-                    score += 50
-
-            # =================================================
-            # ВЕРХ / НИЗ
-            # =================================================
-
-            if upper_lower:
-
-                score += 100
-
-                if upper == upper_lower:
-
-                    score += 50
-
-            # =================================================
-            # ЕСЛИ НИЧЕГО НЕ СОВПАЛО
-            # =================================================
-
-            if score <= 0:
-
+            if (
+                front_rear == "F"
+                and "перед" not in name
+                and "front" not in name
+            ):
                 continue
 
-            candidates.append(
-                (
-                    score,
-                    position,
-                    part
-                )
+            if (
+                front_rear == "B"
+                and "зад" not in name
+                and "rear" not in name
+            ):
+                continue
+
+    # =================================================
+    # ЛЕВО / ПРАВО
+    # =================================================
+
+    if left_right:
+
+        if left_right != side:
+
+            if (
+                left_right == "L"
+                and "лев" not in name
+            ):
+                continue
+
+            if (
+                left_right == "R"
+                and "прав" not in name
+            ):
+                continue
+
+    # =================================================
+    # ВЕРХ / НИЗ
+    # =================================================
+
+    if upper_lower:
+
+        if upper_lower != upper:
+
+            if (
+                upper_lower == "U"
+                and "верх" not in name
+            ):
+                continue
+
+            if (
+                upper_lower == "D"
+                and "ниж" not in name
+                and "низ" not in name
+            ):
+                continue
+
+    # =================================================
+    # SCORE
+    # =================================================
+
+    score = 0
+
+    # =================================================
+    # НАЗВАНИЕ
+    # =================================================
+
+    if part_words:
+
+        all_words_match = True
+
+        for search_word in part_words:
+
+            if search_word not in name:
+
+                if search_word not in comment:
+
+                    all_words_match = False
+                    break
+
+        if all_words_match:
+
+            score += 500
+
+        else:
+
+            partial_count = 0
+
+            for search_word in part_words:
+
+                if search_word in name:
+
+                    partial_count += 1
+
+                elif search_word in comment:
+
+                    partial_count += 0.5
+
+            score += int(
+                partial_count * 100
             )
 
-        # ====================================================
-        # СОРТИРОВКА
-        # ====================================================
+    # =================================================
+    # ТОЧНОЕ НАЗВАНИЕ
+    # =================================================
 
-        candidates.sort(
-            key=lambda item: (
-                item[0],
-                -item[1]
-            ),
-            reverse=True
-        )
+    normalized_part_words = " ".join(
+        part_words
+    ).strip()
 
-        print(
-            "[SMART SEARCH] "
-            f"candidates={len(candidates)}"
-        )
+    if (
+        normalized_part_words
+        and name == normalized_part_words
+    ):
 
-        # ====================================================
-        # DEBUG TOP
-        # ====================================================
+        score += 150
 
-        for score, position, part in (
-            candidates[:10]
-        ):
+    # =================================================
+    # КУЗОВ
+    # =================================================
 
-            print(
-                "[SMART SEARCH] "
-                f"score={score} "
-                f"position={position} "
-                f"name={part.get(name_key, '')} "
-                f"body={part.get(body_key, '')} "
-                f"engine={part.get(engine_key, '')}"
-            )
+    if bodies:
 
-        # ====================================================
-        # РЕЗУЛЬТАТ
-        # ====================================================
+        score += 200
 
-        return [
+        for requested_body in bodies:
+
+            if body == requested_body:
+
+                score += 100
+                break
+
+    # =================================================
+    # СЕМЕЙСТВО ДВИГАТЕЛЯ
+    # =================================================
+
+    if engine_families_requested:
+
+        score += 200
+
+        for requested_family in engine_families_requested:
+
+            if candidate_family == requested_family:
+
+                score += 150
+                break
+
+    # =================================================
+    # ТОЧНЫЙ КОД ДВИГАТЕЛЯ
+    # =================================================
+
+    if exact_engine_codes:
+
+        exact_match = False
+
+        for requested_code in exact_engine_codes:
+
+            if candidate_code == requested_code:
+
+                exact_match = True
+                break
+
+        if exact_match:
+            score += 700
+
+    # =================================================
+    # ПЕРЕД / ЗАД
+    # =================================================
+
+    if front_rear:
+
+        score += 100
+
+        if front == front_rear:
+            score += 50
+
+    # =================================================
+    # ЛЕВО / ПРАВО
+    # =================================================
+
+    if left_right:
+
+        score += 100
+
+        if side == left_right:
+            score += 50
+
+    # =================================================
+    # ВЕРХ / НИЗ
+    # =================================================
+
+    if upper_lower:
+
+        score += 100
+
+        if upper == upper_lower:
+            score += 50
+
+    # =================================================
+    # ЕСЛИ НИЧЕГО НЕ СОВПАЛО
+    # =================================================
+
+    if score <= 0:
+        continue
+
+    candidates.append(
+        (
+            score,
+            position,
             part
-            for score, position, part
-            in candidates[:MAX_RESULTS]
-        ]
+        )
+    )
+
+# ====================================================
+# СОРТИРОВКА
+# ====================================================
+
+candidates.sort(
+    key=lambda item: (
+        item[0],
+        -item[1]
+    ),
+    reverse=True
+)
+
+print(
+    "[SMART SEARCH] "
+    f"candidates={len(candidates)}"
+)
+
+# ====================================================
+# DEBUG TOP
+# ====================================================
+
+for score, position, part in candidates[:10]:
+
+    print(
+        "[SMART SEARCH] "
+        f"score={score} "
+        f"position={position} "
+        f"name={part.get(name_key, '')} "
+        f"body={part.get(body_key, '')} "
+        f"engine={part.get(engine_key, '')}"
+    )
+
+# ====================================================
+# РЕЗУЛЬТАТ
+# ====================================================
+
+return [
+    part
+    for score, position, part
+    in candidates[:MAX_RESULTS]
+]
 
 # ============================================================
 # ПОИСК ЗАПЧАСТЕЙ

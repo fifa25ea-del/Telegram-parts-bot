@@ -4572,28 +4572,40 @@ def find_part_smart(
         # ====================================================
         # WORDS
         # ====================================================
-
-        words = re.findall(
-            r"[a-zа-яё0-9]+",
+        
+        # ВАЖНО:
+        # fix_a() иногда может склеить соседние токены.
+        #
+        # Например:
+        #
+        # "Редуктор 163"
+        # превращается в:
+        # "peдyktop163"
+        #
+        # Поэтому перед разбором запроса
+        # отдельно выделяем известные кузова/двигатели.
+        #
+        # Сначала приводим разделители к пробелам.
+        
+        normalized_query = re.sub(
+            r"(?<=[a-zа-яё])(?=\d)",
+            " ",
+            normalized_query,
+            flags=re.IGNORECASE
+        )
+        
+        normalized_query = re.sub(
+            r"(?<=\d)(?=[a-zа-яё])",
+            " ",
             normalized_query,
             flags=re.IGNORECASE
         )
 
-        bodies = []
-
-        engine_families_requested = []
-
-        # Полные коды двигателей.
-        # Например:
-        # 112970
-        # 112.970 -> после нормализации может стать 112970
-        exact_engine_codes = []
-
-        front_rear = None
-        left_right = None
-        upper_lower = None
-
-        part_words = []
+words = re.findall(
+    r"[a-zа-яё0-9]+",
+    normalized_query,
+    flags=re.IGNORECASE
+)
 
         # ====================================================
         # РАСПОЗНАВАНИЕ КУЗОВА И ДВИГАТЕЛЯ

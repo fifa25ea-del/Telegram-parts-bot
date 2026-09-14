@@ -6695,40 +6695,72 @@ OEM-номер и т.д.), это значение должно быть
 """
 
 
-    try:
+        try:
 
         response = ai_client.responses.create(
-    
             model=AI_WEB_MODEL,
-    
+
             instructions=AI_WEB_INSTRUCTIONS,
-    
+
             input=prompt,
-    
+
             tools=[
                 {
-                    "type": "web_search",
-    
-                    "search_context_size": "medium"
+                    "type": "web_search"
                 }
             ],
-    
+
             tool_choice="auto",
-    
-            include=[
-                "web_search_call.action.sources"
-            ],
-    
-            max_output_tokens=300,
-    
+
+            max_output_tokens=6000,
+
             text={
-                "verbosity": "low"
+                "verbosity": "medium"
             },
-    
+
             store=False
         )
-    
 
+    except Exception as e:
+
+        print(
+            f"❌ [AI WEB] API ERROR: "
+            f"{repr(e)}"
+        )
+
+        return []
+
+    answer = ""
+
+    try:
+
+        answer = response.output_text
+
+    except Exception:
+
+        answer = ""
+
+    answer = _truncate_ai_text(
+        answer
+    )
+
+    sources = _extract_ai_sources(
+        response
+    )
+
+    print(
+        f"[AI WEB] Sources: "
+        f"{len(sources)}"
+    )
+
+    if not answer:
+
+        answer = (
+            "❌ Не удалось сформировать "
+            "ответ по найденной информации."
+        )
+
+    results = []
 
     # --------------------------------------------------------
     # ПЕРВАЯ КАРТОЧКА — AI ОТВЕТ
@@ -6738,9 +6770,7 @@ OEM-номер и т.д.), это значение должно быть
         {
             "type": "ai_answer",
 
-            "title": (
-                "AI-поиск"
-            ),
+            "title": "AI-поиск",
 
             "url": (
                 sources[0]["url"]
@@ -6770,32 +6800,27 @@ OEM-номер и т.д.), это значение должно быть
 
         results.append(
             {
-                "type":
-                    "web_source",
+                "type": "web_source",
 
-                "title":
-                    source.get(
-                        "title",
-                        "Источник"
-                    ),
+                "title": source.get(
+                    "title",
+                    "Источник"
+                ),
 
-                "url":
-                    source.get(
-                        "url",
-                        ""
-                    ),
+                "url": source.get(
+                    "url",
+                    ""
+                ),
 
-                "body":
-                    source.get(
-                        "description",
-                        ""
-                    ),
+                "body": source.get(
+                    "description",
+                    ""
+                ),
 
-                "excerpt":
-                    source.get(
-                        "description",
-                        ""
-                    )
+                "excerpt": source.get(
+                    "description",
+                    ""
+                )
             }
         )
 

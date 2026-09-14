@@ -6660,7 +6660,7 @@ def ai_web_search(
 
 
 
-    try:
+       try:
 
         response = ai_client.responses.create(
             model=AI_WEB_MODEL,
@@ -6671,17 +6671,26 @@ def ai_web_search(
 
             tools=[
                 {
-                    "type": "web_search"
+                    "type": "web_search",
+                    "search_context_size": "low"
                 }
             ],
 
-            tool_choice="auto",
+            # Для технических вопросов обязательно используем поиск
+            tool_choice="required",
 
-            max_output_tokens=400,
+            # Нам нужен короткий ответ, а не исследовательский отчёт
+            max_output_tokens=600,
 
             text={
                 "verbosity": "low"
             },
+
+            # Источники получаем технически,
+            # но пользователю пока не показываем
+            include=[
+                "web_search_call.action.sources"
+            ],
 
             store=False
         )
@@ -6695,19 +6704,60 @@ def ai_web_search(
 
         return []
 
+    # --------------------------------------------------------
+    # ОТВЕТ AI
+    # --------------------------------------------------------
+
     answer = ""
 
     try:
 
-        answer = response.output_text
+        answer = safe_text(
+            response.output_text
+        )
 
-    except Exception:
+    except Exception as e:
+
+        print(
+            f"❌ [AI WEB] OUTPUT ERROR: "
+            f"{repr(e)}"
+        )
 
         answer = ""
 
-    answer = _truncate_ai_text(
-        answer
+    # --------------------------------------------------------
+    # ОТЛАДКА
+    # --------------------------------------------------------
+
+    print(
+        f"[AI WEB] Answer: "
+        f"{answer[:500]}"
     )
+
+    try:
+
+        print(
+            f"[AI WEB] Output items: "
+            f"{len(response.output)}"
+        )
+
+        for item in response.output:
+
+            print(
+                f"[AI WEB] OUTPUT TYPE: "
+                f"{getattr(item, 'type', None)}"
+            )
+
+    except Exception as e:
+
+        print(
+            f"[AI WEB] OUTPUT DEBUG ERROR: "
+            f"{repr(e)}"
+        )
+
+    # --------------------------------------------------------
+    # ИСТОЧНИКИ
+    # --------------------------------------------------------
 
     sources = _extract_ai_sources(
         response
@@ -6718,31 +6768,44 @@ def ai_web_search(
         f"{len(sources)}"
     )
 
+    # --------------------------------------------------------
+    # Если AI не дал ответ
+    # --------------------------------------------------------
+
     if not answer:
 
         answer = (
-            "❌ Не удалось сформировать "
-            "ответ по найденной информации."
+            "Точных данных нет."
         )
 
-    results = []
+    answer = _truncate_ai_text(
+        answer
+    )
 
     # --------------------------------------------------------
-    # ПЕРВАЯ КАРТОЧКА — AI ОТВЕТ
+    # ОДНА КАРТОЧКА
     # --------------------------------------------------------
 
     results = [
         {
             "type": "ai_answer",
+
             "title": "AI-поиск",
+
             "url": "",
+
             "body": answer,
+
             "excerpt": answer,
-            "sources": [],
+
+            # Источники сохраняем технически,
+            # но отдельные карточки НЕ создаём
+            "sources": sources,
+
             "query": original_query
         }
     ]
-    
+
     return results
     
 

@@ -347,6 +347,8 @@ current_mode = {}
 web_results = {}
 web_index = {}
 web_query = {}
+web_ai_answers = {}
+
 
 # ============================================================
 # WEB SEARCH SETTINGS
@@ -6506,98 +6508,151 @@ def ai_web_search(
 
     try:
 
-        response = ai_client.responses.create(
-            model=AI_WEB_MODEL,
+    response = ai_client.responses.create(
+        model=AI_WEB_MODEL,
 
-            instructions=(
-                "Ты точный технический помощник "
-                "по автомобилям Mercedes-Benz. "
-                "Перед ответом обязательно используй "
-                "web search. "
-                "Проверяй соответствие кузова, двигателя "
-                "и модификации. "
-                "Не выдумывай технические значения."
-            ),
+        instructions="""
+Ты — технический помощник по автомобилям Mercedes-Benz.
 
-            input=prompt,
+Перед ответом ОБЯЗАТЕЛЬНО используй web search.
 
-            tools=[
-                {
-                    "type": "web_search",
-                    "search_context_size": "low"
-                }
-            ],
+Главная задача — дать короткий и точный ответ именно
+на вопрос пользователя, а не общий рассказ об автомобиле.
 
-            tool_choice="required",
+СТРОГИЕ ПРАВИЛА:
 
-            max_output_tokens=300,
+1. Учитывай модель, поколение, кузов, двигатель,
+   код двигателя, год и модификацию, если они указаны.
 
-            text={
-                "verbosity": "low"
-            },
+2. Никогда не смешивай данные разных двигателей,
+   кузовов, поколений или модификаций.
 
-            store=False
-        )
+3. Если указан код двигателя, проверяй именно этот двигатель.
 
-    except Exception as e:
+4. Если пользователь спрашивает конкретное число
+   (объём масла, мощность, момент, размер, допуск,
+   OEM-номер и т.д.), число должно быть подтверждено
+   найденной информацией.
 
-        print(
-            f"❌ [AI WEB] API ERROR: "
-            f"{repr(e)}"
-        )
+5. Не путай:
+   - рабочий объём двигателя;
+   - объём моторного масла;
+   - допуск масла;
+   - вязкость масла.
 
-        return []
+6. Для Mercedes-Benz отдавай приоритет русскоязычным
+   источникам. Иностранные источники используй только
+   если достоверной русскоязычной информации недостаточно.
+
+7. Если найдено несколько значений, проверь,
+   не относятся ли они к разным кузовам, годам
+   или модификациям.
+
+8. Если точного значения для нужной модификации
+   найти нельзя — напиши:
+   «Точных данных нет.»
+
+9. Не додумывай отсутствующие данные.
+   Не используй собственные знания вместо найденных фактов.
+
+10. Не объясняй процесс поиска.
+    Не называй сайты и источники.
+    Не вставляй URL.
+
+11. Ответ только на русском языке.
+
+12. Максимум 2 коротких предложения.
+
+13. Если точный ответ зависит от отсутствующего параметра,
+    кратко укажи, какой параметр нужен.
+
+Дай только готовый ответ пользователю.
+""",
+
+        input=prompt,
+
+        tools=[
+            {
+                "type": "web_search",
+                "search_context_size": "low"
+            }
+        ],
+
+        tool_choice="required",
+
+        max_output_tokens=300,
+
+        text={
+            "verbosity": "low"
+        },
+
+        store=False
+    )
+
+except Exception as e:
+
+    print(
+        f"❌ [AI WEB] API ERROR: "
+        f"{repr(e)}"
+    )
+
+    return []
+
+
+answer = ""
+
+try:
+
+    answer = safe_text(
+        response.output_text
+    )
+
+except Exception as e:
+
+    print(
+        f"❌ [AI WEB] OUTPUT ERROR: "
+        f"{repr(e)}"
+    )
 
     answer = ""
 
-    try:
 
-        answer = safe_text(
-            response.output_text
-        )
+answer = clean_web_text(
+    answer
+)
 
-    except Exception as e:
+answer = repair_web_mojibake(
+    answer
+)
 
-        print(
-            f"❌ [AI WEB] OUTPUT ERROR: "
-            f"{repr(e)}"
-        )
+answer = _truncate_ai_text(
+    answer,
+    max_length=700
+)
 
-        answer = ""
+print(
+    f"[AI WEB] Answer: "
+    f"{answer[:300]}"
+)
 
-    answer = clean_web_text(
-        answer
-    )
 
-    answer = repair_web_mojibake(
-        answer
-    )
+if not answer:
 
-    answer = _truncate_ai_text(
-        answer,
-        max_length=700
-    )
+    answer = "Точных данных нет."
 
-    print(
-        f"[AI WEB] Answer: "
-        f"{answer[:300]}"
-    )
 
-    if not answer:
+return [
+    {
+        "type": "ai_answer",
+        "title": "AI-поиск",
+        "url": "",
+        "body": answer,
+        "excerpt": answer,
+        "sources": [],
+        "query": original_query
+    }
+]
 
-        answer = "Точных данных нет."
-
-    return [
-        {
-            "type": "ai_answer",
-            "title": "AI-поиск",
-            "url": "",
-            "body": answer,
-            "excerpt": answer,
-            "sources": [],
-            "query": original_query
-        }
-    ]
 
 
 # ============================================================

@@ -7272,7 +7272,8 @@ def enter_parts_mode(
 
     bot.send_message(
         chat_id,
-        "🔎 Введите номер детали:",
+        "🔎 Введите номер детали,
+        или название и № кузова:",
         reply_markup=main_menu()
     )
 

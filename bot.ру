@@ -6179,6 +6179,122 @@ def find_part_smart(
 
         return result
 
+def find_wheels(
+    query,
+    db=None
+):
+
+    original = safe_text(
+        query
+    )
+
+    query_normalized = normalize(
+        fix_a(original)
+    )
+
+    if not query_normalized:
+        return []
+
+    radius_query = (
+        query_normalized
+    )
+
+    if radius_query.startswith(
+        "r"
+    ):
+
+        radius_query = (
+            radius_query[1:]
+        )
+
+    with database_lock:
+
+        database = (
+            wheels_db
+            if db is None
+            else db
+        )
+
+        results = []
+
+        for item in database:
+
+            radius = normalize(
+                item.get(
+                    "Диаметр диска",
+                    ""
+                )
+            )
+            
+            if radius.startswith("r"):
+                radius = radius[1:]
+
+            if (
+                radius_query
+                and radius_query == radius
+            ):
+                results.append(item)
+            brand = normalize(
+                item.get(
+                    "Производитель диска",
+                    ""
+                )
+            )
+
+            model = normalize(
+                item.get(
+                    "Модель диска",
+                    ""
+                )
+            )
+
+            article = normalize(
+                item.get(
+                    "Артикул",
+                    ""
+                )
+            )
+
+            if (
+                radius_query
+                and radius_query == radius
+            ):
+
+                results.append(
+                    item
+                )
+
+            elif (
+                query_normalized
+                in brand
+            ):
+
+                results.append(
+                    item
+                )
+
+            elif (
+                query_normalized
+                in model
+            ):
+
+                results.append(
+                    item
+                )
+
+            elif (
+                query_normalized
+                in article
+            ):
+
+                results.append(
+                    item
+                )
+
+            if len(results) >= MAX_RESULTS:
+                break
+
+        return results
 # ============================================================
 # МЕНЮ
 # ============================================================

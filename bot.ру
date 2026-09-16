@@ -8647,61 +8647,164 @@ def perform_search(
     # PARTS
     # --------------------------------------------------------
 
-    if mode == "parts":
+   if mode == "parts":
+
+    print(
+        f"🔥 SEARCH PARTS: {query}"
+    )
+
+    log_search(
+        chat_id,
+        query,
+        "parts"
+    )
+
+    # ========================================================
+    # УМНЫЙ ПОИСК
+    # ========================================================
+
+    results = find_part_smart(
+        query
+    )
+
+    # ========================================================
+    # ПОИСК ТРЕБУЕТ УТОЧНЕНИЯ
+    #
+    # Например:
+    #
+    # пользователь: "фара"
+    #
+    # find_part_smart() возвращает:
+    #
+    # {
+    #     "status": "need_body",
+    #     "message": "Укажите номер кузова..."
+    # }
+    #
+    # В этом случае НЕ показываем "Ничего не найдено".
+    # ========================================================
+
+    if isinstance(
+        results,
+        dict
+    ):
+
+        status = results.get(
+            "status"
+        )
+
+        # ----------------------------------------------------
+        # НУЖЕН КУЗОВ
+        # ----------------------------------------------------
+
+        if status == "need_body":
+
+            message = results.get(
+                "message",
+                (
+                    "Укажите номер кузова автомобиля.\n\n"
+                    "Например: W212, W204 или W211."
+                )
+            )
+
+            print(
+                "[SMART SEARCH] "
+                "WAITING FOR BODY"
+            )
+
+            bot.send_message(
+                chat_id,
+                message
+            )
+
+            return
+
+        # ----------------------------------------------------
+        # ДРУГОЕ УТОЧНЕНИЕ
+        # ----------------------------------------------------
+
+        message = results.get(
+            "message"
+        )
+
+        if message:
+
+            bot.send_message(
+                chat_id,
+                message
+            )
+
+            return
+
+        # ----------------------------------------------------
+        # НЕИЗВЕСТНЫЙ СЛУЧАЙ
+        # ----------------------------------------------------
 
         print(
-            f"🔥 SEARCH PARTS: {query}"
+            "[SMART SEARCH] "
+            f"UNKNOWN DICT RESULT: {results}"
+        )
+
+        bot.send_message(
+            chat_id,
+            "❌ Не удалось выполнить поиск.\n\n"
+            "Попробуйте уточнить запрос."
+        )
+
+        return
+
+    # ========================================================
+    # НИЧЕГО НЕ НАЙДЕНО
+    # ========================================================
+
+    if not results:
+
+        print(
+            f"❌ NOT FOUND PARTS: "
+            f"{query}"
         )
 
         log_search(
             chat_id,
             query,
-            "parts"
+            "NOT_FOUND"
         )
 
-        results = find_part_smart(
-            query
-        )
-
-        if not results:
-
-            print(
-                f"❌ NOT FOUND PARTS: "
-                f"{query}"
-            )
-
-            log_search(
-                chat_id,
-                query,
-                "NOT_FOUND"
-            )
-
-            bot.send_message(
-                chat_id,
-                "❌ Ничего не найдено.\n\n"
-                "Попробуйте описать деталь иначе."
-            )
-
-            return
-
-        user_results[
-            chat_id
-        ] = results
-
-        user_index[
-            chat_id
-        ] = 0
-
-        user_photo_index[
-            chat_id
-        ] = 0
-
-        send_part_card(
+        bot.send_message(
             chat_id,
-            0
+            "❌ Ничего не найдено.\n\n"
+            "Попробуйте описать деталь иначе."
         )
 
         return
+
+    # ========================================================
+    # РЕЗУЛЬТАТЫ НАЙДЕНЫ
+    # ========================================================
+
+    user_results[
+        chat_id
+    ] = results
+
+    user_index[
+        chat_id
+    ] = 0
+
+    user_photo_index[
+        chat_id
+    ] = 0
+
+    # ========================================================
+    # ПОКАЗЫВАЕМ ПЕРВУЮ КАРТОЧКУ
+    # ========================================================
+
+    send_part_card(
+        chat_id,
+        0
+    )
+
+    return
+
 
     # --------------------------------------------------------
     # WHEELS

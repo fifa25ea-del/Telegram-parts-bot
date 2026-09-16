@@ -4821,22 +4821,55 @@ def find_part_smart(
         # ОБЫЧНЫЙ УМНЫЙ ПОИСК
         # ====================================================
 
+                # ====================================================
+        # НОРМАЛИЗАЦИЯ ТЕКСТОВОГО ЗАПРОСА
+        # ====================================================
+        
         original_query = query
-
-        normalized_query_text = normalize(
-            fix_a(query)
-        )
-
+        
+        # ВАЖНО:
+        # Не используем fix_a() здесь,
+        # потому что он может испортить кириллицу.
+        #
+        # "Передний бампер Амг w218"
+        # не должен превращаться в:
+        # "пepeдhийбamпepamгw218"
+        
+        normalized_query_text = safe_text(
+            query
+        ).strip().lower()
+        
         normalized_query_text = (
-            safe_text(
-                normalized_query_text
-            )
-            .lower()
-            .replace(
-                "ё",
-                "е"
-            )
+            normalized_query_text
+            .replace("ё", "е")
         )
+        
+        # Оставляем:
+        # - русские буквы
+        # - английские буквы
+        # - цифры
+        # - пробелы
+        
+        normalized_query_text = re.sub(
+            r"[^a-zа-яё0-9\s]+",
+            " ",
+            normalized_query_text,
+            flags=re.IGNORECASE
+        )
+        
+        # Убираем лишние пробелы
+        
+        normalized_query_text = re.sub(
+            r"\s+",
+            " ",
+            normalized_query_text
+        ).strip()
+        
+        print(
+            "[SMART SEARCH] "
+            f"TEXT NORMALIZED: '{normalized_query_text}'"
+        )
+
 
         # ====================================================
         # КУЗОВА

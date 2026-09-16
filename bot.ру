@@ -4457,43 +4457,6 @@ def find_part_smart(
             query
         )
 
-        # ====================================================
-        # ПРОВЕРКА: НЕДОСТАТОЧНО ДАННЫХ ДЛЯ ПОИСКА
-        # ====================================================
-
-        # Если пользователь указал только название детали,
-        # например:
-        #
-        # "фара"
-        # "бампер"
-        # "капот"
-        #
-        # но не указал кузов,
-        # просим уточнить кузов.
-
-        if (
-            part_words
-            and not bodies
-            and not engine_families_requested
-            and not exact_engine_codes
-            and not front_rear
-            and not left_right
-            and not upper_lower
-        ):
-
-            print(
-                "[SMART SEARCH] "
-                "NOT ENOUGH DATA: BODY REQUIRED"
-            )
-
-            return {
-                "status": "need_body",
-                "message": (
-                    "Укажите номер кузова автомобиля.\n\n"
-                    "Например: W212, W204 или W211."
-                )
-            }
-
 
         # ====================================================
         # КЛЮЧИ БАЗЫ
@@ -5494,6 +5457,45 @@ def find_part_smart(
                 )
 
         part_words = unique_part_words
+
+
+        # ====================================================
+        # ПРОВЕРКА: НЕДОСТАТОЧНО ДАННЫХ ДЛЯ ПОИСКА
+        # ====================================================
+        
+        # Например:
+        #
+        # "фара"
+        # "бампер"
+        # "капот"
+        #
+        # Если пользователь указал только деталь,
+        # но не указал кузов/двигатель/сторону/положение,
+        # просим уточнить кузов.
+        
+        if (
+            part_words
+            and not bodies
+            and not engine_families_requested
+            and not exact_engine_codes
+            and not front_rear
+            and not left_right
+            and not upper_lower
+        ):
+        
+            print(
+                "[SMART SEARCH] "
+                "NOT ENOUGH DATA: BODY REQUIRED"
+            )
+        
+            return {
+                "status": "need_body",
+                "message": (
+                    "Укажите номер кузова автомобиля.\n\n"
+                    "Например: W212, W204 или W211."
+                )
+            }
+        
 
         # ====================================================
         # DEBUG QUERY

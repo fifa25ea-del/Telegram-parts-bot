@@ -2230,6 +2230,89 @@ def extract_web_page(
         )
 
         return ""
+def improve_web_query(query):
+
+    query = safe_text(query).strip()
+
+    if not query:
+        return query
+
+    query_lower = query.lower()
+
+    # ========================================================
+    # КОД ДВИГАТЕЛЯ
+    # Например:
+    # 274.920
+    # M274.920
+    # OM642.852
+    # ========================================================
+
+    engine_match = re.search(
+        r"\b(?:m|om)?\d{3}\.\d{3}\b",
+        query,
+        re.IGNORECASE
+    )
+
+    if engine_match:
+
+        code = engine_match.group(0).upper()
+
+        if not code.startswith(("M", "OM")):
+            code = "M" + code
+
+        return (
+            f"Mercedes {code} "
+            f"мощность двигателя "
+            f"лошадиные силы "
+            f"характеристики"
+        )
+
+    # ========================================================
+    # КУЗОВ
+    # W213 / W212 / C218 / X164 и т.д.
+    # ========================================================
+
+    body_match = re.search(
+        r"\b(?:w|c|x)\d{3}\b",
+        query,
+        re.IGNORECASE
+    )
+
+    if body_match:
+
+        body = body_match.group(0).upper()
+
+        # ====================================================
+        # КОЛЁСА / ДИСКИ / ШИНЫ
+        # ====================================================
+
+        if any(
+            word in query_lower
+            for word in (
+                "колес",
+                "диск",
+                "шины",
+                "шин",
+                "резин",
+            )
+        ):
+
+            return (
+                f"Mercedes {body} "
+                f"параметры колес "
+                f"размер дисков "
+                f"размер шин "
+                f"разболтовка "
+                f"вылет ET "
+                f"диаметр ступицы "
+                f"ширина диска"
+            )
+
+    # ========================================================
+    # ОСТАВЛЯЕМ ОРИГИНАЛЬНЫЙ ЗАПРОС
+    # ========================================================
+
+    return query
 
 # ============================================================
 # WEB SEARCH
@@ -2292,16 +2375,23 @@ def web_search(
                 None
             )
 
-    print(
-        f"[WEB SEARCH] {query}"
+    search_query = improve_web_query(
+        query
     )
-
+    
+    print(
+        f"[WEB SEARCH] Original: {query}"
+    )
+    
+    print(
+        f"[WEB SEARCH] Improved: {search_query}"
+    )
+    
     regions = (
         web_region_candidates(
-            query
+            search_query
         )
     )
-
     raw_results = []
 
     # --------------------------------------------------------
@@ -2324,7 +2414,7 @@ def web_search(
             )
 
             found = ddgs.text(
-                query,
+                search_query,
                 region=region,
                 safesearch="moderate",
                 max_results=WEB_RAW_RESULTS,

@@ -8569,7 +8569,7 @@ def ai_web_search(
 """
 
 
-    try:
+       try:
 
         response = ai_client.responses.create(
             model=AI_WEB_MODEL,
@@ -8603,6 +8603,82 @@ def ai_web_search(
         )
 
         return []
+
+    # ========================================================
+# DEBUG — СКОЛЬКО ТОКЕНОВ И WEB SEARCH
+# ========================================================
+
+try:
+
+    usage = getattr(
+        response,
+        "usage",
+        None
+    )
+
+    print(
+        "================ AI USAGE ================"
+    )
+
+    print(
+        f"[AI WEB] usage={usage}"
+    )
+
+    if usage:
+
+        print(
+            f"[AI WEB] input_tokens="
+            f"{getattr(usage, 'input_tokens', None)}"
+        )
+
+        print(
+            f"[AI WEB] output_tokens="
+            f"{getattr(usage, 'output_tokens', None)}"
+        )
+
+        print(
+            f"[AI WEB] total_tokens="
+            f"{getattr(usage, 'total_tokens', None)}"
+        )
+
+        server_tool_use = getattr(
+            usage,
+            "server_tool_use",
+            None
+        )
+
+        print(
+            f"[AI WEB] server_tool_use="
+            f"{server_tool_use}"
+        )
+
+        if server_tool_use:
+
+            web_search_requests = getattr(
+                server_tool_use,
+                "web_search_requests",
+                None
+            )
+
+            print(
+                f"[AI WEB] web_search_requests="
+                f"{web_search_requests}"
+            )
+
+    print(
+        "==========================================="
+    )
+
+except Exception as e:
+
+    print(
+        f"[AI WEB] Usage debug error: "
+        f"{repr(e)}"
+    )
+
+    # ========================================================
+    # ОТВЕТ AI
+    # ========================================================
 
     answer = ""
 

@@ -4381,56 +4381,14 @@ def find_part_smart(
     query,
     db=None
 ):
-
-    query = safe_text(
-        query
-    )
-
-    if not query:
-        return []
-   
-
-    if parts_db:
-    
-            print(
-                "[PART DEBUG] FIELDS:"
-            )
-    
-            print(
-                list(
-                    parts_db[0].keys()
-                )
-            )
-    
-            print(
-                "[PART DEBUG] SAMPLE:"
-            )
-    
-            print(
-                parts_db[0]
-            )
-    # ========================================================
-    # EXACT OEM / ARTICLE SEARCH
-    # ========================================================
-
-    exact_results = find_part_by_exact_number(
-        query,
-        db=db
-    )
-
-    if exact_results:
-
-        print(
-            f"[SMART SEARCH] EXACT NUMBER FOUND: "
-            f"{query} -> {len(exact_results)}"
-        )
-
-        return exact_results
     """
     Умный поиск запчастей.
 
     Поддерживает:
 
+    - OEM / артикул
+    - Номер производителя
+    - Кросс-номера
     - название детали
     - кузов W163 / 163
     - семейство двигателя M112 / 112
@@ -4443,30 +4401,34 @@ def find_part_smart(
 
     ВАЖНО:
 
-    163 112
-    163 m112
-    w163 m112
+    Если запрос похож на OEM-номер:
 
-    => кузов W163 + семейство M112.
+        A2045000493
+        A 204 500 04 93
+        2045000493
 
-    164 273
-    164 m273
+    сначала выполняется СТРОГИЙ поиск по:
 
-    => кузов W164 + семейство M273.
+        Артикул
+        Номер производителя
+        Кросс-номера
 
-    112970
+    Если OEM найден — возвращаем только найденные детали.
 
-    => семейство M112 + точный двигатель 112970.
-
-    Точный код двигателя получает большой бонус,
-    но остальные двигатели того же семейства
-    также остаются допустимыми.
+    Если OEM не найден — НЕ превращаем номер в обычные
+    слова поиска. Это предотвращает ложные результаты.
     """
 
-    query = safe_text(query).strip()
+    query = safe_text(
+        query
+    ).strip()
 
     if not query:
         return []
+
+    # ========================================================
+    # DATABASE
+    # ========================================================
 
     with database_lock:
 
@@ -4476,8 +4438,20 @@ def find_part_smart(
             else db
         )
 
+        if not database:
+            return []
+
         # ====================================================
-        # КЛЮЧИ БАЗЫ
+        # DEBUG
+        # ====================================================
+
+        print(
+            "[PART DEBUG] SEARCH QUERY:",
+            query
+        )
+
+        # ====================================================
+        # КЛЮЧИ
         # ====================================================
 
         name_key = globals().get(
@@ -4510,30 +4484,338 @@ def find_part_smart(
             "Верх/Низ (U/D)"
         )
 
+        # ====================================================
+        # НОРМАЛИЗАЦИЯ OEM
+        # ====================================================
+
+        def normalize_oem(value):
+
+            value = safe_text(
+                value
+            ).lower().strip()
+
+            if not value:
+                return ""
+
+            # ------------------------------------------------
+            # Кириллица -> латиница для часто путаемых букв
+            # ------------------------------------------------
+
+            translit = str.maketrans({
+                "а": "a",
+                "в": "b",
+                "с": "c",
+                "е": "e",
+                "н": "h",
+                "к": "k",
+                "м": "m",
+                "о": "o",
+                "р": "p",
+                "т": "t",
+                "х": "x",
+                "у": "y",
+            })
+
+            value = value.translate(
+                translit
+            )
+
+            # ------------------------------------------------
+            # Убираем всё кроме букв и цифр
+            # ------------------------------------------------
+
+            value = re.sub(
+                r"[^a-z0-9]",
+                "",
+                value
+            )
+
+            return value
+
+        # ====================================================
+        # ОПРЕДЕЛЯЕМ OEM-ПОДОБНЫЙ ЗАПРОС
+        # ====================================================
+
+        normalized_query = normalize_oem(
+            query
+        )
+
+        # Mercedes OEM обычно:
+        #
+        # A2045000493
+        # A 204 500 04 93
+        #
+        # Также встречаются номера только из цифр.
+        #
+        # Не считаем обычное короткое число OEM:
+        # 163
+        # 112
+        # 204
+        #
+        # потому что это кузова / двигатели.
+
+        is_oem_query = False
+
+        if re.fullmatch(
+            r"a\d{8,}",
+            normalized_query,
+            flags=re.IGNORECASE
+        ):
+            is_oem_query = True
+
+        elif re.fullmatch(
+            r"\d{8,}",
+            normalized_query
+        ):
+            is_oem_query = True
+
+        elif (
+            len(normalized_query) >= 8
+            and re.fullmatch(
+                r"[a-z0-9]+",
+                normalized_query
+            )
+            and any(
+                char.isdigit()
+                for char in normalized_query
+            )
+            and any(
+                char.isalpha()
+                for char in normalized_query
+            )
+        ):
+            is_oem_query = True
+
         print(
-            "[SMART SEARCH] KEYS: "
-            f"name={name_key} "
-            f"body={body_key} "
-            f"engine={engine_key} "
-            f"front_rear={front_rear_key} "
-            f"left_right={left_right_key} "
-            f"upper_lower={upper_lower_key}"
+            "[SMART SEARCH] "
+            f"normalized='{normalized_query}' "
+            f"is_oem={is_oem_query}"
         )
 
         # ====================================================
-        # ИСХОДНЫЙ ЗАПРОС
+        # EXACT OEM SEARCH
+        # ====================================================
+
+        if is_oem_query:
+
+            exact_matches = []
+
+            for position, part in enumerate(
+                database
+            ):
+
+                if not isinstance(
+                    part,
+                    dict
+                ):
+                    continue
+
+                # --------------------------------------------
+                # Артикул
+                # --------------------------------------------
+
+                article = normalize_oem(
+                    part.get(
+                        "Артикул",
+                        ""
+                    )
+                )
+
+                # --------------------------------------------
+                # Номер производителя
+                # --------------------------------------------
+
+                manufacturer_number = normalize_oem(
+                    part.get(
+                        "Номер производителя",
+                        ""
+                    )
+                )
+
+                # --------------------------------------------
+                # Кросс-номера
+                # --------------------------------------------
+
+                cross_numbers_raw = safe_text(
+                    part.get(
+                        "Кросс-номера",
+                        ""
+                    )
+                )
+
+                # Может быть:
+                #
+                # A2045000493
+                # A2045000493, A2045000494
+                # A2045000493 / 2045000493
+                #
+                # Поэтому разбираем поле на отдельные значения.
+
+                cross_numbers = re.split(
+                    r"[,;/|\n]+",
+                    cross_numbers_raw
+                )
+
+                cross_matches = []
+
+                for cross_number in cross_numbers:
+
+                    normalized_cross = normalize_oem(
+                        cross_number
+                    )
+
+                    if normalized_cross:
+                        cross_matches.append(
+                            normalized_cross
+                        )
+
+                # --------------------------------------------
+                # ПРОВЕРКА
+                # --------------------------------------------
+
+                match_type = None
+
+                if (
+                    article
+                    and article == normalized_query
+                ):
+
+                    match_type = "article"
+
+                elif (
+                    manufacturer_number
+                    and manufacturer_number
+                    == normalized_query
+                ):
+
+                    match_type = "manufacturer"
+
+                elif normalized_query in cross_matches:
+
+                    match_type = "cross"
+
+                # --------------------------------------------
+                # НАЙДЕНО
+                # --------------------------------------------
+
+                if match_type:
+
+                    exact_matches.append(
+                        (
+                            match_type,
+                            position,
+                            part
+                        )
+                    )
+
+            # =================================================
+            # ЕСЛИ OEM НАЙДЕН
+            # =================================================
+
+            if exact_matches:
+
+                # Приоритет:
+                #
+                # 1. Артикул
+                # 2. Номер производителя
+                # 3. Кросс-номер
+
+                priority = {
+                    "article": 0,
+                    "manufacturer": 1,
+                    "cross": 2,
+                }
+
+                exact_matches.sort(
+                    key=lambda item: (
+                        priority.get(
+                            item[0],
+                            99
+                        ),
+                        item[1]
+                    )
+                )
+
+                print(
+                    "[SMART SEARCH] "
+                    f"EXACT OEM FOUND: "
+                    f"{normalized_query} "
+                    f"count={len(exact_matches)}"
+                )
+
+                for (
+                    match_type,
+                    position,
+                    part
+                ) in exact_matches[:10]:
+
+                    print(
+                        "[SMART SEARCH] "
+                        f"OEM MATCH "
+                        f"type={match_type} "
+                        f"position={position} "
+                        f"article={part.get('Артикул', '')} "
+                        f"manufacturer="
+                        f"{part.get('Номер производителя', '')} "
+                        f"name={part.get(name_key, '')}"
+                    )
+
+                return [
+                    part
+                    for (
+                        match_type,
+                        position,
+                        part
+                    )
+                    in exact_matches[:MAX_RESULTS]
+                ]
+
+            # =================================================
+            # OEM НЕ НАЙДЕН
+            # =================================================
+            #
+            # КРИТИЧЕСКИ ВАЖНО:
+            #
+            # НЕ продолжаем обычный поиск.
+            #
+            # Иначе:
+            #
+            # A2045000493
+            #
+            # превращается в:
+            #
+            # ["a", "2045000493"]
+            #
+            # и получаем случайные детали.
+            # =================================================
+
+            print(
+                "[SMART SEARCH] "
+                f"OEM NOT FOUND: "
+                f"{normalized_query}"
+            )
+
+            return []
+
+        # ====================================================
+        # НИЖЕ ИДЁТ ОБЫЧНЫЙ УМНЫЙ ПОИСК
         # ====================================================
 
         original_query = query
 
-        normalized_query = normalize(
+        normalized_query_text = normalize(
             fix_a(query)
         )
 
-        normalized_query = (
-            safe_text(normalized_query)
+        normalized_query_text = (
+            safe_text(
+                normalized_query_text
+            )
             .lower()
-            .replace("ё", "е")
+            .replace(
+                "ё",
+                "е"
+            )
         )
 
         # ====================================================
@@ -4541,6 +4823,7 @@ def find_part_smart(
         # ====================================================
 
         body_aliases = {
+
             "w163": "w163",
             "163": "w163",
 
@@ -4603,10 +4886,11 @@ def find_part_smart(
         }
 
         # ====================================================
-        # СЕМЕЙСТВА ДВИГАТЕЛЕЙ
+        # ДВИГАТЕЛИ
         # ====================================================
 
         engine_families = {
+
             "m112": "m112",
             "112": "m112",
 
@@ -4714,7 +4998,7 @@ def find_part_smart(
         }
 
         # ====================================================
-        # СОСТОЯНИЕ ПОИСКА
+        # СОСТОЯНИЕ
         # ====================================================
 
         bodies = []
@@ -4730,82 +5014,38 @@ def find_part_smart(
         upper_lower = None
 
         # ====================================================
-        # НОРМАЛИЗАЦИЯ СКЛЕЕННЫХ СЛОВ
+        # РАЗБИВАЕМ СКЛЕЕННЫЕ СЛОВА
         # ====================================================
 
-        # Например:
-        #
-        # редуктор163
-        # 163m273
-        # w164m273
-        #
-        # превращаем в отдельные токены.
-
-        normalized_query = re.sub(
+        normalized_query_text = re.sub(
             r"(?<=[a-zа-яё])(?=\d)",
             " ",
-            normalized_query,
+            normalized_query_text,
             flags=re.IGNORECASE
         )
 
-        normalized_query = re.sub(
+        normalized_query_text = re.sub(
             r"(?<=\d)(?=[a-zа-яё])",
             " ",
-            normalized_query,
+            normalized_query_text,
             flags=re.IGNORECASE
         )
-
-        # ====================================================
-        # WORDS
-        # ====================================================
 
         words = re.findall(
             r"[a-zа-яё0-9]+",
-            normalized_query,
+            normalized_query_text,
             flags=re.IGNORECASE
         )
 
         # ====================================================
-        # ДОПОЛНИТЕЛЬНО:
-        #
-        # если fix_a смешал русские и английские символы,
-        # не даём этому сломать поиск.
-        #
-        # Например:
-        #
-        # peдyktop
-        #
-        # преобразуем в понятный поисковый токен
-        # через несколько простых вариантов.
-        # ====================================================
-
-        def normalize_part_word(word):
-
-            word = safe_text(word).lower()
-
-            replacements = {
-                "0": "о",
-                "1": "і",
-                "3": "з",
-                "4": "ч",
-                "5": "с",
-                "6": "б",
-                "7": "т",
-                "8": "в",
-                "9": "д",
-            }
-
-            # Не применяем это ко всем словам автоматически,
-            # потому что цифры 163 / 273 / 112 имеют смысл.
-            #
-            # Для смешанных слов оставляем исходный токен.
-            return word
-
-        # ====================================================
-        # РАСПОЗНАВАНИЕ КУЗОВА
+        # РАСПОЗНАВАНИЕ
         # ====================================================
 
         for word in words:
+
+            # ------------------------------------------------
+            # КУЗОВ
+            # ------------------------------------------------
 
             if word in body_aliases:
 
@@ -4817,20 +5057,19 @@ def find_part_smart(
                 continue
 
             # ------------------------------------------------
-            # Кузов внутри склеенного слова
+            # СКЛЕЕННЫЙ КУЗОВ
             # ------------------------------------------------
 
             body_found = False
 
-            # Сначала длинные варианты:
-            # w163 важнее 163.
-            sorted_body_aliases = sorted(
+            for (
+                body_alias,
+                normalized_body
+            ) in sorted(
                 body_aliases.items(),
                 key=lambda item: len(item[0]),
                 reverse=True
-            )
-
-            for body_alias, normalized_body in sorted_body_aliases:
+            ):
 
                 if (
                     word.endswith(body_alias)
@@ -4838,14 +5077,18 @@ def find_part_smart(
                 ):
 
                     if normalized_body not in bodies:
-                        bodies.append(normalized_body)
+                        bodies.append(
+                            normalized_body
+                        )
 
                     prefix = word[
                         :len(word) - len(body_alias)
                     ]
 
                     if prefix:
-                        part_words.append(prefix)
+                        part_words.append(
+                            prefix
+                        )
 
                     body_found = True
                     break
@@ -4853,9 +5096,9 @@ def find_part_smart(
             if body_found:
                 continue
 
-            # =================================================
+            # ------------------------------------------------
             # ДВИГАТЕЛЬ
-            # =================================================
+            # ------------------------------------------------
 
             compact_word = (
                 word
@@ -4865,14 +5108,6 @@ def find_part_smart(
                 .replace(" ", "")
                 .lower()
             )
-
-            # -------------------------------------------------
-            # ПОЛНЫЙ КОД ДВИГАТЕЛЯ
-            #
-            # 112970
-            # m112970
-            # om642970
-            # -------------------------------------------------
 
             engine_code_match = re.fullmatch(
                 r"(?:m|om)?(\d{6})",
@@ -4929,9 +5164,9 @@ def find_part_smart(
 
                     continue
 
-            # -------------------------------------------------
-            # СЕМЕЙСТВО ДВИГАТЕЛЯ
-            # -------------------------------------------------
+            # ------------------------------------------------
+            # СЕМЕЙСТВО
+            # ------------------------------------------------
 
             if compact_word in engine_families:
 
@@ -4950,9 +5185,9 @@ def find_part_smart(
 
                 continue
 
-            # =================================================
-            # НАПРАВЛЕНИЕ
-            # =================================================
+            # ------------------------------------------------
+            # ПЕРЕД / ЗАД
+            # ------------------------------------------------
 
             if word in front_words:
 
@@ -4964,9 +5199,9 @@ def find_part_smart(
                 front_rear = "B"
                 continue
 
-            # =================================================
-            # СТОРОНА
-            # =================================================
+            # ------------------------------------------------
+            # ЛЕВО / ПРАВО
+            # ------------------------------------------------
 
             if word in left_words:
 
@@ -4978,9 +5213,9 @@ def find_part_smart(
                 left_right = "R"
                 continue
 
-            # =================================================
+            # ------------------------------------------------
             # ВЕРХ / НИЗ
-            # =================================================
+            # ------------------------------------------------
 
             if word in upper_words:
 
@@ -4992,49 +5227,18 @@ def find_part_smart(
                 upper_lower = "D"
                 continue
 
-            # =================================================
+            # ------------------------------------------------
             # ОБЫЧНОЕ СЛОВО
-            # =================================================
+            # ------------------------------------------------
 
-            normalized_part_word = (
-                normalize_part_word(word)
-            )
-
-            if normalized_part_word:
+            if word:
                 part_words.append(
-                    normalized_part_word
+                    word
                 )
 
         # ====================================================
-        # ВАЖНО:
-        #
-        # Если после fix_a получилось:
-        #
-        # "редуктор 163 112"
-        #
-        # обычный regex уже дал бы:
-        #
-        # ["редуктор", "163", "112"]
-        #
-        # поэтому здесь всё уже должно быть:
-        #
-        # bodies = ["w163"]
-        # engine_families_requested = ["m112"]
-        # part_words = ["редуктор"]
-        #
+        # ЗАЩИТА ОТ СКЛЕЕННЫХ ЦИФР
         # ====================================================
-
-        # ----------------------------------------------------
-        # ЗАЩИТА ОТ СКЛЕЕННЫХ ЦИФРОВ
-        #
-        # Если по какой-то причине получили:
-        #
-        # 163112
-        #
-        # пробуем дополнительно разобрать как:
-        #
-        # 163 + 112
-        # ----------------------------------------------------
 
         rebuilt_part_words = []
 
@@ -5042,7 +5246,10 @@ def find_part_smart(
 
             split_done = False
 
+            # -----------------------------------------------
             # Кузов + двигатель
+            # -----------------------------------------------
+
             for body_alias in sorted(
                 body_aliases.keys(),
                 key=len,
@@ -5051,8 +5258,7 @@ def find_part_smart(
 
                 if (
                     word.startswith(body_alias)
-                    and
-                    len(word) > len(body_alias)
+                    and len(word) > len(body_alias)
                 ):
 
                     remainder = word[
@@ -5087,10 +5293,9 @@ def find_part_smart(
             if split_done:
                 continue
 
-            # ------------------------------------------------
-            # Просто удаляем известный кузов,
-            # если он оказался хвостом слова.
-            # ------------------------------------------------
+            # -----------------------------------------------
+            # Кузов в конце
+            # -----------------------------------------------
 
             body_removed = False
 
@@ -5102,8 +5307,7 @@ def find_part_smart(
 
                 if (
                     word.endswith(body_alias)
-                    and
-                    len(word) > len(body_alias)
+                    and len(word) > len(body_alias)
                 ):
 
                     body = body_aliases[
@@ -5128,9 +5332,9 @@ def find_part_smart(
             if body_removed:
                 continue
 
-            # ------------------------------------------------
-            # Известный двигатель в конце слова
-            # ------------------------------------------------
+            # -----------------------------------------------
+            # Двигатель в конце
+            # -----------------------------------------------
 
             engine_removed = False
 
@@ -5142,8 +5346,7 @@ def find_part_smart(
 
                 if (
                     word.endswith(engine_alias)
-                    and
-                    len(word) > len(engine_alias)
+                    and len(word) > len(engine_alias)
                 ):
 
                     family = engine_families[
@@ -5174,7 +5377,9 @@ def find_part_smart(
             if engine_removed:
                 continue
 
-            rebuilt_part_words.append(word)
+            rebuilt_part_words.append(
+                word
+            )
 
         part_words = rebuilt_part_words
 
@@ -5191,20 +5396,24 @@ def find_part_smart(
                 and word not in unique_part_words
             ):
 
-                unique_part_words.append(word)
+                unique_part_words.append(
+                    word
+                )
 
         part_words = unique_part_words
 
         # ====================================================
-        # DEBUG QUERY
+        # DEBUG
         # ====================================================
 
         print(
             "[SMART SEARCH] "
             f"query='{original_query}' "
             f"bodies={bodies} "
-            f"engine_families={engine_families_requested} "
-            f"exact_engines={exact_engine_codes} "
+            f"engine_families="
+            f"{engine_families_requested} "
+            f"exact_engines="
+            f"{exact_engine_codes} "
             f"words={part_words} "
             f"front_rear={front_rear} "
             f"left_right={left_right} "
@@ -5212,7 +5421,7 @@ def find_part_smart(
         )
 
         # ====================================================
-        # ВСПОМОГАТЕЛЬНАЯ НОРМАЛИЗАЦИЯ ДВИГАТЕЛЯ
+        # НОРМАЛИЗАЦИЯ ДВИГАТЕЛЯ
         # ====================================================
 
         def normalize_engine_value(value):
@@ -5223,7 +5432,7 @@ def find_part_smart(
                 fix_a(value)
             )
 
-            value = (
+            return (
                 value
                 .lower()
                 .replace("ё", "е")
@@ -5232,8 +5441,6 @@ def find_part_smart(
                 .replace("_", "")
                 .replace(" ", "")
             )
-
-            return value
 
         # ====================================================
         # ИНФОРМАЦИЯ О ДВИГАТЕЛЕ
@@ -5248,19 +5455,11 @@ def find_part_smart(
             if not normalized:
                 return None, None
 
-            # -----------------------------------------------
-            # Убираем M / OM
-            # -----------------------------------------------
-
             digits = re.sub(
                 r"^(?:m|om)",
                 "",
                 normalized
             )
-
-            # -----------------------------------------------
-            # Полный код
-            # -----------------------------------------------
 
             if re.fullmatch(
                 r"\d{6}",
@@ -5289,10 +5488,6 @@ def find_part_smart(
                             family,
                             digits
                         )
-
-            # -----------------------------------------------
-            # Семейство
-            # -----------------------------------------------
 
             for family in set(
                 engine_families.values()
@@ -5431,8 +5626,7 @@ def find_part_smart(
 
                     if (
                         body == requested_body
-                        or
-                        requested_body in body
+                        or requested_body in body
                     ):
 
                         body_match = True
@@ -5614,7 +5808,7 @@ def find_part_smart(
                         break
 
             # =================================================
-            # СЕМЕЙСТВО ДВИГАТЕЛЯ
+            # ДВИГАТЕЛЬ
             # =================================================
 
             if engine_families_requested:
@@ -5634,7 +5828,7 @@ def find_part_smart(
                         break
 
             # =================================================
-            # ТОЧНЫЙ КОД
+            # ТОЧНЫЙ КОД ДВИГАТЕЛЯ
             # =================================================
 
             if exact_engine_codes:
@@ -5654,19 +5848,7 @@ def find_part_smart(
                         break
 
                 if exact_match:
-
                     score += 700
-
-                else:
-
-                    # Семейство подходит,
-                    # но точного кода нет.
-                    #
-                    # Не отбрасываем,
-                    # потому что пользователь мог
-                    # искать совместимую деталь.
-
-                    score += 0
 
             # =================================================
             # ПЕРЕД / ЗАД
@@ -5702,8 +5884,7 @@ def find_part_smart(
                     score += 50
 
             # =================================================
-            # ЕСЛИ ЕСТЬ ФИЛЬТРЫ,
-            # НО НЕТ СЛОВ ДЕТАЛИ
+            # ТОЛЬКО ФИЛЬТРЫ
             # =================================================
 
             if (
@@ -5721,7 +5902,7 @@ def find_part_smart(
                 score += 100
 
             # =================================================
-            # ЕСЛИ НИЧЕГО НЕ СОВПАЛО
+            # НИЧЕГО НЕ СОВПАЛО
             # =================================================
 
             if score <= 0:
@@ -5777,7 +5958,11 @@ def find_part_smart(
 
         return [
             part
-            for score, position, part
+            for (
+                score,
+                position,
+                part
+            )
             in candidates[:MAX_RESULTS]
         ]
 

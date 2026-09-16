@@ -8050,139 +8050,125 @@ def perform_search(
         print(
             f"🌐 WEB SEARCH: {query}"
         )
-    
+
         log_search(
             chat_id,
             query,
             "web"
         )
-    
+
         show_loading_message(
             chat_id,
             "⏳ Пожалуйста, подождите...\n"
             "🧠 Анализируем запрос и ищем информацию..."
         )
-    
+
         try:
-    
+
             search_query = improve_web_query(
                 query
             )
-    
+
             print(
                 f"[WEB SEARCH] Original: "
                 f"{query}"
             )
-    
+
             print(
                 f"[WEB SEARCH] Improved: "
                 f"{search_query}"
             )
-    
-            # ----------------------------------------------------
-            # Сначала настоящий AI Web Search.
-            # ----------------------------------------------------
-    
+
             results = []
-    
+
             if AI_WEB_ENABLED:
-    
+
                 results = ai_web_search(
                     query,
                     search_query,
                     max_results=WEB_MAX_RESULTS
                 )
-    
-            # ----------------------------------------------------
-            # Fallback:
-            # если AI недоступен или произошла ошибка,
-            # используем твой старый web_search().
-            # ----------------------------------------------------
-    
+
             if not results:
-    
+
                 print(
                     "⚠️ AI WEB unavailable. "
                     "Using legacy web search."
                 )
-    
+
                 results = web_search(
                     search_query,
                     max_results=WEB_MAX_RESULTS
                 )
-    
+
         except Exception as e:
-    
+
             print(
                 f"[WEB SEARCH] Error: "
                 f"{repr(e)}"
             )
-    
-            # ----------------------------------------------------
-            # Последняя попытка — старый поиск.
-            # ----------------------------------------------------
-    
+
             try:
-    
+
                 results = web_search(
                     query,
                     max_results=WEB_MAX_RESULTS
                 )
-    
+
             except Exception as fallback_error:
-    
+
                 print(
                     f"[WEB SEARCH FALLBACK] "
                     f"{repr(fallback_error)}"
                 )
-    
+
                 results = []
-    
+
         hide_loading_message(
             chat_id
         )
-    
+
         if not results:
-    
+
             log_search(
                 chat_id,
                 query,
                 "NOT_FOUND_WEB"
             )
-    
+
             bot.send_message(
                 chat_id,
                 "❌ В интернете ничего "
                 "подходящего не найдено.\n\n"
                 "Попробуйте изменить запрос."
             )
-    
+
             return
-    
+
         web_results[
             chat_id
         ] = results
-    
+
         web_index[
             chat_id
         ] = 0
-    
+
         web_query[
             chat_id
         ] = query
-    
+
         send_web_card(
             chat_id,
             0
         )
-    
+
         return
 
     # --------------------------------------------------------
     # PARTS
     # --------------------------------------------------------
 
-     if mode == "parts":
+    if mode == "parts":
 
         print(
             f"🔥 SEARCH PARTS: {query}"
@@ -8237,7 +8223,6 @@ def perform_search(
         )
 
         return
-
 
     # --------------------------------------------------------
     # WHEELS
@@ -8347,7 +8332,6 @@ def perform_search(
 
         return
 
-
     # --------------------------------------------------------
     # UNKNOWN MODE
     # --------------------------------------------------------
@@ -8361,6 +8345,7 @@ def perform_search(
         "⚠️ Сначала выберите раздел.",
         reply_markup=main_menu()
     )
+
 # ============================================================
 # TEXT HANDLER
 # ============================================================

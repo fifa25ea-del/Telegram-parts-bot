@@ -8867,7 +8867,7 @@ ET43
         return []
 
     # ========================================================
-    # DEBUG — USAGE
+    # DEBUG — USAGE + RESPONSE STRUCTURE
     # ========================================================
 
     try:
@@ -8921,9 +8921,13 @@ ET43
                 f"{total_tokens}"
             )
 
+            # ------------------------------------------------
+            # WEB SEARCH USAGE
+            # ------------------------------------------------
+
             server_tool_use = getattr(
                 usage,
-                "server_tool_use",
+                "server_tool_use_details",
                 None
             )
 
@@ -8941,8 +8945,7 @@ ET43
                 )
 
                 print(
-                    f"[AI WEB] "
-                    f"web_search_requests="
+                    f"[AI WEB] web_search_requests="
                     f"{web_search_requests}"
                 )
 
@@ -8954,6 +8957,37 @@ ET43
 
         print(
             "[AI WEB] Usage debug error: "
+            f"{repr(e)}"
+        )
+
+    # ========================================================
+    # DEBUG — ПОЛНАЯ СТРУКТУРА RESPONSE
+    # ========================================================
+
+    try:
+
+        print(
+            "================ AI RESPONSE DEBUG ================"
+        )
+
+        print(
+            f"[AI WEB] response type="
+            f"{type(response)}"
+        )
+
+        print(
+            f"[AI WEB] response.output="
+            f"{response.output}"
+        )
+
+        print(
+            "===================================================="
+        )
+
+    except Exception as e:
+
+        print(
+            "[AI WEB] Response debug error: "
             f"{repr(e)}"
         )
 

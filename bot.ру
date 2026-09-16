@@ -1784,7 +1784,7 @@ def decode_web_response(response):
     best_text = repair_web_mojibake(
         best_text
     )
-
+    return best_text
    
 
 

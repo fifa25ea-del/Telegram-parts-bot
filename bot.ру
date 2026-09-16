@@ -8586,7 +8586,7 @@ def ai_web_search(
 
             tool_choice="auto",
 
-            max_output_tokens=6000,
+            max_output_tokens=500,
 
             text={
                 "verbosity": "medium"

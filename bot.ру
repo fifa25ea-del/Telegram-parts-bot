@@ -4388,7 +4388,27 @@ def find_part_smart(
 
     if not query:
         return []
+   
 
+    if parts_db:
+    
+            print(
+                "[PART DEBUG] FIELDS:"
+            )
+    
+            print(
+                list(
+                    parts_db[0].keys()
+                )
+            )
+    
+            print(
+                "[PART DEBUG] SAMPLE:"
+            )
+    
+            print(
+                parts_db[0]
+            )
     # ========================================================
     # EXACT OEM / ARTICLE SEARCH
     # ========================================================

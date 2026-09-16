@@ -8848,10 +8848,10 @@ ET43
 
             tool_choice="auto",
 
-            max_output_tokens=500,
+            max_output_tokens=1600,
 
             text={
-                "verbosity": "medium"
+                "verbosity": "low"
             },
 
             store=False
@@ -8868,6 +8868,45 @@ ET43
 
     # ========================================================
     # DEBUG — USAGE + RESPONSE STRUCTURE
+    # ========================================================
+
+    try:
+
+        response = ai_client.responses.create(
+            model=AI_WEB_MODEL,
+
+            instructions=AI_WEB_INSTRUCTIONS,
+
+            input=prompt,
+
+            tools=[
+                {
+                    "type": "web_search"
+                }
+            ],
+
+            tool_choice="auto",
+
+            max_output_tokens=1000,
+
+            text={
+                "verbosity": "low"
+            },
+
+            store=False
+        )
+
+    except Exception as e:
+
+        print(
+            "❌ [AI WEB] API ERROR: "
+            f"{repr(e)}"
+        )
+
+        return []
+
+    # ========================================================
+    # DEBUG — USAGE
     # ========================================================
 
     try:
@@ -8921,10 +8960,6 @@ ET43
                 f"{total_tokens}"
             )
 
-            # ------------------------------------------------
-            # WEB SEARCH USAGE
-            # ------------------------------------------------
-
             server_tool_use = getattr(
                 usage,
                 "server_tool_use_details",
@@ -8938,11 +8973,25 @@ ET43
 
             if server_tool_use:
 
-                web_search_requests = getattr(
+                if isinstance(
                     server_tool_use,
-                    "web_search_requests",
-                    None
-                )
+                    dict
+                ):
+
+                    web_search_requests = (
+                        server_tool_use.get(
+                            "web_search_requests",
+                            0
+                        )
+                    )
+
+                else:
+
+                    web_search_requests = getattr(
+                        server_tool_use,
+                        "web_search_requests",
+                        0
+                    )
 
                 print(
                     f"[AI WEB] web_search_requests="
@@ -8961,27 +9010,29 @@ ET43
         )
 
     # ========================================================
-    # DEBUG — ПОЛНАЯ СТРУКТУРА RESPONSE
+    # DEBUG — RESPONSE ITEMS
     # ========================================================
 
     try:
 
         print(
-            "================ AI RESPONSE DEBUG ================"
+            "================ AI RESPONSE ================"
         )
 
-        print(
-            f"[AI WEB] response type="
-            f"{type(response)}"
-        )
+        for item in getattr(
+            response,
+            "output",
+            []
+        ):
+
+            print(
+                f"[AI WEB] "
+                f"type={getattr(item, 'type', None)} "
+                f"id={getattr(item, 'id', None)}"
+            )
 
         print(
-            f"[AI WEB] response.output="
-            f"{response.output}"
-        )
-
-        print(
-            "===================================================="
+            "=============================================="
         )
 
     except Exception as e:
@@ -8999,45 +9050,36 @@ ET43
 
     try:
 
-        answer = response.output_text
+        answer = safe_text(
+            response.output_text
+        )
 
     except Exception as e:
 
         print(
-            "[AI WEB] "
-            f"output_text error: {repr(e)}"
+            "[AI WEB] output_text error: "
+            f"{repr(e)}"
         )
 
-        answer = ""
-
-    answer = safe_text(
-        answer
+    print(
+        f"[AI WEB] output_text length="
+        f"{len(answer)}"
     )
 
-    answer = _truncate_ai_text(
-        answer
-    )
+    if answer:
+
+        print(
+            f"[AI WEB] answer="
+            f"{answer[:1000]}"
+        )
 
     # ========================================================
     # SOURCES
     # ========================================================
 
-    sources = []
-
-    try:
-
-        sources = _extract_ai_sources(
-            response
-        )
-
-    except Exception as e:
-
-        print(
-            "[AI WEB] "
-            f"source extraction error: {repr(e)}"
-        )
-
-        sources = []
+    sources = _extract_ai_sources(
+        response
+    )
 
     print(
         f"[AI WEB] Sources: "
@@ -9045,25 +9087,25 @@ ET43
     )
 
     # ========================================================
-    # ЕСЛИ AI НЕ ДАЛ ОТВЕТ
+    # FALLBACK ANSWER
     # ========================================================
 
     if not answer:
 
         answer = (
-            "❌ Не удалось сформировать "
-            "ответ по найденной информации."
+            "❌ AI не сформировал текстовый ответ "
+            "после web-поиска."
         )
+
+    answer = _truncate_ai_text(
+        answer
+    )
 
     # ========================================================
     # RESULTS
     # ========================================================
 
     results = []
-
-    # ========================================================
-    # ПЕРВАЯ КАРТОЧКА — AI ОТВЕТ
-    # ========================================================
 
     results.append(
         {
@@ -9072,7 +9114,7 @@ ET43
             "title": "AI-поиск",
 
             "url": (
-                sources[0].get("url", "")
+                sources[0]["url"]
                 if sources
                 else ""
             ),
@@ -9088,61 +9130,40 @@ ET43
     )
 
     # ========================================================
-    # ОТДЕЛЬНЫЕ ИСТОЧНИКИ
+    # WEB SOURCES
     # ========================================================
 
     for source in sources:
 
         if len(results) >= max_results:
+
             break
-
-        if not isinstance(
-            source,
-            dict
-        ):
-            continue
-
-        source_title = safe_text(
-            source.get(
-                "title",
-                "Источник"
-            )
-        )
-
-        source_url = safe_text(
-            source.get(
-                "url",
-                ""
-            )
-        )
-
-        source_description = safe_text(
-            source.get(
-                "description",
-                ""
-            )
-        )
 
         results.append(
             {
                 "type": "web_source",
 
-                "title": (
-                    source_title
-                    or "Источник"
+                "title": source.get(
+                    "title",
+                    "Источник"
                 ),
 
-                "url": source_url,
+                "url": source.get(
+                    "url",
+                    ""
+                ),
 
-                "body": source_description,
+                "body": source.get(
+                    "description",
+                    ""
+                ),
 
-                "excerpt": source_description
+                "excerpt": source.get(
+                    "description",
+                    ""
+                )
             }
         )
-
-    # ========================================================
-    # FINAL DEBUG
-    # ========================================================
 
     print(
         f"[AI WEB] Results returned: "
@@ -9150,32 +9171,6 @@ ET43
     )
 
     return results
-# ============================================================
-# SEARCH
-# ============================================================
-
-def perform_search(
-    chat_id,
-    query
-):
-
-    query = safe_text(
-        query
-    )
-
-    if len(query) < 2:
-
-        bot.send_message(
-            chat_id,
-            "⚠️ Введите минимум 2 символа."
-        )
-
-        return
-
-    mode = current_mode.get(
-        chat_id
-    )
-
     # --------------------------------------------------------
     # WEB SEARCH
     # --------------------------------------------------------

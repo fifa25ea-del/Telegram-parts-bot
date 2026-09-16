@@ -5692,7 +5692,15 @@ def find_wheels(
                     ""
                 )
             )
+            
+            if radius.startswith("r"):
+                radius = radius[1:]
 
+            if (
+                radius_query
+                and radius_query == radius
+            ):
+                results.append(item)
             brand = normalize(
                 item.get(
                     "Производитель диска",
@@ -8174,61 +8182,61 @@ def perform_search(
     # PARTS
     # --------------------------------------------------------
 
-    if mode == "parts":
-    
+     if mode == "parts":
+
         print(
             f"🔥 SEARCH PARTS: {query}"
         )
-    
+
         log_search(
             chat_id,
             query,
             "parts"
         )
-    
+
         results = find_part_smart(
             query
         )
-    
+
         if not results:
-    
+
             print(
                 f"❌ NOT FOUND PARTS: "
                 f"{query}"
             )
-    
+
             log_search(
                 chat_id,
                 query,
                 "NOT_FOUND"
             )
-    
+
             bot.send_message(
                 chat_id,
                 "❌ Ничего не найдено.\n\n"
                 "Попробуйте описать деталь иначе."
             )
-    
+
             return
 
-    user_results[
-        chat_id
-    ] = results
+        user_results[
+            chat_id
+        ] = results
 
-    user_index[
-        chat_id
-    ] = 0
+        user_index[
+            chat_id
+        ] = 0
 
-    user_photo_index[
-        chat_id
-    ] = 0
+        user_photo_index[
+            chat_id
+        ] = 0
 
-    send_part_card(
-        chat_id,
-        0
-    )
+        send_part_card(
+            chat_id,
+            0
+        )
 
-    return
+        return
 
 
     # --------------------------------------------------------
@@ -8236,103 +8244,122 @@ def perform_search(
     # --------------------------------------------------------
 
     if mode == "wheels":
-    
+
         print(
             f"🔥 SEARCH WHEELS: {query}"
         )
-    
+
         log_search(
             chat_id,
             query,
             "wheels"
         )
-    
-        # --------------------------------------------------------
-        # Показываем загрузку ДО поиска и загрузки фотографий.
-        # --------------------------------------------------------
-    
+
         show_loading_message(
             chat_id,
             "⏳ Пожалуйста, подождите...\n"
             "🛞 Ищем подходящие шины и диски..."
         )
-    
+
         try:
-    
+
             results = find_wheels(
                 query
             )
-    
+
         except Exception as e:
-    
+
             print(
                 f"[SEARCH WHEELS] Error: {e}"
             )
-    
+
             hide_loading_message(
                 chat_id
             )
-    
+
             bot.send_message(
                 chat_id,
                 "❌ Произошла ошибка при поиске."
             )
-    
+
             return
-    
+
         if not results:
-    
+
             hide_loading_message(
                 chat_id
             )
-    
+
             print(
                 f"❌ NOT FOUND WHEELS: "
                 f"{query}"
             )
-    
+
             log_search(
                 chat_id,
                 query,
                 "NOT_FOUND_WHEELS"
             )
-    
+
             bot.send_message(
                 chat_id,
                 "❌ Ничего не найдено."
             )
-    
+
             return
-    
+
         user_results[
             chat_id
         ] = results
-    
+
         user_index[
             chat_id
         ] = 0
-    
+
         user_photo_index[
             chat_id
         ] = 0
-    
-        # --------------------------------------------------------
-        # Здесь загружаются фотографии.
-        # Сообщение загрузки остаётся на экране.
-        # --------------------------------------------------------
-    
-        send_wheels_preview(
-            chat_id,
-            results
-        )
-    
-        # --------------------------------------------------------
-        # После формирования карточки/альбома
-        # сообщение загрузки можно удалить.
-        # --------------------------------------------------------
 
-    hide_loading_message(
-        chat_id
+        try:
+
+            send_wheels_preview(
+                chat_id,
+                results
+            )
+
+        except Exception as e:
+
+            print(
+                f"[WHEELS PREVIEW] Error: "
+                f"{repr(e)}"
+            )
+
+            bot.send_message(
+                chat_id,
+                "❌ Не удалось показать найденные диски."
+            )
+
+        finally:
+
+            hide_loading_message(
+                chat_id
+            )
+
+        return
+
+
+    # --------------------------------------------------------
+    # UNKNOWN MODE
+    # --------------------------------------------------------
+
+    print(
+        f"⚠️ Unknown search mode: {mode}"
+    )
+
+    bot.send_message(
+        chat_id,
+        "⚠️ Сначала выберите раздел.",
+        reply_markup=main_menu()
     )
 # ============================================================
 # TEXT HANDLER

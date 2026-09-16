@@ -5067,67 +5067,541 @@ def find_part_smart(
         upper_lower = None
 
         # ====================================================
-        # РАЗБИВАЕМ СКЛЕЕННЫЕ СЛОВА
+        # РАЗБИВАЕМ ЗАПРОС НА СЛОВА
         # ====================================================
         #
         # ВАЖНО:
-        # W218 / W212 / M112 / OM642
-        # нельзя разбивать на:
         #
-        # W + 218
+        # Не используем fix_a() для пользовательского запроса.
         #
-        # Сначала оставляем такие конструкции целиком.
-        # Парсер выше/ниже сам определит их как кузов
-        # или двигатель.
+        # Поддерживаем:
+        #
+        #   бампер 218
+        #   бампер w218
+        #   передний бампер w218
+        #   бампер 218 амг
+        #   передний бампер амг w218
+        #   дверь w220 правая
+        #   редуктор w163 m112
+        #
+        # W218 / 218 / M112 / 112 / OM642 / 642
+        # будут обработаны ниже через словари кузовов
+        # и двигателей.
         # ====================================================
         
-        normalized_query_text = re.sub(
-            r"(?<=[a-zа-яё])(?=\d)",
-            " ",
-            normalized_query_text,
-            flags=re.IGNORECASE
-        )
-        
-        # ----------------------------------------------------
-        # После этого снова склеиваем известные конструкции:
-        #
-        # w 218 -> w218
-        # m 112 -> m112
-        # om 642 -> om642
-        # ----------------------------------------------------
-        
-        normalized_query_text = re.sub(
-            r"\b(w|c)\s+(\d{3})\b",
-            r"\1\2",
-            normalized_query_text,
-            flags=re.IGNORECASE
-        )
-        
-        normalized_query_text = re.sub(
-            r"\b(m|om)\s+(\d{3,6})\b",
-            r"\1\2",
-            normalized_query_text,
-            flags=re.IGNORECASE
-        )
-        
-        # ----------------------------------------------------
-        # Разделяем цифры + буквы только там, где это
-        # действительно необходимо.
-        # ----------------------------------------------------
-        
-        normalized_query_text = re.sub(
-            r"(?<=\d)(?=[a-zа-яё])",
-            " ",
+        words = re.findall(
+            r"[a-zа-яё0-9]+",
             normalized_query_text,
             flags=re.IGNORECASE
         )
         
         print(
             "[SMART SEARCH] "
-            f"TOKEN TEXT: '{normalized_query_text}'"
+            f"WORDS RAW: {words}"
         )
         
-
+        
+        # ====================================================
+        # РАСПОЗНАВАНИЕ
+        # ====================================================
+        
+        for word in words:
+        
+            # ------------------------------------------------
+            # Защита
+            # ------------------------------------------------
+        
+            if not word:
+                continue
+        
+            word = (
+                word
+                .lower()
+                .replace("ё", "е")
+            )
+        
+            # =================================================
+            # КУЗОВ
+            # =================================================
+        
+            if word in body_aliases:
+        
+                body = body_aliases[word]
+        
+                if body not in bodies:
+                    bodies.append(body)
+        
+                continue
+        
+        
+            # =================================================
+            # КУЗОВ ВНУТРИ СЛОВА
+            #
+            # Например:
+            #
+            # бамперw218
+            # дверьw220
+            #
+            # =================================================
+        
+            body_found = False
+        
+            for (
+                body_alias,
+                normalized_body
+            ) in sorted(
+                body_aliases.items(),
+                key=lambda item: len(item[0]),
+                reverse=True
+            ):
+        
+                if (
+                    word.endswith(body_alias)
+                    and word != body_alias
+                ):
+        
+                    if normalized_body not in bodies:
+        
+                        bodies.append(
+                            normalized_body
+                        )
+        
+                    prefix = word[
+                        :len(word) - len(body_alias)
+                    ]
+        
+                    if prefix:
+        
+                        part_words.append(
+                            prefix
+                        )
+        
+                    body_found = True
+        
+                    break
+        
+            if body_found:
+                continue
+        
+        
+            # =================================================
+            # ДВИГАТЕЛЬ
+            # =================================================
+        
+            compact_word = (
+                word
+                .replace(".", "")
+                .replace("-", "")
+                .replace("_", "")
+                .replace(" ", "")
+                .lower()
+            )
+        
+        
+            # =================================================
+            # ТОЧНЫЙ КОД ДВИГАТЕЛЯ
+            #
+            # 112970
+            # 112.970
+            # M112970
+            # OM642XXX
+            #
+            # =================================================
+        
+            engine_code_match = re.fullmatch(
+                r"(?:m|om)?(\d{6})",
+                compact_word,
+                flags=re.IGNORECASE
+            )
+        
+            if engine_code_match:
+        
+                code_digits = (
+                    engine_code_match.group(1)
+                )
+        
+                family_digits = (
+                    code_digits[:3]
+                )
+        
+                possible_family = None
+        
+                for family in set(
+                    engine_families.values()
+                ):
+        
+                    family_digits_known = re.sub(
+                        r"^(?:m|om)",
+                        "",
+                        family,
+                        flags=re.IGNORECASE
+                    )
+        
+                    if (
+                        family_digits
+                        == family_digits_known
+                    ):
+        
+                        possible_family = family
+        
+                        break
+        
+        
+                if possible_family:
+        
+                    if (
+                        possible_family
+                        not in engine_families_requested
+                    ):
+        
+                        engine_families_requested.append(
+                            possible_family
+                        )
+        
+        
+                    if (
+                        code_digits
+                        not in exact_engine_codes
+                    ):
+        
+                        exact_engine_codes.append(
+                            code_digits
+                        )
+        
+                    continue
+        
+        
+            # =================================================
+            # СЕМЕЙСТВО ДВИГАТЕЛЯ
+            #
+            # m112
+            # 112
+            # om642
+            # 642
+            #
+            # =================================================
+        
+            if compact_word in engine_families:
+        
+                family = engine_families[
+                    compact_word
+                ]
+        
+                if (
+                    family
+                    not in engine_families_requested
+                ):
+        
+                    engine_families_requested.append(
+                        family
+                    )
+        
+                continue
+        
+        
+            # =================================================
+            # ПЕРЕД / ЗАД
+            # =================================================
+        
+            if word in front_words:
+        
+                front_rear = "F"
+        
+                continue
+        
+        
+            if word in rear_words:
+        
+                front_rear = "B"
+        
+                continue
+        
+        
+            # =================================================
+            # ЛЕВО / ПРАВО
+            # =================================================
+        
+            if word in left_words:
+        
+                left_right = "L"
+        
+                continue
+        
+        
+            if word in right_words:
+        
+                left_right = "R"
+        
+                continue
+        
+        
+            # =================================================
+            # ВЕРХ / НИЗ
+            # =================================================
+        
+            if word in upper_words:
+        
+                upper_lower = "U"
+        
+                continue
+        
+        
+            if word in lower_words:
+        
+                upper_lower = "D"
+        
+                continue
+        
+        
+            # =================================================
+            # ОБЫЧНОЕ СЛОВО
+            #
+            # Например:
+            #
+            # бампер
+            # фара
+            # капот
+            # амг
+            # редуктор
+            #
+            # =================================================
+        
+            part_words.append(
+                word
+            )
+        
+        
+        # ====================================================
+        # ЗАЩИТА ОТ СКЛЕЕННЫХ СЛОВ
+        # ====================================================
+        
+        rebuilt_part_words = []
+        
+        
+        for word in part_words:
+        
+            if not word:
+                continue
+        
+        
+            # =================================================
+            # КУЗОВ + ДВИГАТЕЛЬ
+            #
+            # w218m112
+            # 218m112
+            #
+            # =================================================
+        
+            split_done = False
+        
+            for body_alias in sorted(
+                body_aliases.keys(),
+                key=len,
+                reverse=True
+            ):
+        
+                if (
+                    word.startswith(body_alias)
+                    and len(word) > len(body_alias)
+                ):
+        
+                    remainder = word[
+                        len(body_alias):
+                    ]
+        
+        
+                    if remainder in engine_families:
+        
+                        body = body_aliases[
+                            body_alias
+                        ]
+        
+                        if body not in bodies:
+        
+                            bodies.append(
+                                body
+                            )
+        
+        
+                        family = engine_families[
+                            remainder
+                        ]
+        
+                        if (
+                            family
+                            not in engine_families_requested
+                        ):
+        
+                            engine_families_requested.append(
+                                family
+                            )
+        
+                        split_done = True
+        
+                        break
+        
+        
+            if split_done:
+                continue
+        
+        
+            # =================================================
+            # КУЗОВ В КОНЦЕ СЛОВА
+            #
+            # бамперw218
+            #
+            # =================================================
+        
+            body_removed = False
+        
+            for body_alias in sorted(
+                body_aliases.keys(),
+                key=len,
+                reverse=True
+            ):
+        
+                if (
+                    word.endswith(body_alias)
+                    and len(word) > len(body_alias)
+                ):
+        
+                    body = body_aliases[
+                        body_alias
+                    ]
+        
+                    if body not in bodies:
+        
+                        bodies.append(
+                            body
+                        )
+        
+        
+                    prefix = word[
+                        :len(word) - len(body_alias)
+                    ]
+        
+        
+                    if prefix:
+        
+                        rebuilt_part_words.append(
+                            prefix
+                        )
+        
+                    body_removed = True
+        
+                    break
+        
+        
+            if body_removed:
+                continue
+        
+        
+            # =================================================
+            # ДВИГАТЕЛЬ В КОНЦЕ СЛОВА
+            #
+            # редукторм112
+            # =================================================
+        
+            engine_removed = False
+        
+            for engine_alias in sorted(
+                engine_families.keys(),
+                key=len,
+                reverse=True
+            ):
+        
+                if (
+                    word.endswith(engine_alias)
+                    and len(word) > len(engine_alias)
+                ):
+        
+                    family = engine_families[
+                        engine_alias
+                    ]
+        
+                    if (
+                        family
+                        not in engine_families_requested
+                    ):
+        
+                        engine_families_requested.append(
+                            family
+                        )
+        
+        
+                    prefix = word[
+                        :len(word) - len(engine_alias)
+                    ]
+        
+        
+                    if prefix:
+        
+                        rebuilt_part_words.append(
+                            prefix
+                        )
+        
+                    engine_removed = True
+        
+                    break
+        
+        
+            if engine_removed:
+                continue
+        
+        
+            # =================================================
+            # ОСТАВЛЯЕМ СЛОВО
+            # =================================================
+        
+            rebuilt_part_words.append(
+                word
+            )
+        
+        
+        # ====================================================
+        # ОБНОВЛЯЕМ PART WORDS
+        # ====================================================
+        
+        part_words = rebuilt_part_words
+        
+        
+        # ====================================================
+        # УБИРАЕМ ДУБЛИКАТЫ
+        # ====================================================
+        
+        unique_part_words = []
+        
+        for word in part_words:
+        
+            if (
+                word
+                and word not in unique_part_words
+            ):
+        
+                unique_part_words.append(
+                    word
+                )
+        
+        
+        part_words = unique_part_words
+        
+        
+        # ====================================================
+        # ФИНАЛЬНЫЙ DEBUG ПАРСЕРА
+        # ====================================================
+        
+        print(
+            "[SMART SEARCH] "
+            f"PARSED "
+            f"bodies={bodies} "
+            f"engine_families={engine_families_requested} "
+            f"exact_engines={exact_engine_codes} "
+            f"words={part_words} "
+            f"front_rear={front_rear} "
+            f"left_right={left_right} "
+            f"upper_lower={upper_lower}"
+        )
+        
         # ====================================================
         # РАСПОЗНАВАНИЕ СЛОВ
         # ====================================================

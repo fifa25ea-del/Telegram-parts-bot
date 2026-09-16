@@ -4269,6 +4269,100 @@ def extract_vehicle_tokens(query):
         )
 
     return vehicle_tokens
+def find_part_by_exact_number(
+    query,
+    db=None
+):
+
+    query_normalized = normalize(
+        safe_text(query)
+    )
+
+    if not query_normalized:
+        return []
+
+    # Убираем пробелы, дефисы и прочие разделители.
+    query_clean = re.sub(
+        r"[\s\-_./]+",
+        "",
+        query_normalized
+    )
+
+    if not query_clean:
+        return []
+
+    with database_lock:
+
+        database = (
+            parts_db
+            if db is None
+            else db
+        )
+
+        results = []
+
+        for item in database:
+
+            # ------------------------------------------------
+            # Артикул
+            # ------------------------------------------------
+
+            article = safe_text(
+                item.get(
+                    "Артикул",
+                    ""
+                )
+            )
+
+            article_clean = re.sub(
+                r"[\s\-_./]+",
+                "",
+                normalize(article)
+            )
+
+            # ------------------------------------------------
+            # Номер производителя
+            # ------------------------------------------------
+
+            manufacturer_number = ""
+
+            if manufacturer_number_key:
+
+                manufacturer_number = safe_text(
+                    item.get(
+                        manufacturer_number_key,
+                        ""
+                    )
+                )
+
+            manufacturer_clean = re.sub(
+                r"[\s\-_./]+",
+                "",
+                normalize(
+                    manufacturer_number
+                )
+            )
+
+            # ------------------------------------------------
+            # Проверяем точное совпадение
+            # ------------------------------------------------
+
+            if (
+                query_clean == article_clean
+                or
+                query_clean == manufacturer_clean
+            ):
+
+                results.append(
+                    item
+                )
+
+                if len(results) >= MAX_RESULTS:
+
+                    break
+
+        return results
+
 
 # ============================================================
 # УМНЫЙ ПОИСК ЗАПЧАСТЕЙ
@@ -4287,6 +4381,31 @@ def find_part_smart(
     query,
     db=None
 ):
+
+    query = safe_text(
+        query
+    )
+
+    if not query:
+        return []
+
+    # ========================================================
+    # EXACT OEM / ARTICLE SEARCH
+    # ========================================================
+
+    exact_results = find_part_by_exact_number(
+        query,
+        db=db
+    )
+
+    if exact_results:
+
+        print(
+            f"[SMART SEARCH] EXACT NUMBER FOUND: "
+            f"{query} -> {len(exact_results)}"
+        )
+
+        return exact_results
     """
     Умный поиск запчастей.
 

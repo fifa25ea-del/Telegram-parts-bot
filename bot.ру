@@ -5658,66 +5658,49 @@ def send_web_card(
         "web_source"
     )
 
-    # ========================================================
-    # AI ANSWER
-    # ========================================================
+# ========================================================
+# AI ANSWER
+# ========================================================
 
-    if result_type == "ai_answer":
+if result_type == "ai_answer":
 
-        answer = safe_text(
-            result.get(
-                "body",
-                ""
-            )
+    answer = safe_text(
+        result.get(
+            "body",
+            ""
         )
+    )
 
-        query = safe_text(
-            web_query.get(
-                chat_id,
-                ""
-            )
+    query = safe_text(
+        web_query.get(
+            chat_id,
+            ""
         )
+    )
 
-        sources = result.get(
-            "sources",
-            []
+    text = (
+        "🤖 AI-поиск\n\n"
+        f"🔎 Запрос:\n"
+        f"{query}\n\n"
+        f"{answer}"
+    )
+
+    keyboard = types.InlineKeyboardMarkup(
+        row_width=2
+    )
+
+    keyboard.add(
+
+        types.InlineKeyboardButton(
+            "⬅️ Назад",
+            callback_data="web_prev"
+        ),
+
+        types.InlineKeyboardButton(
+            "➡️ Вперед",
+            callback_data="web_next"
         )
-
-        text = (
-            "🤖 AI-поиск\n\n"
-            f"🔎 Запрос:\n"
-            f"{query}\n\n"
-            f"{answer}\n\n"
-        )
-
-        if sources:
-
-            text += (
-                f"📚 Источников найдено: "
-                f"{len(sources)}\n"
-            )
-
-        text += (
-            f"\n({index + 1}/"
-            f"{len(results)})"
-        )
-
-        keyboard = types.InlineKeyboardMarkup(
-            row_width=2
-        )
-
-        keyboard.add(
-
-            types.InlineKeyboardButton(
-                "⬅️ Назад",
-                callback_data="web_prev"
-            ),
-
-            types.InlineKeyboardButton(
-                "➡️ Вперед",
-                callback_data="web_next"
-            )
-        )
+    )
 
         # ----------------------------------------------------
         # Кнопки источников

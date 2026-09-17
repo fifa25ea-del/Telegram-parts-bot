@@ -9046,9 +9046,9 @@ def _extract_ai_sources(
 
 def ai_web_search(
     original_query,
-    prepared_query=None,
-    max_results=10
+    prepared_query=None
 ):
+
 
     if not AI_WEB_ENABLED:
 
@@ -9151,133 +9151,349 @@ OEM-номер и т.д.), это значение должно быть
 
         response = ai_client.responses.create(
             model=AI_WEB_MODEL,
-
+    
             instructions=AI_WEB_INSTRUCTIONS,
-
+    
             input=prompt,
-
+    
             tools=[
                 {
                     "type": "web_search"
                 }
             ],
-
+    
             tool_choice="auto",
-
-            max_output_tokens=6000,
-
-            text={
-                "verbosity": "medium"
+    
+            max_output_tokens=1400,
+    
+            reasoning={
+                "effort": "low"
             },
-
+    
+            text={
+                "verbosity": "low"
+            },
+    
             store=False
         )
-
+    
     except Exception as e:
-
+    
         print(
-            f"❌ [AI WEB] API ERROR: "
+            "❌ [AI WEB] API ERROR: "
             f"{repr(e)}"
         )
-
+    
         return []
-
-    answer = ""
-
+    
+    
+    # ========================================================
+    # RESPONSE DEBUG
+    # ========================================================
+    
     try:
-
-        answer = response.output_text
-
-    except Exception:
-
-        answer = ""
-
-    answer = _truncate_ai_text(
-        answer
+    
+        print(
+            "================ AI RESPONSE ================"
+        )
+    
+        print(
+            f"[AI WEB] response_id="
+            f"{getattr(response, 'id', None)}"
+        )
+    
+        print(
+            f"[AI WEB] status="
+            f"{getattr(response, 'status', None)}"
+        )
+    
+        print(
+            f"[AI WEB] incomplete_details="
+            f"{getattr(response, 'incomplete_details', None)}"
+        )
+    
+        output_items = getattr(
+            response,
+            "output",
+            []
+        )
+    
+        print(
+            f"[AI WEB] output_items="
+            f"{len(output_items)}"
+        )
+    
+        for item in output_items:
+    
+            print(
+                f"[AI WEB] "
+                f"type={getattr(item, 'type', None)} "
+                f"id={getattr(item, 'id', None)} "
+                f"status={getattr(item, 'status', None)}"
+            )
+    
+        print(
+            "============================================="
+        )
+    
+    except Exception as e:
+    
+        print(
+            "[AI WEB] Response debug error: "
+            f"{repr(e)}"
+        )
+    
+    
+    # ========================================================
+    # USAGE DEBUG
+    # ========================================================
+    
+    try:
+    
+        usage = getattr(
+            response,
+            "usage",
+            None
+        )
+    
+        print(
+            "================ AI USAGE ================"
+        )
+    
+        print(
+            f"[AI WEB] usage={usage}"
+        )
+    
+        if usage:
+    
+            input_tokens = getattr(
+                usage,
+                "input_tokens",
+                None
+            )
+    
+            output_tokens = getattr(
+                usage,
+                "output_tokens",
+                None
+            )
+    
+            total_tokens = getattr(
+                usage,
+                "total_tokens",
+                None
+            )
+    
+            print(
+                f"[AI WEB] input_tokens="
+                f"{input_tokens}"
+            )
+    
+            print(
+                f"[AI WEB] output_tokens="
+                f"{output_tokens}"
+            )
+    
+            print(
+                f"[AI WEB] total_tokens="
+                f"{total_tokens}"
+            )
+    
+            server_tool_use = getattr(
+                usage,
+                "server_tool_use_details",
+                None
+            )
+    
+            print(
+                f"[AI WEB] server_tool_use="
+                f"{server_tool_use}"
+            )
+    
+            if server_tool_use:
+    
+                if isinstance(
+                    server_tool_use,
+                    dict
+                ):
+    
+                    web_search_requests = (
+                        server_tool_use.get(
+                            "web_search_requests",
+                            0
+                        )
+                    )
+    
+                else:
+    
+                    web_search_requests = getattr(
+                        server_tool_use,
+                        "web_search_requests",
+                        0
+                    )
+    
+                print(
+                    f"[AI WEB] web_search_requests="
+                    f"{web_search_requests}"
+                )
+    
+        print(
+            "==========================================="
+        )
+    
+    except Exception as e:
+    
+        print(
+            "[AI WEB] Usage debug error: "
+            f"{repr(e)}"
+        )
+    
+    
+    # ========================================================
+    # AI ANSWER
+    # ========================================================
+    
+    answer = ""
+    
+    try:
+    
+        answer = safe_text(
+            getattr(
+                response,
+                "output_text",
+                ""
+            )
+        ).strip()
+    
+    except Exception as e:
+    
+        print(
+            "[AI WEB] output_text error: "
+            f"{repr(e)}"
+        )
+    
+    
+    print(
+        f"[AI WEB] output_text length="
+        f"{len(answer)}"
     )
-
-    sources = _extract_ai_sources(
-        response
-    )
-
+    
+    if answer:
+    
+        print(
+            f"[AI WEB] answer="
+            f"{answer[:1500]}"
+        )
+    
+    else:
+    
+        print(
+            "[AI WEB] ❌ EMPTY OUTPUT TEXT"
+        )
+    
+    
+    # ========================================================
+    # SOURCES
+    # ========================================================
+    
+    sources = []
+    
+    try:
+    
+        sources = _extract_ai_sources(
+            response
+        )
+    
+    except Exception as e:
+    
+        print(
+            "[AI WEB] Source extraction error: "
+            f"{repr(e)}"
+        )
+    
+        sources = []
+    
+    
     print(
         f"[AI WEB] Sources: "
         f"{len(sources)}"
     )
-
+    
+    
+    # ========================================================
+    # FALLBACK
+    # ========================================================
+    
     if not answer:
-
+    
+        print(
+            "[AI WEB] "
+            "❌ AI SEARCH COMPLETED "
+            "BUT NO TEXT ANSWER"
+        )
+    
         answer = (
             "❌ Не удалось сформировать "
             "ответ по найденной информации."
         )
-
-    results = []
-
-    # --------------------------------------------------------
-    # ПЕРВАЯ КАРТОЧКА — AI ОТВЕТ
-    # --------------------------------------------------------
-
-    results.append(
+    
+    
+    # ========================================================
+    # TRUNCATE
+    # ========================================================
+    
+    answer = _truncate_ai_text(
+        answer
+    )
+    
+    
+    # ========================================================
+    # ONE RESULT ONLY
+    # ========================================================
+    
+    results = [
         {
             "type": "ai_answer",
-
+    
             "title": "AI-поиск",
-
+    
             "url": (
-                sources[0]["url"]
+                sources[0].get(
+                    "url",
+                    ""
+                )
                 if sources
                 else ""
             ),
-
+    
             "body": answer,
-
+    
             "excerpt": answer,
-
+    
+            # Источники сохраняются здесь,
+            # но отдельными карточками НЕ выводятся.
             "sources": sources,
-
+    
             "query": original_query
         }
+    ]
+    
+    
+    print(
+        "[AI WEB] Returning ONE result only"
     )
-
-    # --------------------------------------------------------
-    # ДАЛЬШЕ — ОТДЕЛЬНЫЕ ИСТОЧНИКИ
-    # --------------------------------------------------------
-
-    for source in sources:
-
-        if len(results) >= max_results:
-
-            break
-
-        results.append(
-            {
-                "type": "web_source",
-
-                "title": source.get(
-                    "title",
-                    "Источник"
-                ),
-
-                "url": source.get(
-                    "url",
-                    ""
-                ),
-
-                "body": source.get(
-                    "description",
-                    ""
-                ),
-
-                "excerpt": source.get(
-                    "description",
-                    ""
-                )
-            }
-        )
-
+    
+    print(
+        f"[AI WEB] Sources attached: "
+        f"{len(sources)}"
+    )
+    
+    print(
+        f"[AI WEB] Results returned: "
+        f"{len(results)}"
+    )
+    
     return results
-
 
 # ============================================================
 # SEARCH
@@ -9314,120 +9530,133 @@ def perform_search(
         print(
             f"🌐 WEB SEARCH: {query}"
         )
-
+    
         log_search(
             chat_id,
             query,
             "web"
         )
-
+    
         show_loading_message(
             chat_id,
             "⏳ Пожалуйста, подождите...\n"
             "🧠 Анализируем запрос и ищем информацию..."
         )
-
+    
         try:
-
+    
             search_query = improve_web_query(
                 query
             )
-
+    
             print(
                 f"[WEB SEARCH] Original: "
                 f"{query}"
             )
-
+    
             print(
                 f"[WEB SEARCH] Improved: "
                 f"{search_query}"
             )
-
+    
+            # ----------------------------------------------------
+            # Сначала настоящий AI Web Search.
+            # ----------------------------------------------------
+    
             results = []
-
+    
             if AI_WEB_ENABLED:
-
+    
                 results = ai_web_search(
                     query,
                     search_query,
                     max_results=WEB_MAX_RESULTS
                 )
-
+    
+            # ----------------------------------------------------
+            # Fallback:
+            # если AI недоступен или произошла ошибка,
+            # используем твой старый web_search().
+            # ----------------------------------------------------
+    
             if not results:
-
+    
                 print(
                     "⚠️ AI WEB unavailable. "
                     "Using legacy web search."
                 )
-
+    
                 results = web_search(
                     search_query,
                     max_results=WEB_MAX_RESULTS
                 )
-
+    
         except Exception as e:
-
+    
             print(
                 f"[WEB SEARCH] Error: "
                 f"{repr(e)}"
             )
-
+    
+            # ----------------------------------------------------
+            # Последняя попытка — старый поиск.
+            # ----------------------------------------------------
+    
             try:
-
+    
                 results = web_search(
                     query,
                     max_results=WEB_MAX_RESULTS
                 )
-
+    
             except Exception as fallback_error:
-
+    
                 print(
                     f"[WEB SEARCH FALLBACK] "
                     f"{repr(fallback_error)}"
                 )
-
+    
                 results = []
-
+    
         hide_loading_message(
             chat_id
         )
-
+    
         if not results:
-
+    
             log_search(
                 chat_id,
                 query,
                 "NOT_FOUND_WEB"
             )
-
+    
             bot.send_message(
                 chat_id,
                 "❌ В интернете ничего "
                 "подходящего не найдено.\n\n"
                 "Попробуйте изменить запрос."
             )
-
+    
             return
-
+    
         web_results[
             chat_id
         ] = results
-
+    
         web_index[
             chat_id
         ] = 0
-
+    
         web_query[
             chat_id
         ] = query
-
+    
         send_web_card(
             chat_id,
             0
         )
-
+    
         return
-
     # --------------------------------------------------------
     # PARTS
     # --------------------------------------------------------

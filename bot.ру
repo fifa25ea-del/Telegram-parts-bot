@@ -6711,10 +6711,10 @@ OEM-номер и т.д.), это значение должно быть
 
             tool_choice="auto",
 
-            max_output_tokens=6000,
+            max_output_tokens=1500,
 
             text={
-                "verbosity": "medium"
+                "verbosity": "low"
             },
 
             store=False

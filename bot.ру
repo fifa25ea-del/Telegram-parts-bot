@@ -4420,17 +4420,35 @@ def find_part_smart(
     """
     Умный поиск запчастей.
 
-    Логика:
+    Поддерживает:
 
-    1. OEM ищется отдельным точным поиском.
-    2. Кузов — жёсткий фильтр.
-    3. Двигатель — жёсткий фильтр, если указан.
-    4. F/B, L/R, U/D — фильтры.
-    5. Название детали — основной критерий.
-    6. AMG и другие модификаторы НЕ являются обязательными.
-    7. Если пользователь указал только название детали
-       без кузова/двигателя/направления — просим кузов.
-    8. Всегда возвращается список.
+    - OEM / артикулы
+    - кузова Mercedes-Benz
+    - семейства двигателей
+    - точные коды двигателей
+    - перед / зад
+    - лево / право
+    - верх / низ
+    - AMG и другие модификаторы
+    - цвет детали
+
+    ВАЖНО:
+
+    Цвет является отдельным параметром поиска.
+
+    Поддерживаются варианты:
+
+        зеркало левое цвет 775 w212
+        зеркало левое 775 цвет w212
+        зеркало левое цвет:775 w212
+        зеркало левое цвет-775 w212
+
+    Если цвет указан, деталь должна соответствовать
+    указанному цвету.
+
+    Если цвет не указан, фильтра по цвету нет.
+
+    Всегда возвращается список.
     """
 
     # ========================================================
@@ -4496,10 +4514,19 @@ def find_part_smart(
             "Верх/Низ (U/D)"
         )
 
+        color_key = globals().get(
+            "color_key",
+            "Цвет"
+        )
+
         MAX = globals().get(
             "MAX_RESULTS",
             20
         )
+
+        # ====================================================
+        # DEBUG
+        # ====================================================
 
         print(
             "[SMART SEARCH] QUERY:",
@@ -4511,6 +4538,12 @@ def find_part_smart(
         # ====================================================
 
         def normalize_text(value):
+            """
+            Нормализация текста.
+
+            Кириллица и латиница сохраняются.
+            Разделители превращаются в пробел.
+            """
 
             if value is None:
                 return ""
@@ -4540,12 +4573,35 @@ def find_part_smart(
             return value
 
         def compact(value):
+            """
+            Удаляет разделители.
+
+            Например:
+
+            A 204 500 04 93
+            ->
+            a2045000493
+            """
 
             return re.sub(
-                r"[^a-zа-я0-9]+",
+                r"[^a-zа-яё0-9]+",
                 "",
                 normalize_text(value)
             )
+
+        def unique(values):
+
+            result = []
+
+            for value in values:
+
+                if (
+                    value
+                    and value not in result
+                ):
+                    result.append(value)
+
+            return result
 
         def add_unique(
             target,
@@ -4564,10 +4620,12 @@ def find_part_smart(
 
         def normalize_oem(value):
 
-            if value is None:
-                return ""
+            value = safe_text(
+                value
+            ).lower().strip()
 
-            value = str(value).lower().strip()
+            if not value:
+                return ""
 
             value = re.sub(
                 r"[\s\-_.\/]+",
@@ -4575,13 +4633,202 @@ def find_part_smart(
                 value
             )
 
+            if re.search(
+                r"[а-яё]",
+                value,
+                flags=re.IGNORECASE
+            ):
+                return value
+
             value = re.sub(
-                r"[^a-zа-я0-9]",
+                r"[^a-z0-9]",
                 "",
                 value
             )
 
             return value
+
+        # ====================================================
+        # OEM DETECTION
+        # ====================================================
+
+        oem_candidate = re.sub(
+            r"[\s\-_.\/]+",
+            "",
+            query
+        ).lower()
+
+        is_oem_query = False
+
+        if re.fullmatch(
+            r"a\d{8,}",
+            oem_candidate,
+            flags=re.IGNORECASE
+        ):
+
+            is_oem_query = True
+
+        elif re.fullmatch(
+            r"\d{8,}",
+            oem_candidate
+        ):
+
+            is_oem_query = True
+
+        elif (
+            len(oem_candidate) >= 8
+            and re.fullmatch(
+                r"[a-z0-9]+",
+                oem_candidate
+            )
+            and re.search(
+                r"[a-z]",
+                oem_candidate
+            )
+            and re.search(
+                r"\d",
+                oem_candidate
+            )
+        ):
+
+            is_oem_query = True
+
+        normalized_oem_query = normalize_oem(
+            query
+        )
+
+        print(
+            "[SMART SEARCH] "
+            f"OEM: {is_oem_query} "
+            f"{normalized_oem_query}"
+        )
+
+        # ====================================================
+        # EXACT OEM SEARCH
+        # ====================================================
+
+        if is_oem_query:
+
+            oem_matches = []
+
+            for position, part in enumerate(
+                database
+            ):
+
+                if not isinstance(
+                    part,
+                    dict
+                ):
+                    continue
+
+                article = normalize_oem(
+                    part.get(
+                        "Артикул",
+                        ""
+                    )
+                )
+
+                manufacturer = normalize_oem(
+                    part.get(
+                        "Номер производителя",
+                        ""
+                    )
+                )
+
+                cross_raw = safe_text(
+                    part.get(
+                        "Кросс-номера",
+                        ""
+                    )
+                )
+
+                cross_numbers = []
+
+                for value in re.split(
+                    r"[,;/|\n]+",
+                    cross_raw
+                ):
+
+                    normalized = normalize_oem(
+                        value
+                    )
+
+                    if normalized:
+                        cross_numbers.append(
+                            normalized
+                        )
+
+                match_type = None
+
+                if (
+                    article
+                    and article
+                    == normalized_oem_query
+                ):
+
+                    match_type = "article"
+
+                elif (
+                    manufacturer
+                    and manufacturer
+                    == normalized_oem_query
+                ):
+
+                    match_type = "manufacturer"
+
+                elif (
+                    normalized_oem_query
+                    in cross_numbers
+                ):
+
+                    match_type = "cross"
+
+                if match_type:
+
+                    priority = {
+                        "article": 0,
+                        "manufacturer": 1,
+                        "cross": 2,
+                    }
+
+                    oem_matches.append(
+                        (
+                            priority[match_type],
+                            position,
+                            part
+                        )
+                    )
+
+            oem_matches.sort(
+                key=lambda item: (
+                    item[0],
+                    item[1]
+                )
+            )
+
+            if oem_matches:
+
+                print(
+                    "[SMART SEARCH] "
+                    f"OEM FOUND "
+                    f"count={len(oem_matches)}"
+                )
+
+                return [
+                    part
+                    for (
+                        priority,
+                        position,
+                        part
+                    ) in oem_matches[:MAX]
+                ]
+
+            print(
+                "[SMART SEARCH] "
+                "OEM NOT FOUND"
+            )
+
+            return []
 
         # ====================================================
         # BODY ALIASES
@@ -4634,15 +4881,12 @@ def find_part_smart(
             "213": "w213",
 
             "c207": "c207",
-
-            # ВАЖНО:
-            # 207 — это C207 в нашем поиске.
-            "207": "c207",
+            "207": "w207",
+            "w207": "w207",
 
             "c218": "c218",
             "218": "c218",
-
-            "w218": "w218",
+            "w218": "c218",
 
             "w220": "w220",
             "220": "w220",
@@ -4686,34 +4930,90 @@ def find_part_smart(
                 "x166"
             },
 
-            "w140": {"w140"},
-            "w163": {"w163"},
-            "w202": {"w202"},
-            "w203": {"w203"},
-            "w204": {"w204"},
-            "w205": {"w205"},
-            "w208": {"w208"},
-            "w209": {"w209"},
-            "w210": {"w210"},
-            "w211": {"w211"},
-            "w212": {"w212"},
-            "w213": {"w213"},
+            "w212": {
+                "w212"
+            },
 
-            "c207": {"c207"},
+            "c207": {
+                "c207"
+            },
 
-            "c218": {"c218"},
-            "w218": {"w218"},
+            "w207": {
+                "w207",
+                "c207"
+            },
 
-            "w220": {"w220"},
-            "w221": {"w221"},
-            "w222": {"w222"},
+            "c218": {
+                "c218"
+            },
 
-            "c215": {"c215"},
-            "c216": {"c216"},
+            "w140": {
+                "w140"
+            },
+
+            "w163": {
+                "w163"
+            },
+
+            "w202": {
+                "w202"
+            },
+
+            "w203": {
+                "w203"
+            },
+
+            "w204": {
+                "w204"
+            },
+
+            "w205": {
+                "w205"
+            },
+
+            "w208": {
+                "w208"
+            },
+
+            "w209": {
+                "w209"
+            },
+
+            "w210": {
+                "w210"
+            },
+
+            "w211": {
+                "w211"
+            },
+
+            "w213": {
+                "w213"
+            },
+
+            "w220": {
+                "w220"
+            },
+
+            "w221": {
+                "w221"
+            },
+
+            "w222": {
+                "w222"
+            },
+
+            "c215": {
+                "c215"
+            },
+
+            "c216": {
+                "c216"
+            },
         }
 
         # ====================================================
-        # ENGINE FAMILIES
+        # ENGINE ALIASES
         # ====================================================
 
         engine_families = {
@@ -4764,10 +5064,6 @@ def find_part_smart(
             "654": "om654",
         }
 
-        known_engine_families = set(
-            engine_families.values()
-        )
-
         # ====================================================
         # DIRECTIONS
         # ====================================================
@@ -4798,6 +5094,7 @@ def find_part_smart(
             "левая",
             "левое",
             "лев",
+            "левые",
             "left",
             "l",
         }
@@ -4834,55 +5131,10 @@ def find_part_smart(
         }
 
         # ====================================================
-        # PART ALIASES
-        # ====================================================
-
-        part_aliases = {
-
-            "амг": "amg",
-            "amg": "amg",
-
-            "бампер": "бампер",
-            "bumper": "бампер",
-
-            "фара": "фара",
-            "фары": "фара",
-            "headlight": "фара",
-
-            "капот": "капот",
-            "hood": "капот",
-
-            "дверь": "дверь",
-            "двери": "дверь",
-            "door": "дверь",
-
-            "крыло": "крыло",
-            "крылья": "крыло",
-            "fender": "крыло",
-
-            "зеркало": "зеркало",
-            "mirror": "зеркало",
-
-            "решетка": "решетка",
-            "решетка": "решетка",
-            "grille": "решетка",
-
-            "радиатор": "радиатор",
-            "radiator": "радиатор",
-
-            "усилитель": "усилитель",
-
-            "крепление": "крепление",
-
-            "защита": "защита",
-        }
-
-        # ====================================================
-        # MODIFIERS
+        # NON-CRITICAL MODIFIERS
         # ====================================================
 
         modifiers = {
-
             "amg",
             "sport",
             "sportline",
@@ -4891,8 +5143,6 @@ def find_part_smart(
             "elegance",
             "luxury",
             "premium",
-
-            "рестайлинг",
             "рестайлинг",
             "рестайл",
             "дорестайлинг",
@@ -4904,26 +5154,38 @@ def find_part_smart(
         }
 
         # ====================================================
-        # TOKENIZE
+        # COLOR KEYWORDS
+        # ====================================================
+
+        color_words = {
+            "цвет",
+            "цвета",
+            "color",
+            "colour",
+        }
+
+        # ====================================================
+        # NORMALIZED QUERY
         # ====================================================
 
         normalized_query = normalize_text(
             query
         )
 
+        print(
+            "[SMART SEARCH] "
+            f"NORMALIZED: {normalized_query}"
+        )
+
         tokens = re.findall(
-            r"[a-zа-я0-9]+",
-            normalized_query
+            r"[a-zа-яё0-9]+",
+            normalized_query,
+            flags=re.IGNORECASE
         )
 
         print(
-            "[SMART SEARCH] NORMALIZED:",
-            normalized_query
-        )
-
-        print(
-            "[SMART SEARCH] TOKENS:",
-            tokens
+            "[SMART SEARCH] "
+            f"TOKENS: {tokens}"
         )
 
         # ====================================================
@@ -4940,160 +5202,246 @@ def find_part_smart(
 
         requested_modifiers = []
 
+        requested_color = None
+
         front_rear = None
         left_right = None
         upper_lower = None
 
         # ====================================================
-        # ENGINE PARSER
+        # COLOR PARSER
         # ====================================================
 
-        def parse_engine_token(token):
+        def clean_color_value(value):
 
-            value = compact(token)
+            if value is None:
+                return ""
+
+            value = safe_text(
+                value
+            ).strip()
 
             if not value:
-                return None, None
+                return ""
 
-            value = re.sub(
-                r"^(m|om)",
-                "",
-                value
+            value = value.strip(
+                " \t\r\n:;,-=/\\"
             )
 
-            # Полный код:
-            #
-            # 274920
-            # M274920
-            # OM642850
-
-            if re.fullmatch(
-                r"\d{6}",
+            return normalize_text(
                 value
-            ):
+            ).strip()
 
-                family_digits = value[:3]
+        # ====================================================
+        # PRE-PARSE COLOR PATTERNS
+        # ====================================================
 
-                for family in known_engine_families:
+        # Удаляем составные варианты:
+        #
+        # цвет:775
+        # цвет-775
+        # цвет=775
+        #
+        # чтобы значение цвета не попало
+        # в part_words.
 
-                    known_digits = re.sub(
-                        r"^(m|om)",
-                        "",
-                        family
-                    )
+        color_inline_pattern = re.compile(
+            r"(?:^|\s)"
+            r"(?:цвет|цвета|color|colour)"
+            r"\s*[:=\-]?\s*"
+            r"([a-zа-я0-9]+)"
+            r"(?:\s|$)",
+            flags=re.IGNORECASE
+        )
+
+        inline_color_match = color_inline_pattern.search(
+            normalized_query
+        )
+
+        if inline_color_match:
+
+            possible_color = clean_color_value(
+                inline_color_match.group(1)
+            )
+
+            if possible_color:
+
+                # Не принимаем направление,
+                # кузов или служебное слово за цвет.
+
+                if possible_color not in body_aliases:
 
                     if (
-                        family_digits
-                        == known_digits
+                        possible_color
+                        not in engine_families
                     ):
 
-                        return (
-                            family,
-                            value
-                        )
+                        if (
+                            possible_color
+                            not in front_words
+                        ):
 
-                return (
-                    None,
-                    value
-                )
+                            if (
+                                possible_color
+                                not in rear_words
+                            ):
 
-            # Семейство:
-            #
-            # 274
-            # M274
+                                if (
+                                    possible_color
+                                    not in left_words
+                                ):
 
-            if re.fullmatch(
-                r"\d{3}",
-                value
-            ):
+                                    if (
+                                        possible_color
+                                        not in right_words
+                                    ):
 
-                for family in known_engine_families:
-
-                    known_digits = re.sub(
-                        r"^(m|om)",
-                        "",
-                        family
-                    )
-
-                    if value == known_digits:
-
-                        return (
-                            family,
-                            None
-                        )
-
-            return (
-                None,
-                None
-            )
-
-        # ====================================================
-        # BODY EXTRACTION FROM TOKEN
-        # ====================================================
-
-        def extract_body_from_token(
-            token
-        ):
-
-            word = token.lower()
-
-            for alias in sorted(
-                body_aliases.keys(),
-                key=len,
-                reverse=True
-            ):
-
-                if (
-                    word.startswith(alias)
-                    and len(word) > len(alias)
-                ):
-
-                    body = body_aliases[
-                        alias
-                    ]
-
-                    remainder = word[
-                        len(alias):
-                    ]
-
-                    return (
-                        body,
-                        remainder
-                    )
-
-                if (
-                    word.endswith(alias)
-                    and len(word) > len(alias)
-                ):
-
-                    body = body_aliases[
-                        alias
-                    ]
-
-                    remainder = word[
-                        :-len(alias)
-                    ]
-
-                    return (
-                        body,
-                        remainder
-                    )
-
-            return (
-                None,
-                None
-            )
+                                        requested_color = (
+                                            possible_color
+                                        )
 
         # ====================================================
         # TOKEN PARSER
         # ====================================================
 
-        for token in tokens:
+        i = 0
+
+        while i < len(tokens):
+
+            token = tokens[i]
 
             word = token.lower().replace(
                 "ё",
                 "е"
             )
+
+            # ------------------------------------------------
+            # COLOR KEYWORD
+            # ------------------------------------------------
+
+            if word in color_words:
+
+                # Если цвет уже найден через inline parser,
+                # просто пропускаем слово "цвет".
+
+                if requested_color:
+
+                    i += 1
+                    continue
+
+                # Следующий токен может быть значением цвета.
+
+                if (
+                    i + 1
+                    < len(tokens)
+                ):
+
+                    next_word = tokens[
+                        i + 1
+                    ].lower().replace(
+                        "ё",
+                        "е"
+                    )
+
+                    # Следующий токен не должен быть
+                    # кузовом / двигателем / направлением.
+
+                    next_is_body = (
+                        next_word
+                        in body_aliases
+                    )
+
+                    next_is_engine = (
+                        compact(next_word)
+                        in engine_families
+                    )
+
+                    next_is_direction = (
+                        next_word in front_words
+                        or next_word in rear_words
+                        or next_word in left_words
+                        or next_word in right_words
+                        or next_word in upper_words
+                        or next_word in lower_words
+                    )
+
+                    if not (
+                        next_is_body
+                        or next_is_engine
+                        or next_is_direction
+                    ):
+
+                        possible_color = clean_color_value(
+                            next_word
+                        )
+
+                        if possible_color:
+
+                            requested_color = (
+                                possible_color
+                            )
+
+                            i += 2
+                            continue
+
+                # Цвет без значения.
+                i += 1
+                continue
+
+            # ------------------------------------------------
+            # COLOR VALUE BEFORE "COLOR"
+            #
+            # 775 цвет
+            # ------------------------------------------------
+
+            if (
+                i + 1
+                < len(tokens)
+                and tokens[i + 1].lower().replace(
+                    "ё",
+                    "е"
+                ) in color_words
+                and requested_color is None
+            ):
+
+                possible_color = clean_color_value(
+                    word
+                )
+
+                # Проверяем, что это действительно
+                # не кузов / двигатель / направление.
+
+                possible_is_body = (
+                    word in body_aliases
+                )
+
+                possible_is_engine = (
+                    compact(word)
+                    in engine_families
+                )
+
+                possible_is_direction = (
+                    word in front_words
+                    or word in rear_words
+                    or word in left_words
+                    or word in right_words
+                    or word in upper_words
+                    or word in lower_words
+                )
+
+                if (
+                    possible_color
+                    and not possible_is_body
+                    and not possible_is_engine
+                    and not possible_is_direction
+                ):
+
+                    requested_color = (
+                        possible_color
+                    )
+
+                    i += 2
+                    continue
 
             # ------------------------------------------------
             # BODY
@@ -5106,54 +5454,149 @@ def find_part_smart(
                     body_aliases[word]
                 )
 
+                i += 1
                 continue
 
-            body, remainder = (
-                extract_body_from_token(
-                    word
-                )
-            )
-
-            if body:
-
-                add_unique(
-                    bodies,
-                    body
-                )
-
-                if remainder:
-
-                    # Остаток повторно разбираем
-                    # как обычное слово.
-
-                    word = remainder
-
-                else:
-
-                    continue
-
             # ------------------------------------------------
-            # ENGINE
+            # BODY ATTACHED
+            #
+            # бамперw218
+            # w218бампер
             # ------------------------------------------------
 
-            family, exact_code = (
-                parse_engine_token(word)
+            body_found = False
+
+            for alias in sorted(
+                body_aliases.keys(),
+                key=len,
+                reverse=True
+            ):
+
+                if (
+                    word.endswith(alias)
+                    and len(word) > len(alias)
+                ):
+
+                    add_unique(
+                        bodies,
+                        body_aliases[alias]
+                    )
+
+                    prefix = word[
+                        :-len(alias)
+                    ]
+
+                    if prefix:
+
+                        add_unique(
+                            part_words,
+                            prefix
+                        )
+
+                    body_found = True
+                    break
+
+                if (
+                    word.startswith(alias)
+                    and len(word) > len(alias)
+                ):
+
+                    add_unique(
+                        bodies,
+                        body_aliases[alias]
+                    )
+
+                    suffix = word[
+                        len(alias):
+                    ]
+
+                    if suffix:
+
+                        add_unique(
+                            part_words,
+                            suffix
+                        )
+
+                    body_found = True
+                    break
+
+            if body_found:
+
+                i += 1
+                continue
+
+            # ------------------------------------------------
+            # EXACT ENGINE CODE
+            #
+            # 271860
+            # M271860
+            # OM642850
+            # ------------------------------------------------
+
+            compact_word = compact(
+                word
             )
 
-            if family:
+            engine_match = re.fullmatch(
+                r"(?:m|om)?(\d{6})",
+                compact_word,
+                flags=re.IGNORECASE
+            )
+
+            if engine_match:
+
+                digits = engine_match.group(1)
+
+                family_digits = digits[:3]
+
+                for family in set(
+                    engine_families.values()
+                ):
+
+                    known_digits = re.sub(
+                        r"^(?:m|om)",
+                        "",
+                        family,
+                        flags=re.IGNORECASE
+                    )
+
+                    if (
+                        family_digits
+                        == known_digits
+                    ):
+
+                        add_unique(
+                            requested_engine_families,
+                            family
+                        )
+
+                        add_unique(
+                            requested_engine_codes,
+                            digits
+                        )
+
+                        break
+
+                i += 1
+                continue
+
+            # ------------------------------------------------
+            # ENGINE FAMILY
+            # ------------------------------------------------
+
+            if (
+                compact_word
+                in engine_families
+            ):
 
                 add_unique(
                     requested_engine_families,
-                    family
+                    engine_families[
+                        compact_word
+                    ]
                 )
 
-                if exact_code:
-
-                    add_unique(
-                        requested_engine_codes,
-                        exact_code
-                    )
-
+                i += 1
                 continue
 
             # ------------------------------------------------
@@ -5164,12 +5607,14 @@ def find_part_smart(
 
                 front_rear = "F"
 
+                i += 1
                 continue
 
             if word in rear_words:
 
                 front_rear = "B"
 
+                i += 1
                 continue
 
             # ------------------------------------------------
@@ -5180,12 +5625,14 @@ def find_part_smart(
 
                 left_right = "L"
 
+                i += 1
                 continue
 
             if word in right_words:
 
                 left_right = "R"
 
+                i += 1
                 continue
 
             # ------------------------------------------------
@@ -5196,12 +5643,14 @@ def find_part_smart(
 
                 upper_lower = "U"
 
+                i += 1
                 continue
 
             if word in lower_words:
 
                 upper_lower = "D"
 
+                i += 1
                 continue
 
             # ------------------------------------------------
@@ -5215,39 +5664,42 @@ def find_part_smart(
                     word
                 )
 
+                i += 1
                 continue
 
             # ------------------------------------------------
-            # PART ALIAS
+            # PART ALIASES
             # ------------------------------------------------
+
+            part_aliases = {
+                "амг": "amg",
+            }
 
             if word in part_aliases:
 
-                canonical = part_aliases[
+                alias_value = part_aliases[
                     word
                 ]
 
-                # AMG здесь уже не должен попасть,
-                # потому что он обработан выше.
-
-                if canonical == "amg":
+                if alias_value in modifiers:
 
                     add_unique(
                         requested_modifiers,
-                        "amg"
+                        alias_value
                     )
 
                 else:
 
                     add_unique(
                         part_words,
-                        canonical
+                        alias_value
                     )
 
+                i += 1
                 continue
 
             # ------------------------------------------------
-            # ORDINARY PART WORD
+            # PART WORD
             # ------------------------------------------------
 
             add_unique(
@@ -5255,9 +5707,10 @@ def find_part_smart(
                 word
             )
 
+            i += 1
+
         # ====================================================
-        # SECOND PASS:
-        # SPLIT COMBINED WORDS
+        # SECONDARY SPLIT
         # ====================================================
 
         rebuilt_words = []
@@ -5269,38 +5722,46 @@ def find_part_smart(
 
             handled = False
 
-            # ------------------------------------------------
-            # BODY
-            # ------------------------------------------------
+            # -----------------------------------------------
+            # WORD + BODY
+            # -----------------------------------------------
 
-            body, remainder = (
-                extract_body_from_token(
-                    word
-                )
-            )
+            for alias in sorted(
+                body_aliases.keys(),
+                key=len,
+                reverse=True
+            ):
 
-            if body:
-
-                add_unique(
-                    bodies,
-                    body
-                )
-
-                if remainder:
+                if (
+                    word.endswith(alias)
+                    and len(word) > len(alias)
+                ):
 
                     add_unique(
-                        rebuilt_words,
-                        remainder
+                        bodies,
+                        body_aliases[alias]
                     )
 
-                handled = True
+                    prefix = word[
+                        :-len(alias)
+                    ]
+
+                    if prefix:
+
+                        add_unique(
+                            rebuilt_words,
+                            prefix
+                        )
+
+                    handled = True
+                    break
 
             if handled:
                 continue
 
-            # ------------------------------------------------
-            # ENGINE
-            # ------------------------------------------------
+            # -----------------------------------------------
+            # WORD + ENGINE
+            # -----------------------------------------------
 
             for alias in sorted(
                 engine_families.keys(),
@@ -5330,42 +5791,10 @@ def find_part_smart(
                         )
 
                     handled = True
-
                     break
 
             if handled:
                 continue
-
-            # ------------------------------------------------
-            # AMG ATTACHED TO PART
-            #
-            # бамперамг
-            # bumperamg
-            # ------------------------------------------------
-
-            if word.endswith("amg"):
-
-                prefix = word[
-                    :-3
-                ]
-
-                if prefix:
-
-                    add_unique(
-                        rebuilt_words,
-                        prefix
-                    )
-
-                add_unique(
-                    requested_modifiers,
-                    "amg"
-                )
-
-                continue
-
-            # ------------------------------------------------
-            # ORDINARY WORD
-            # ------------------------------------------------
 
             add_unique(
                 rebuilt_words,
@@ -5375,33 +5804,25 @@ def find_part_smart(
         part_words = rebuilt_words
 
         # ====================================================
-        # REMOVE MODIFIERS THAT ACCIDENTALLY ENTERED PARTS
-        # ====================================================
-
-        part_words = [
-            word
-            for word in part_words
-            if word not in modifiers
-        ]
-
-        # ====================================================
         # DEBUG PARSED
         # ====================================================
 
         print(
-            "[SMART SEARCH] PARSED: "
+            "[SMART SEARCH] "
+            f"PARSED: "
             f"bodies={bodies} "
             f"engines={requested_engine_families} "
             f"exact_engines={requested_engine_codes} "
             f"words={part_words} "
             f"modifiers={requested_modifiers} "
+            f"color={requested_color} "
             f"front_rear={front_rear} "
             f"left_right={left_right} "
             f"upper_lower={upper_lower}"
         )
 
         # ====================================================
-        # ONLY PART NAME
+        # ONLY PART NAME?
         # ====================================================
 
         only_part_name = (
@@ -5412,6 +5833,7 @@ def find_part_smart(
             and not front_rear
             and not left_right
             and not upper_lower
+            and not requested_color
         )
 
         if only_part_name:
@@ -5428,26 +5850,35 @@ def find_part_smart(
             return []
 
         # ====================================================
-        # ENGINE INFO FROM DATABASE
+        # ENGINE NORMALIZATION
         # ====================================================
+
+        known_engine_families = set(
+            engine_families.values()
+        )
 
         def engine_info(value):
 
-            value = compact(value)
+            value = compact(
+                value
+            )
 
             if not value:
+
                 return (
                     None,
                     None
                 )
 
             value = re.sub(
-                r"^(m|om)",
+                r"^(?:m|om)",
                 "",
                 value
             )
 
-            # 274920
+            # -----------------------------------------------
+            # FULL ENGINE CODE
+            # -----------------------------------------------
 
             if re.fullmatch(
                 r"\d{6}",
@@ -5458,15 +5889,16 @@ def find_part_smart(
 
                 for family in known_engine_families:
 
-                    known_digits = re.sub(
-                        r"^(m|om)",
+                    family_digits_known = re.sub(
+                        r"^(?:m|om)",
                         "",
-                        family
+                        family,
+                        flags=re.IGNORECASE
                     )
 
                     if (
                         family_digits
-                        == known_digits
+                        == family_digits_known
                     ):
 
                         return (
@@ -5479,7 +5911,9 @@ def find_part_smart(
                     value
                 )
 
-            # 274
+            # -----------------------------------------------
+            # FAMILY
+            # -----------------------------------------------
 
             if re.fullmatch(
                 r"\d{3}",
@@ -5488,13 +5922,17 @@ def find_part_smart(
 
                 for family in known_engine_families:
 
-                    known_digits = re.sub(
-                        r"^(m|om)",
+                    family_digits = re.sub(
+                        r"^(?:m|om)",
                         "",
-                        family
+                        family,
+                        flags=re.IGNORECASE
                     )
 
-                    if value == known_digits:
+                    if (
+                        value
+                        == family_digits
+                    ):
 
                         return (
                             family,
@@ -5507,34 +5945,126 @@ def find_part_smart(
             )
 
         # ====================================================
-        # TOKEN MATCH
+        # SEARCH
+        # ====================================================
+
+        candidates = []
+
+        # ====================================================
+        # FIELD TOKEN MATCHING
         # ====================================================
 
         def token_in_text(
             token,
             text
         ):
+            """
+            Ищет отдельное слово,
+            но также допускает вхождение
+            в составное название.
+            """
 
             if not token or not text:
+
                 return False
 
-            text_tokens = re.findall(
-                r"[a-zа-я0-9]+",
-                text.lower()
+            text_tokens = set(
+                re.findall(
+                    r"[a-zа-яё0-9]+",
+                    text.lower(),
+                    flags=re.IGNORECASE
+                )
             )
 
             if token in text_tokens:
+
                 return True
 
-            # Для словоформ:
-            #
-            # бампер
-            # бампера
-            # бампером
+            if token in text:
+
+                return True
+
+            return False
+
+        # ====================================================
+        # COLOR MATCHING
+        # ====================================================
+
+        def color_matches(
+            requested,
+            candidate
+        ):
+            """
+            Проверка цвета.
+
+            Используется compact(),
+            поэтому:
+
+                775
+                775
+                7 75
+
+            сравниваются устойчиво.
+
+            Также поддерживается текстовый цвет.
+            """
+
+            requested_normalized = normalize_text(
+                requested
+            )
+
+            candidate_normalized = normalize_text(
+                candidate
+            )
+
+            if not requested_normalized:
+
+                return True
+
+            if not candidate_normalized:
+
+                return False
 
             if (
-                len(token) >= 4
-                and token in text
+                requested_normalized
+                == candidate_normalized
+            ):
+
+                return True
+
+            requested_compact = compact(
+                requested_normalized
+            )
+
+            candidate_compact = compact(
+                candidate_normalized
+            )
+
+            if (
+                requested_compact
+                and candidate_compact
+                and requested_compact
+                == candidate_compact
+            ):
+
+                return True
+
+            # Например:
+            #
+            # запрос 775
+            # поле "775 черный"
+            #
+            candidate_tokens = set(
+                re.findall(
+                    r"[a-zа-яё0-9]+",
+                    candidate_normalized,
+                    flags=re.IGNORECASE
+                )
+            )
+
+            if (
+                requested_normalized
+                in candidate_tokens
             ):
 
                 return True
@@ -5542,18 +6072,8 @@ def find_part_smart(
             return False
 
         # ====================================================
-        # QUERY COMPACT
+        # MAIN LOOP
         # ====================================================
-
-        query_compact = compact(
-            query
-        )
-
-        # ====================================================
-        # SEARCH
-        # ====================================================
-
-        candidates = []
 
         for position, part in enumerate(
             database
@@ -5566,7 +6086,7 @@ def find_part_smart(
                 continue
 
             # =================================================
-            # RAW
+            # RAW FIELDS
             # =================================================
 
             raw_name = safe_text(
@@ -5618,6 +6138,13 @@ def find_part_smart(
                 )
             )
 
+            raw_color = safe_text(
+                part.get(
+                    color_key,
+                    ""
+                )
+            ).strip()
+
             # =================================================
             # NORMALIZED
             # =================================================
@@ -5646,40 +6173,42 @@ def find_part_smart(
                 raw_upper
             ).upper()
 
+            color = normalize_text(
+                raw_color
+            )
+
             # =================================================
             # BODY FILTER
             # =================================================
 
             if bodies:
 
+                body_match = False
+
                 candidate_body = compact(
                     body
                 )
 
-                body_match = False
-
                 for requested_body in bodies:
 
-                    equivalents = (
-                        body_equivalents.get(
-                            requested_body,
-                            {
-                                requested_body
-                            }
-                        )
+                    equivalents = body_equivalents.get(
+                        requested_body,
+                        {
+                            requested_body
+                        }
                     )
 
                     for equivalent in equivalents:
 
-                        equivalent_compact = (
-                            compact(
-                                equivalent
-                            )
+                        equivalent_compact = compact(
+                            equivalent
                         )
 
                         if (
                             candidate_body
                             == equivalent_compact
+                            or equivalent_compact
+                            in candidate_body
                         ):
 
                             body_match = True
@@ -5689,6 +6218,7 @@ def find_part_smart(
                         break
 
                 if not body_match:
+
                     continue
 
             # =================================================
@@ -5729,7 +6259,20 @@ def find_part_smart(
                     continue
 
             # =================================================
-            # FRONT / REAR FILTER
+            # COLOR FILTER
+            # =================================================
+
+            if requested_color:
+
+                if not color_matches(
+                    requested_color,
+                    raw_color
+                ):
+
+                    continue
+
+            # =================================================
+            # FRONT / REAR
             # =================================================
 
             direction_name_match = False
@@ -5745,7 +6288,7 @@ def find_part_smart(
                     front
                     not in {
                         "F",
-                        "FRONT"
+                        "FRONT",
                     }
                     and not direction_name_match
                 ):
@@ -5765,7 +6308,7 @@ def find_part_smart(
                     not in {
                         "B",
                         "REAR",
-                        "BACK"
+                        "BACK",
                     }
                     and not direction_name_match
                 ):
@@ -5773,7 +6316,7 @@ def find_part_smart(
                     continue
 
             # =================================================
-            # LEFT / RIGHT FILTER
+            # LEFT / RIGHT
             # =================================================
 
             side_name_match = False
@@ -5789,7 +6332,7 @@ def find_part_smart(
                     side
                     not in {
                         "L",
-                        "LEFT"
+                        "LEFT",
                     }
                     and not side_name_match
                 ):
@@ -5807,7 +6350,7 @@ def find_part_smart(
                     side
                     not in {
                         "R",
-                        "RIGHT"
+                        "RIGHT",
                     }
                     and not side_name_match
                 ):
@@ -5815,7 +6358,7 @@ def find_part_smart(
                     continue
 
             # =================================================
-            # UPPER / LOWER FILTER
+            # UPPER / LOWER
             # =================================================
 
             upper_name_match = False
@@ -5831,7 +6374,7 @@ def find_part_smart(
                     upper
                     not in {
                         "U",
-                        "UPPER"
+                        "UPPER",
                     }
                     and not upper_name_match
                 ):
@@ -5852,7 +6395,7 @@ def find_part_smart(
                     not in {
                         "D",
                         "LOWER",
-                        "DOWN"
+                        "DOWN",
                     }
                     and not upper_name_match
                 ):
@@ -5860,11 +6403,13 @@ def find_part_smart(
                     continue
 
             # =================================================
-            # PART NAME MATCH
+            # NAME SEARCH
             # =================================================
 
             matched_part_words = 0
+
             matched_in_name = 0
+
             matched_in_comment = 0
 
             for search_word in part_words:
@@ -5903,8 +6448,12 @@ def find_part_smart(
                     continue
 
             # =================================================
-            # OEM FIELDS
+            # OEM-LIKE FIELDS
             # =================================================
+
+            query_compact = compact(
+                query
+            )
 
             article = normalize_oem(
                 part.get(
@@ -5913,12 +6462,10 @@ def find_part_smart(
                 )
             )
 
-            manufacturer_number = (
-                normalize_oem(
-                    part.get(
-                        "Номер производителя",
-                        ""
-                    )
+            manufacturer_number = normalize_oem(
+                part.get(
+                    "Номер производителя",
+                    ""
                 )
             )
 
@@ -5929,22 +6476,19 @@ def find_part_smart(
                 )
             )
 
-            cross_numbers = []
-
-            for value in re.split(
-                r"[,;/|\n]+",
-                cross_numbers_raw
-            ):
-
-                normalized = normalize_oem(
-                    value
+            cross_numbers = [
+                normalize_oem(value)
+                for value in re.split(
+                    r"[,;/|\n]+",
+                    cross_numbers_raw
                 )
+            ]
 
-                if normalized:
-
-                    cross_numbers.append(
-                        normalized
-                    )
+            cross_numbers = [
+                value
+                for value in cross_numbers
+                if value
+            ]
 
             # =================================================
             # SCORE
@@ -5967,27 +6511,27 @@ def find_part_smart(
                     == total_words
                 ):
 
-                    score += 1600
+                    score += 1200
 
                 else:
 
                     score += (
                         matched_part_words
-                        * 450
+                        * 350
                     )
 
                 score += (
                     matched_in_name
-                    * 500
+                    * 450
                 )
 
                 score += (
                     matched_in_comment
-                    * 70
+                    * 80
                 )
 
             # -------------------------------------------------
-            # EXACT NAME
+            # EXACT FULL NAME
             # -------------------------------------------------
 
             part_phrase = " ".join(
@@ -5996,13 +6540,14 @@ def find_part_smart(
 
             if (
                 part_phrase
-                and name == part_phrase
+                and name
+                == part_phrase
             ):
 
-                score += 1200
+                score += 1000
 
             # -------------------------------------------------
-            # NAME START
+            # NAME STARTS WITH REQUEST
             # -------------------------------------------------
 
             if (
@@ -6012,7 +6557,7 @@ def find_part_smart(
                 )
             ):
 
-                score += 600
+                score += 500
 
             # -------------------------------------------------
             # BODY
@@ -6020,30 +6565,32 @@ def find_part_smart(
 
             if bodies:
 
-                score += 900
+                score += 700
 
-                candidate_body = compact(
+                compact_body = compact(
                     body
                 )
 
                 for requested_body in bodies:
 
-                    equivalents = (
-                        body_equivalents.get(
-                            requested_body,
-                            {
-                                requested_body
-                            }
-                        )
+                    equivalents = body_equivalents.get(
+                        requested_body,
+                        {
+                            requested_body
+                        }
                     )
 
-                    if candidate_body in {
-                        compact(value)
-                        for value in equivalents
-                    }:
+                    for equivalent in equivalents:
 
-                        score += 600
-                        break
+                        if (
+                            compact_body
+                            == compact(
+                                equivalent
+                            )
+                        ):
+
+                            score += 500
+                            break
 
             # -------------------------------------------------
             # ENGINE FAMILY
@@ -6051,7 +6598,14 @@ def find_part_smart(
 
             if requested_engine_families:
 
-                score += 600
+                score += 500
+
+                if (
+                    candidate_family
+                    in requested_engine_families
+                ):
+
+                    score += 500
 
             # -------------------------------------------------
             # EXACT ENGINE
@@ -6064,7 +6618,24 @@ def find_part_smart(
                     in requested_engine_codes
                 ):
 
-                    score += 1800
+                    score += 1500
+
+            # -------------------------------------------------
+            # COLOR
+            # -------------------------------------------------
+
+            if requested_color:
+
+                # Цвет уже прошёл жёсткий фильтр.
+
+                score += 700
+
+                if color_matches(
+                    requested_color,
+                    raw_color
+                ):
+
+                    score += 800
 
             # -------------------------------------------------
             # FRONT / REAR
@@ -6072,20 +6643,24 @@ def find_part_smart(
 
             if front_rear:
 
-                score += 500
+                score += 400
+
+                expected_front = (
+                    "FRONT"
+                    if front_rear == "F"
+                    else "REAR"
+                )
 
                 if front in {
                     front_rear,
-                    "FRONT"
-                    if front_rear == "F"
-                    else "REAR",
+                    expected_front,
                 }:
 
-                    score += 600
+                    score += 500
 
                 elif direction_name_match:
 
-                    score += 350
+                    score += 300
 
             # -------------------------------------------------
             # LEFT / RIGHT
@@ -6093,20 +6668,24 @@ def find_part_smart(
 
             if left_right:
 
-                score += 500
+                score += 400
+
+                expected_side = (
+                    "LEFT"
+                    if left_right == "L"
+                    else "RIGHT"
+                )
 
                 if side in {
                     left_right,
-                    "LEFT"
-                    if left_right == "L"
-                    else "RIGHT",
+                    expected_side,
                 }:
 
-                    score += 600
+                    score += 500
 
                 elif side_name_match:
 
-                    score += 350
+                    score += 300
 
             # -------------------------------------------------
             # UPPER / LOWER
@@ -6114,28 +6693,27 @@ def find_part_smart(
 
             if upper_lower:
 
-                score += 500
+                score += 400
+
+                expected_upper = (
+                    "UPPER"
+                    if upper_lower == "U"
+                    else "LOWER"
+                )
 
                 if upper in {
                     upper_lower,
-                    "UPPER"
-                    if upper_lower == "U"
-                    else "LOWER",
+                    expected_upper,
                 }:
 
-                    score += 600
+                    score += 500
 
                 elif upper_name_match:
 
-                    score += 350
+                    score += 300
 
             # -------------------------------------------------
             # MODIFIERS
-            #
-            # НЕ ФИЛЬТР.
-            #
-            # AMG повышает рейтинг,
-            # но его отсутствие НЕ исключает деталь.
             # -------------------------------------------------
 
             for modifier in requested_modifiers:
@@ -6145,17 +6723,17 @@ def find_part_smart(
                     name
                 ):
 
-                    score += 500
+                    score += 300
 
                 elif token_in_text(
                     modifier,
                     comment
                 ):
 
-                    score += 200
+                    score += 150
 
             # -------------------------------------------------
-            # OEM BONUS
+            # OEM-LIKE MATCH
             # -------------------------------------------------
 
             if (
@@ -6230,6 +6808,7 @@ def find_part_smart(
                 f"NAME={part.get(name_key, '')} "
                 f"BODY={part.get(body_key, '')} "
                 f"ENGINE={part.get(engine_key, '')} "
+                f"COLOR={part.get(color_key, '')} "
                 f"ARTICLE={part.get('Артикул', '')}"
             )
 
@@ -6265,6 +6844,7 @@ def find_part_smart(
         )
 
         return result
+
 
 def find_wheels(
     query,

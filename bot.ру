@@ -9059,12 +9059,129 @@ def _extract_ai_sources(
         :AI_WEB_MAX_SOURCES
     ]
 
+def is_mercedes_query(
+    original_query,
+    prepared_query=None
+):
+
+    text = (
+        f"{original_query} "
+        f"{prepared_query or ''}"
+    ).lower()
+
+    text = re.sub(
+        r"[^a-zа-яё0-9]+",
+        " ",
+        text
+    )
+
+    tokens = set(
+        text.split()
+    )
+
+    mercedes_tokens = {
+        "mercedes",
+        "мерседес",
+        "benz",
+        "бенц",
+        "amg",
+        "maybach",
+
+        # Кузова
+        "w140",
+        "w163",
+        "w164",
+        "w166",
+        "w202",
+        "w203",
+        "w204",
+        "w205",
+        "w208",
+        "w209",
+        "w210",
+        "w211",
+        "w212",
+        "w213",
+        "w220",
+        "w221",
+        "w222",
+
+        "c207",
+        "c218",
+        "c215",
+        "c216",
+
+        # Двигатели Mercedes
+        "m112",
+        "m113",
+        "m271",
+        "m272",
+        "m273",
+        "m274",
+        "m276",
+        "m278",
+
+        "om611",
+        "om612",
+        "om613",
+        "om642",
+        "om646",
+        "om651",
+        "om654",
+    }
+
+    # --------------------------------------------------------
+    # Явное упоминание Mercedes
+    # --------------------------------------------------------
+
+    if tokens & mercedes_tokens:
+        return True
+
+    # --------------------------------------------------------
+    # Полные коды двигателей Mercedes
+    #
+    # M271.860
+    # M272.952
+    # OM642.850
+    # --------------------------------------------------------
+
+    compact_text = re.sub(
+        r"[\s\-_.]+",
+        "",
+        text
+    )
+
+    mercedes_engine_pattern = re.search(
+        r"\b(?:m|om)(?:112|113|271|272|273|274|276|278|"
+        r"611|612|613|642|646|651|654)\d{3}\b",
+        compact_text,
+        flags=re.IGNORECASE
+    )
+
+    if mercedes_engine_pattern:
+        return True
+
+    # --------------------------------------------------------
+    # Если есть кузов Mercedes
+    # --------------------------------------------------------
+
+    body_pattern = re.search(
+        r"\b(?:w|c)(?:140|163|164|166|202|203|204|205|"
+        r"208|209|210|211|212|213|220|221|222|207|218|215|216)\b",
+        text,
+        flags=re.IGNORECASE
+    )
+
+    if body_pattern:
+        return True
+
+    return False
+
 
 def ai_web_search(
     original_query,
     prepared_query=None
 ):
-
 
     if not AI_WEB_ENABLED:
 
@@ -9086,6 +9203,43 @@ def ai_web_search(
 
         prepared_query = original_query
 
+    # ========================================================
+    # ПРОВЕРКА ТЕМАТИКИ
+    # ========================================================
+
+    if not is_mercedes_query(
+        original_query,
+        prepared_query
+    ):
+
+        print(
+            "[AI WEB] Query is NOT Mercedes-related"
+        )
+
+        return [
+            {
+                "type": "ai_answer",
+
+                "title": "AI-поиск",
+
+                "url": "",
+
+                "body": (
+                    "❌ Запрос не относится "
+                    "к автомобилям Mercedes-Benz."
+                ),
+
+                "excerpt": (
+                    "Запрос не относится "
+                    "к автомобилям Mercedes-Benz."
+                ),
+
+                "sources": [],
+
+                "query": original_query
+            }
+        ]
+
     print(
         "🤖 AI WEB SEARCH"
     )
@@ -9099,6 +9253,7 @@ def ai_web_search(
         f"[AI WEB] Prepared: "
         f"{prepared_query}"
     )
+
 
     prompt = f"""
 ПОЛЬЗОВАТЕЛЬСКИЙ ЗАПРОС:

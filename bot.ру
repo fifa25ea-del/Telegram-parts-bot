@@ -8125,49 +8125,57 @@ def send_web_card(
                 ""
             )
         )
-
+    
         query = safe_text(
             web_query.get(
                 chat_id,
                 ""
             )
         )
-
+    
         sources = result.get(
             "sources",
             []
         )
-
+    
+        disclaimer = (
+            "\n\n⚠️ Информация получена из интернета "
+            "и может быть неточной. "
+            "Проверяйте важные данные по официальным "
+            "источникам или технической документации."
+        )
+    
         text = (
             "🤖 AI-поиск\n\n"
             f"🔎 Запрос:\n"
             f"{query}\n\n"
-            f"{answer}\n\n"
+            f"{answer}"
+            f"{disclaimer}\n\n"
         )
-
+    
         if sources:
-
+    
             text += (
                 f"📚 Источников найдено: "
                 f"{len(sources)}\n"
             )
-
+    
         text += (
             f"\n({index + 1}/"
             f"{len(results)})"
         )
-
+    
         keyboard = types.InlineKeyboardMarkup(
             row_width=2
         )
-
+    
         keyboard.add(
-
+    
             types.InlineKeyboardButton(
                 "⬅️ Назад",
                 callback_data="web_prev"
             ),
-
+    
             types.InlineKeyboardButton(
                 "➡️ Вперед",
                 callback_data="web_next"

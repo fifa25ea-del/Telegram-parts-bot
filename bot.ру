@@ -422,175 +422,6 @@ WEB_TRACKING_PARAMS = {
     "mc_eid",
 }
 
-# ============================================================
-# AI WEB CONTEXT HELPERS
-# ============================================================
-
-def is_ai_followup(query):
-    """
-    Определяет, похож ли запрос на продолжение
-    предыдущего вопроса.
-
-    Это НЕ пытается понять смысл полностью.
-    Здесь только явные признаки продолжения.
-    """
-
-    query = safe_text(query).strip().lower()
-
-    if not query:
-        return False
-
-    continuation_phrases = (
-        "этот",
-        "эта",
-        "это",
-        "этом",
-        "этого",
-        "этой",
-        "эти",
-        "этих",
-        "он ",
-        "она ",
-        "они ",
-        "у него",
-        "у нее",
-        "у них",
-        "данный",
-        "данного",
-        "данной",
-        "такой",
-        "такая",
-        "такое",
-        "тот же",
-        "та же",
-        "а сколько",
-        "а какой",
-        "а какое",
-        "а какая",
-        "а где",
-        "а когда",
-        "а для",
-        "а на",
-        "а у",
-        "а что",
-        "а можно",
-        "а подойдет",
-        "а подойдет ли",
-        "а ставили",
-        "а ставился",
-        "а ставили ли",
-    )
-
-    return any(
-        phrase in query
-        for phrase in continuation_phrases
-    )
-
-
-def build_ai_context_query(
-    chat_id,
-    query
-):
-    """
-    Возвращает запрос для AI.
-
-    Если это продолжение предыдущего вопроса —
-    добавляет предыдущий контекст.
-
-    Если это новый вопрос —
-    отправляет его без старого контекста.
-    """
-
-    query = safe_text(query).strip()
-
-    if not query:
-        return query
-
-    context = ai_web_context.get(
-        chat_id
-    )
-
-    if not context:
-        return query
-
-    previous_query = safe_text(
-        context.get(
-            "query",
-            ""
-        )
-    ).strip()
-
-    previous_answer = safe_text(
-        context.get(
-            "answer",
-            ""
-        )
-    ).strip()
-
-    if not previous_query:
-        return query
-
-    if not is_ai_followup(query):
-        return query
-
-    # Не передаём огромный предыдущий ответ.
-    # Нам нужен только небольшой контекст.
-    if len(previous_answer) > 1200:
-        previous_answer = previous_answer[:1200]
-
-    context_text = (
-        "Предыдущий вопрос пользователя:\n"
-        f"{previous_query}\n\n"
-    )
-
-    if previous_answer:
-        context_text += (
-            "Предыдущий ответ AI:\n"
-            f"{previous_answer}\n\n"
-        )
-
-    context_text += (
-        "Новый вопрос пользователя:\n"
-        f"{query}\n\n"
-        "Это продолжение предыдущего вопроса. "
-        "Сохрани объект, двигатель, кузов или другую "
-        "конкретику из предыдущего вопроса, если "
-        "новый вопрос явно относится к ней."
-    )
-
-    print(
-        "[AI CONTEXT] FOLLOW-UP: "
-        f"{query}"
-    )
-
-    print(
-        "[AI CONTEXT] PREVIOUS: "
-        f"{previous_query}"
-    )
-
-    return context_text
-
-
-def save_ai_context(
-    chat_id,
-    query,
-    answer
-):
-    """
-    Сохраняем последний AI-контекст пользователя.
-    """
-
-    ai_web_context[
-        chat_id
-    ] = {
-        "query": safe_text(query),
-        "answer": safe_text(answer),
-    }
-
-    print(
-        "[AI CONTEXT] SAVED: "
-        f"{query}"
-    )
 
 def web_domain(url):
     """
@@ -9680,7 +9511,6 @@ OEM-номер и т.д.), это значение должно быть
     
     return results
 
-
 # ============================================================
 # SEARCH
 # ============================================================
@@ -9708,7 +9538,7 @@ def perform_search(
     )
 
     # --------------------------------------------------------
-    # WEB SEARCH
+    # WEB SEARCH / AI WEB SEARCH
     # --------------------------------------------------------
 
     if mode == "web":
@@ -9733,21 +9563,12 @@ def perform_search(
 
         try:
 
-            # ------------------------------------------------
-            # AI CONTEXT
-            # ------------------------------------------------
-
-            ai_query = build_ai_context_query(
-                chat_id,
-                query
-            )
-
-            # ------------------------------------------------
-            # IMPROVE QUERY
-            # ------------------------------------------------
+            # =================================================
+            # PREPARE QUERY
+            # =================================================
 
             search_query = improve_web_query(
-                ai_query
+                query
             )
 
             print(
@@ -9756,100 +9577,88 @@ def perform_search(
             )
 
             print(
-                f"[WEB SEARCH] AI query: "
-                f"{ai_query}"
-            )
-
-            print(
                 f"[WEB SEARCH] Improved: "
                 f"{search_query}"
             )
 
-            # ------------------------------------------------
+            # =================================================
             # AI WEB SEARCH
-            # ------------------------------------------------
+            # =================================================
 
-            if AI_WEB_ENABLED:
-
-                results = ai_web_search(
-                    query=ai_query,
-                    prepared_query=search_query,
-                    max_results=WEB_MAX_RESULTS
-                )
-
-            # ------------------------------------------------
-            # FALLBACK
-            # ------------------------------------------------
-
-            if not results:
+            if not AI_WEB_ENABLED:
 
                 print(
-                    "⚠️ AI WEB unavailable. "
-                    "Using legacy web search."
+                    "❌ [AI WEB] "
+                    "AI_WEB_ENABLED=False"
                 )
 
-                results = web_search(
-                    search_query,
-                    max_results=WEB_MAX_RESULTS
+                hide_loading_message(
+                    chat_id
                 )
+
+                bot.send_message(
+                    chat_id,
+                    "❌ AI-поиск временно отключён."
+                )
+
+                return
+
+            print(
+                "[AI WEB] "
+                "Starting AI web search..."
+            )
+
+            results = ai_web_search(
+                original_query=query,
+                prepared_query=search_query
+            )
+
+            print(
+                "[AI WEB] "
+                f"Returned results: "
+                f"{len(results) if results else 0}"
+            )
 
         except Exception as e:
 
             print(
-                f"[WEB SEARCH] Error: "
-                f"{repr(e)}"
+                f"❌ [AI WEB] "
+                f"ERROR: {repr(e)}"
             )
 
-            # ------------------------------------------------
-            # FALLBACK
-            # ------------------------------------------------
+            results = []
 
-            try:
+        # =====================================================
+        # HIDE LOADING
+        # =====================================================
 
-                results = web_search(
-                    query,
-                    max_results=WEB_MAX_RESULTS
-                )
+        hide_loading_message(
+            chat_id
+        )
 
-            except Exception as fallback_error:
-
-                print(
-                    f"[WEB SEARCH FALLBACK] "
-                    f"{repr(fallback_error)}"
-                )
-
-                results = []
-
-        finally:
-
-            hide_loading_message(
-                chat_id
-            )
-
-        # ----------------------------------------------------
-        # NO RESULTS
-        # ----------------------------------------------------
+        # =====================================================
+        # NO AI RESULT
+        # =====================================================
 
         if not results:
 
             log_search(
                 chat_id,
                 query,
-                "NOT_FOUND_WEB"
+                "AI_WEB_ERROR"
             )
 
             bot.send_message(
                 chat_id,
-                "❌ В интернете ничего "
-                "подходящего не найдено.\n\n"
-                "Попробуйте изменить запрос."
+                "❌ AI-поиск не смог получить ответ.\n\n"
+                "Попробуйте повторить запрос немного позже."
             )
 
             return
 
-        # ----------------------------------------------------
+        # =====================================================
         # SAVE RESULTS
-        # ----------------------------------------------------
+        # =====================================================
 
         web_results[
             chat_id
@@ -9863,44 +9672,14 @@ def perform_search(
             chat_id
         ] = query
 
-        # ----------------------------------------------------
-        # SAVE AI CONTEXT
-        #
-        # Сохраняем только если реально был AI-ответ.
-        # ----------------------------------------------------
+        print(
+            "[AI WEB] "
+            f"Final results: {len(results)}"
+        )
 
-        if AI_WEB_ENABLED:
-
-            first_result = results[0]
-
-            if (
-                isinstance(
-                    first_result,
-                    dict
-                )
-                and first_result.get(
-                    "type"
-                ) == "ai_answer"
-            ):
-
-                answer = safe_text(
-                    first_result.get(
-                        "body",
-                        ""
-                    )
-                )
-
-                if answer:
-
-                    save_ai_context(
-                        chat_id,
-                        query,
-                        answer
-                    )
-
-        # ----------------------------------------------------
-        # SEND
-        # ----------------------------------------------------
+        # =====================================================
+        # SHOW ONLY FIRST RESULT
+        # =====================================================
 
         send_web_card(
             chat_id,
@@ -9908,7 +9687,6 @@ def perform_search(
         )
 
         return
-
     # --------------------------------------------------------
     # PARTS
     # --------------------------------------------------------

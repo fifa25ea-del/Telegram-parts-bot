@@ -114,7 +114,7 @@ AI_TUNNEL_API_KEY = os.getenv(
 
 AI_WEB_MODEL = os.getenv(
     "AI_WEB_MODEL",
-    "gemini-2.5-flash-lite"
+    "gpt-5-nano"
 ).strip()
 
 

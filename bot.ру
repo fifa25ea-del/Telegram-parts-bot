@@ -7994,7 +7994,7 @@ def enter_wheels_mode(
 
     bot.send_message(
         chat_id,
-        "🔎 Введите размер или производителя.\n\n"
+        "🔎 Введите размер.\n\n"
         "Например:\n"
         "R18\n"
         "18\n"

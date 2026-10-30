@@ -11286,25 +11286,32 @@ def alice_price_text(value):
 
 def alice_keys(value):
     """
-    Ключи поиска — в ТОМ ЖЕ виде, что у бота.
-    normalize + fix_a — как при построении индексов.
-    Плюс запасной вариант без ведущей A.
+    Ключи поиска — в том же виде, что у бота.
+    Плюс страховка: если буква A потерялась
+    (Алиса её не распознала) — пробуем добавить.
     """
     value = safe_text(value).lower().strip()
     if not value:
         return []
 
     value = re.sub(r"[\s\-_./\\]+", "", value)
-
     base = normalize(fix_a(value))
     if not base:
         return []
 
     keys = [base]
 
-    # Если в базе номер когда-то хранится без префикса A
-    if len(base) > 5 and base.startswith("a"):
+    # Вариант БЕЗ ведущей A
+    # (если в базе номер хранится без префикса)
+    if re.fullmatch(r"a\d{8,}", base):
         alt = base[1:]
+        if alt not in keys:
+            keys.append(alt)
+
+    # Вариант С ведущей A
+    # (если Алиса её потеряла при распознавании)
+    if re.fullmatch(r"\d{8,}", base):
+        alt = "a" + base
         if alt not in keys:
             keys.append(alt)
 

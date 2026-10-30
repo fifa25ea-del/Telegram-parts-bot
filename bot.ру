@@ -11463,20 +11463,13 @@ def alice_webhook():
 # ============================================================
 
 if __name__ == "__main__":
-    # Telegram-бот в отдельном потоке
-    threading.Thread(
-        target=lambda: bot.polling(none_stop=True),
-        daemon=True,
-    ).start()
 
-    # Вебхук для Алисы — Railway сам подставит PORT
-    alice_app.run(
-        host="0.0.0.0",
-        port=int(os.getenv("PORT", "8080")),
-    )
+    print("=" * 60)
+    print("🚗 STUTTGART BOT + ALICE SKILL")
+    print("=" * 60)
 
     # --------------------------------------------------------
-    # Первичная загрузка базы.
+    # Первичная загрузка базы — ДО запуска серверов!
     # --------------------------------------------------------
 
     load_database()
@@ -11498,28 +11491,29 @@ if __name__ == "__main__":
 
     updater_thread.start()
 
-    print(
-        "🔄 CSV auto-update enabled"
-    )
-
-    print(
-        "📸 Photo cache enabled"
-    )
-
-    print(
-        "⚡ Parallel photo loading enabled"
-    )
-
-    print(
-        "🚂 Railway mode enabled"
-    )
-
-    print(
-        "🤖 Bot is starting..."
-    )
+    print("🔄 CSV auto-update enabled")
+    print("📸 Photo cache enabled")
+    print("⚡ Parallel photo loading enabled")
+    print("🚂 Railway mode enabled")
 
     # --------------------------------------------------------
-    # Telegram polling.
+    # Telegram-бот в отдельном потоке.
     # --------------------------------------------------------
 
-    polling_error_handler()
+    polling_thread = threading.Thread(
+        target=polling_error_handler,
+        daemon=True
+    )
+
+    polling_thread.start()
+
+    print("🤖 Bot is starting...")
+
+    # --------------------------------------------------------
+    # Вебхук для Алисы — Railway сам подставит PORT.
+    # --------------------------------------------------------
+
+    alice_app.run(
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8080"))
+    )

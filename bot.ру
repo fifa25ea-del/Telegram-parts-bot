@@ -11262,27 +11262,217 @@ def polling_error_handler():
                 5
             )
 
+# ============================================================
+# ALICE SKILL — ВЕБХУК ДЛЯ СТАНЦИИ МИНИ
+# ============================================================
 
+from flask import Flask, request, jsonify
+
+alice_app = Flask(__name__)
+
+
+def alice_oem_normalize(value):
+    """Компактный вид артикула: без пробелов и разделителей."""
+    value = safe_text(value).lower().strip()
+    if not value:
+        return ""
+    value = re.sub(r"[\s\-_.\/]+", "", value)
+    value = normalize(value)  # ваш normalize: кириллица -> латиница
+    return value
+
+
+def alice_price_text(value):
+    """Цена в виде, пригодном для озвучки."""
+    price = safe_text(value)
+    if not price:
+        return ""
+    # Убираем символы, которые TTS читает плохо
+    price = price.replace("₽", "").replace("руб.", "").replace("руб", "")
+    price = price.strip()
+    if price and re.fullmatch(r"[\d\s.,]+", price):
+        return f"{price} рублей"
+    return price
+
+
+def alice_find_part(number):
+    """
+    Ищет номер в базах: доноры, запчасти, диски.
+    Возвращает (источник, dict) или (None, None).
+    """
+    key = alice_oem_normalize(number)
+    if not key:
+        return None, None
+
+    with database_lock:
+
+        # ---------- ДОНОРЫ ----------
+        donor = donors_by_number.get(key)
+        if donor:
+            return "donor", donor
+
+        # ---------- ЗАПЧАСТИ ----------
+        for part in parts_db:
+            if not isinstance(part, dict):
+                continue
+
+            fields = [
+                part.get("Артикул", ""),
+                part.get("Номер производителя", ""),
+            ]
+
+            cross_raw = safe_text(part.get("Кросс-номера", ""))
+            fields.extend(
+                re.split(r"[,;/|\n]+", cross_raw)
+            )
+
+            for field in fields:
+                if alice_oem_normalize(field) == key:
+                    return "part", part
+
+        # ---------- ДИСКИ ----------
+        for wheel in wheels_db:
+            if alice_oem_normalize(
+                wheel.get("Артикул", "")
+            ) == key:
+                return "wheel", wheel
+
+    return None, None
+
+
+def extract_part_numbers(command):
+    """Вытаскивает из фразы Алисы номера-кандидаты."""
+    command = safe_text(command)
+    tokens = re.findall(
+        r"[A-Za-zА-Яа-яЁё0-9][A-Za-zА-Яа-яЁё0-9\-]{3,}",
+        command,
+    )
+    candidates = []
+    for token in tokens:
+        compact_token = alice_oem_normalize(token)
+        if not compact_token:
+            continue
+        # Артикул: буквы и цифры, обязательно есть цифра
+        if (
+            re.fullmatch(r"[a-z0-9]{4,}", compact_token)
+            and re.search(r"\d", compact_token)
+        ):
+            candidates.append(compact_token)
+    return candidates
+
+
+def alice_build_answer(number):
+    """Формирует голосовой ответ по найденной позиции."""
+    source, item = alice_find_part(number)
+
+    if not item:
+        return f"Номера {number} в базе нет."
+
+    if source == "donor":
+        name = safe_text(item.get("Наименование", ""))
+        price = alice_price_text(item.get("Цена", ""))
+        answer = "Такой донор есть в базе."
+        if name:
+            answer += f" {name}."
+        if price:
+            answer += f" Цена: {price}."
+        return answer
+
+    if source == "wheel":
+        brand = safe_text(item.get("Производитель диска", ""))
+        model = safe_text(item.get("Модель диска", ""))
+        price = alice_price_text(item.get("Цена", ""))
+        answer = "Диски есть в базе."
+        if brand:
+            answer += f" {brand} {model}.".replace(" .", ".")
+        if price:
+            answer += f" Цена: {price}."
+        return answer
+
+    # Запчасть
+    name = safe_text(
+        item.get(name_key, "")
+        if name_key
+        else item.get("Наименование", "")
+    )
+    price = alice_price_text(item.get("Цена", ""))
+    answer = "Есть в базе."
+    if name:
+        answer += f" {name}."
+    if price:
+        answer += f" Цена: {price}."
+    return answer
+
+
+@alice_app.route("/alice", methods=["POST"])
+def alice_webhook():
+    try:
+        data = request.get_json(silent=True) or {}
+        command = safe_text(
+            data.get("request", {}).get("command", "")
+        )
+
+        numbers = extract_part_numbers(command)
+
+        if not numbers:
+            answer = (
+                "Скажите номер запчасти, донора или диска, "
+                "и я проверю базу."
+            )
+        else:
+            # Проверяем кандидатов по очереди
+            answer = None
+            for number in numbers:
+                found = alice_find_part(number)[0]
+                if found:
+                    answer = alice_build_answer(number)
+                    break
+
+            if not answer:
+                answer = (
+                    f"Номера {numbers[0].upper()} в базе нет. "
+                    "Попробуйте другой артикул."
+                )
+
+        return jsonify({
+            "version": "1.0",
+            "session": {
+                "session_id": data.get("session", {}).get("session_id", ""),
+                "message_id": data.get("session", {}).get("message_id", 0),
+                "user_id": data.get("session", {}).get("user_id", ""),
+            },
+            "response": {
+                "text": answer,
+                "tts": answer,
+                "end_session": True,
+            },
+        })
+
+    except Exception as e:
+        print(f"[ALICE] ERROR: {e}")
+        return jsonify({
+            "version": "1.0",
+            "session": {},
+            "response": {
+                "text": "Произошла ошибка, попробуйте ещё раз.",
+                "tts": "Произошла ошибка, попробуйте ещё раз.",
+                "end_session": True,
+            },
+        })
 # ============================================================
 # MAIN
 # ============================================================
 
 if __name__ == "__main__":
+    # Telegram-бот в отдельном потоке
+    threading.Thread(
+        target=lambda: bot.polling(none_stop=True),
+        daemon=True,
+    ).start()
 
-    print(
-        "=" * 60
-    )
-
-    print(
-        "🚗 STUTTGART BOT"
-    )
-
-    print(
-        "Railway Edition"
-    )
-
-    print(
-        "=" * 60
+    # Вебхук для Алисы — Railway сам подставит PORT
+    alice_app.run(
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", "8080")),
     )
 
     # --------------------------------------------------------
